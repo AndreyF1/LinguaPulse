@@ -1,0 +1,205 @@
+// linguapulse-test-bot worker.js
+// Telegram webhook + placement test + D1 (USER_DB) for profile + KV for state (TEST_KV)
+
+function jsonResponse(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    if (request.method === 'POST') {
+      const update = await request.json().catch(() => ({}));
+      ctx.waitUntil(handleUpdate(update, env, ctx));
+      return new Response('OK');
+    }
+    return new Response('Welcome to LinguaPulseBot', { status: 200 });
+  }
+};
+
+// KV prefix for transient test state
+const STATE_PREFIX = 'state:';
+
+// Main update handler
+async function handleUpdate(update, env, ctx) {
+  const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
+  if (!chatId) return;
+
+  // Telegram API helpers
+  const callT = (method, payload = {}) =>
+    fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, ...payload })
+    });
+
+  const sendMessage = (text, keyboard) => {
+    const opts = { text };
+    if (keyboard) opts.reply_markup = { inline_keyboard: keyboard };
+    return callT('sendMessage', opts);
+  };
+
+  const ack = (callbackId) =>
+    callT('answerCallbackQuery', { callback_query_id: callbackId });
+
+  const ask = (text, options) => {
+    const kb = options.map(o => [{ text: o, callback_data: `next:${o}` }]);
+    return sendMessage(text, kb);
+  };
+
+  // KV storage for state
+  const kv = env.TEST_KV;
+  const stateKey = STATE_PREFIX + chatId;
+  const raw = await kv.get(stateKey);
+  const allState = raw ? JSON.parse(raw) : {};
+  let { questions = [], answers = [], index = 0 } = allState;
+
+  // /profile → read D1
+  if (update.message?.text === '/profile') {
+    const { results } = await env.USER_DB
+      .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
+      .bind(parseInt(chatId, 10))
+      .all();
+    const profile = results[0] || {};
+    await sendMessage(`Profile data:\n${JSON.stringify(profile, null, 2)}`);
+    return;
+  }
+
+  // /start → generate questions, record start_test_at, ask first
+  if (update.message?.text === '/start') {
+    questions = await generateTest(env);
+    answers = [];
+    index = 0;
+    await kv.put(stateKey, JSON.stringify({ questions, answers, index }));
+    const startAt = new Date().toISOString();
+    await env.USER_DB
+      .prepare(
+        `INSERT INTO user_profiles (telegram_id, start_test_at)
+         VALUES (?, ?)
+         ON CONFLICT(telegram_id) DO UPDATE
+           SET start_test_at = excluded.start_test_at`
+      )
+      .bind(parseInt(chatId, 10), startAt)
+      .run();
+    await ask(questions[0].question, questions[0].options);
+    return;
+  }
+
+  // answer buttons
+  if (update.callback_query?.data?.startsWith('next:')) {
+    await ack(update.callback_query.id);
+    answers[index] = update.callback_query.data.slice(5);
+    index++;
+
+    if (index < questions.length) {
+      await kv.put(stateKey, JSON.stringify({ questions, answers, index }));
+      await ask(questions[index].question, questions[index].options);
+      return;
+    }
+
+    // complete test: evaluate & upsert eng_level and tested_at
+    const { level, report } = evaluate(questions, answers);
+    const testedAt = new Date().toISOString();
+    await env.USER_DB
+      .prepare(
+        `INSERT INTO user_profiles (telegram_id, eng_level, tested_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(telegram_id) DO UPDATE
+           SET eng_level = excluded.eng_level,
+               tested_at = excluded.tested_at`
+      )
+      .bind(parseInt(chatId, 10), level, testedAt)
+      .run();
+
+    await kv.delete(stateKey);
+    await sendMessage(
+      `Your level: ${level}\n${report}`,
+      [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
+    );
+    return;
+  }
+
+  // trigger free audio lesson
+  if (update.callback_query?.data === 'lesson:free') {
+    await ack(update.callback_query.id);
+    await sendMessage('Starting free audio lesson…');
+    ctx.waitUntil(
+      env.LESSON0.fetch('https://dummy.internal/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: chatId, action: 'start_free' })
+      })
+    );
+    return;
+  }
+
+  // fallback
+  if (update.message) {
+    await sendMessage('Press /start to begin the placement test.');
+  }
+}
+
+// GPT-based question generation
+async function generateTest(env) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.OPENAI_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'gpt-3.5-turbo',
+      temperature: 0.7,
+      max_tokens: 800,
+      messages: [
+        { role: 'system', content: env.SYSTEM_PROMPT },
+        { role: 'user',   content: env.USER_PROMPT }
+      ]
+    })
+  });
+
+  const data = await res.json();
+  let txt = data.choices?.[0]?.message?.content?.trim() || '';
+  txt = txt.replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(txt);
+  } catch (e) {
+    console.error('generateTest parse error:', txt, e);
+    throw new Error('Failed to parse questions JSON');
+  }
+
+  const arr = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed.questions) ? parsed.questions : [];
+  return arr.slice(0, 10).map(q => ({
+    question: q.question,
+    options: Array.isArray(q.options) ? q.options.slice(0, 4) : [],
+    answer: q.answer
+  }));
+}
+
+// simple evaluation
+function evaluate(questions, answers) {
+  let correct = 0;
+  const report = [];
+
+  questions.forEach((q, i) => {
+    if (answers[i] === q.answer) {
+      correct++;
+    } else {
+      report.push(`- "${q.question}" Should be: ${q.answer}`);
+    }
+  });
+
+  const pct = questions.length ? (correct / questions.length) : 0;
+  const level = pct >= 0.9 ? 'C1'
+              : pct >= 0.8 ? 'B2'
+              : pct >= 0.6 ? 'B1'
+              : pct >= 0.4 ? 'A2'
+              : 'A1';
+  return { level, report: report.join('\n') };
+}
