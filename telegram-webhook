@@ -14,25 +14,174 @@ export default {
                 || update.callback_query?.message?.chat?.id;
     if (!chatId) return new Response('OK');
 
+    // Handle callback_query events
+    if (update.callback_query) {
+      // Handle "Free audio lesson" button
+      if (update.callback_query.data === 'lesson:free') {
+        // Check if user has already completed the free lesson before
+        const { results } = await env.USER_DB
+          .prepare('SELECT pass_lesson0_at FROM user_profiles WHERE telegram_id = ?')
+          .bind(parseInt(chatId, 10))
+          .all();
+          
+        if (results.length > 0 && results[0].pass_lesson0_at) {
+          // If user already completed the free lesson, show subscription message
+          await sendMessageViaTelegram(chatId,
+            "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just $1 per week. This gives you access to one extended lesson every day with personalized feedback.",
+            env,
+            [[{ text: "Subscribe for $1/week", callback_data: "subscribe:weekly" }]]
+          );
+          return new Response('OK');
+        }
+        
+        // If not completed before, send the "Starting…" text back immediately
+        await sendMessageViaTelegram(chatId,
+          'Starting free audio lesson…', env);
+
+        // Mark lesson in progress
+        await env.USER_PROFILE.put(`lesson:${chatId}`, 'in_progress');
+
+        // Forward the start payload to lesson0-bot
+        return forward(env.LESSON0, {
+          user_id: chatId,
+          action : 'start_free'
+        });
+      }
+      
+      // Handle subscription button
+      if (update.callback_query.data === 'subscribe:weekly') {
+        // Acknowledge the callback to stop the loading animation
+        await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: update.callback_query.id })
+        });
+        
+        // Here you would implement actual subscription logic
+        // For now, just acknowledge the request
+        await sendMessageViaTelegram(
+          chatId,
+          "Thank you for your interest in our premium subscription! We'll be launching this feature soon. You'll be among the first to know when it's available.",
+          env
+        );
+        return new Response('OK');
+      }
+      
+      // Handle test retake button
+      if (update.callback_query.data === 'test:retake') {
+        // Acknowledge the callback
+        await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: update.callback_query.id })
+        });
+        
+        await sendMessageViaTelegram(
+          chatId,
+          "Let's reassess your English level! I'm going to ask you a series of questions to determine your proficiency.",
+          env
+        );
+        
+        // Forward to test-bot with retake flag
+        return forward(env.TEST, {
+          ...update,
+          message: { chat: { id: chatId }, text: '/start' },
+          retake_test: true
+        });
+      }
+      
+      // Handle keep current level button
+      if (update.callback_query.data === 'test:keep') {
+        // Acknowledge the callback
+        await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: update.callback_query.id })
+        });
+        
+        await sendMessageViaTelegram(
+          chatId,
+          "Got it! We'll keep your current level. You can always practice with our free audio lesson to improve your skills.",
+          env,
+          [[{ text: "Free Audio Lesson", callback_data: "lesson:free" }]]
+        );
+        return new Response('OK');
+      }
+      
+      // Other callback queries go to test-bot
+      return forward(env.TEST, update);
+    }
+
+    // Handle commands
+    if (update.message?.text) {
+      // Help command
+      if (update.message.text === '/help') {
+        await sendMessageViaTelegram(
+          chatId,
+          "🤖 *LinguaPulse Bot*\n\nPractice your English through natural conversation!\n\nCommands:\n/start - Run placement test or view your stats\n/help - Show this help message",
+          env,
+          null,
+          'Markdown'
+        );
+        return new Response('OK');
+      }
+      
+      // Start command - display user stats or initiate test
+      if (update.message.text === '/start') {
+        // Check if user has already taken the test
+        const { results } = await env.USER_DB
+          .prepare('SELECT eng_level, tested_at, pass_lesson0_at, COALESCE(number_of_lessons, 0) as number_of_lessons, COALESCE(lessons_in_row, 0) as lessons_in_row, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+          .bind(parseInt(chatId, 10))
+          .all();
+          
+        if (results.length > 0 && results[0].eng_level) {
+          // User already has eng_level, show stats
+          const profile = results[0];
+          const testedDate = new Date(profile.tested_at).toLocaleDateString();
+          const subscriptionStatus = profile.subscription_expired_at 
+            ? `Your subscription is active until ${new Date(profile.subscription_expired_at).toLocaleDateString()}`
+            : "You don't have an active subscription";
+            
+          await sendMessageViaTelegram(
+            chatId,
+            `📊 *Your LinguaPulse Profile*\n\n` +
+            `🔤 English level: *${profile.eng_level}*\n` +
+            `📝 Last tested: *${testedDate}*\n` +
+            `🔢 Total lessons: *${profile.number_of_lessons}*\n` +
+            `🔥 Streak: *${profile.lessons_in_row} days*\n\n` +
+            `💳 ${subscriptionStatus}\n\n` +
+            `Want to practice speaking? Try our free conversation lesson!`,
+            env,
+            [[{ text: "Free Audio Lesson", callback_data: "lesson:free" }]],
+            'Markdown'
+          );
+          return new Response('OK');
+        } else {
+          // User needs to take the test
+          // Check if user has already taken the test but failed to complete it
+          if (results.length > 0 && results[0].tested_at) {
+            await sendMessageViaTelegram(
+              chatId,
+              "It looks like you started the test but didn't complete it. Let's try again!",
+              env
+            );
+          } else {
+            await sendMessageViaTelegram(
+              chatId,
+              "Welcome to LinguaPulse! Let's start by determining your English level with a short placement test.",
+              env
+            );
+          }
+          
+          // Forward to test-bot
+          return forward(env.TEST, update);
+        }
+      }
+    }
+
     // 1. read current lesson flag
     const flagKey   = `lesson:${chatId}`;
     const lessonFlg = (await env.USER_PROFILE.get(flagKey)) || 'idle';
-
-    // 2. handle “Free audio lesson” button
-    if (update.callback_query?.data === 'lesson:free') {
-      // send the “Starting…” text back immediately
-      await sendMessageViaTelegram(chatId,
-        'Starting free audio lesson…', env);
-
-      // mark lesson in progress
-      await env.USER_PROFILE.put(flagKey, 'in_progress');
-
-      // forward the start payload to lesson0-bot
-      return forward(env.LESSON0, {
-        user_id: chatId,
-        action : 'start_free'
-      });
-    }
 
     // 3. proxy user voice while lesson is in progress
     if (lessonFlg === 'in_progress' && update.message?.voice) {
@@ -46,16 +195,49 @@ export default {
     }
 
     // 5. everything else goes to test-bot
+    // But first check if we're starting a new test
+    if (update.message?.text === '/test') {
+      // Check if user has already taken the test
+      const { results } = await env.USER_DB
+        .prepare('SELECT eng_level, tested_at FROM user_profiles WHERE telegram_id = ?')
+        .bind(parseInt(chatId, 10))
+        .all();
+        
+      if (results.length > 0 && results[0].eng_level) {
+        // User already has eng_level, ask if they want to retake
+        await sendMessageViaTelegram(
+          chatId,
+          `You've already taken the placement test and your level is ${results[0].eng_level}. Would you like to take it again to see if you've improved?`,
+          env,
+          [
+            [{ text: "Yes, retake test", callback_data: "test:retake" }],
+            [{ text: "No, keep my current level", callback_data: "test:keep" }]
+          ]
+        );
+        return new Response('OK');
+      }
+    }
+    
     return forward(env.TEST, update);
   }
 };
 
 /* ──── helper: send a text via Telegram Bot API ──── */
-async function sendMessageViaTelegram(chatId, text, env) {
+async function sendMessageViaTelegram(chatId, text, env, keyboard = null, parseMode = null) {
+  const body = { chat_id: chatId, text };
+  
+  if (keyboard) {
+    body.reply_markup = { inline_keyboard: keyboard };
+  }
+  
+  if (parseMode) {
+    body.parse_mode = parseMode;
+  }
+  
   await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     method : 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body   : JSON.stringify({ chat_id: chatId, text })
+    body   : JSON.stringify(body)
   });
 }
 
