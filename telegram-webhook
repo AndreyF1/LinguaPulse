@@ -128,6 +128,68 @@ export default {
         callback_query_id: update.callback_query.id
       }, env);
       
+      // Check current subscription status
+      const { results } = await env.USER_DB
+        .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
+        .bind(parseInt(chatId, 10))
+        .all();
+      
+      if (!results.length) {
+        await sendMessageViaTelegram(chatId, 
+          'You need to take the placement test first. Use /start to begin.', env);
+        return new Response('OK');
+      }
+      
+      const profile = results[0];
+      const now = new Date();
+      
+      // Check if user has an active subscription
+      if (profile.subscription_expired_at) {
+        const subExpiredAt = new Date(profile.subscription_expired_at);
+        
+        // If subscription is still active
+        if (subExpiredAt.getTime() > now.getTime()) {
+          // Format the expiration date
+          const expiryDate = subExpiredAt.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          });
+          
+          // Check if next lesson is available
+          if (profile.next_lesson_access_at) {
+            const nextLessonAt = new Date(profile.next_lesson_access_at);
+            
+            if (nextLessonAt.getTime() <= now.getTime()) {
+              // Next lesson is already available
+              await sendMessageViaTelegram(chatId,
+                `You already have an active subscription until ${expiryDate}. Your next lesson is available now!`, 
+                env, 
+                { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }
+              );
+            } else {
+              // Next lesson will be available later
+              const timeUntil = formatTimeUntil(nextLessonAt);
+              await sendMessageViaTelegram(chatId,
+                `You already have an active subscription until ${expiryDate}. Your next lesson will be available in ${timeUntil}.`,
+                env
+              );
+            }
+            return new Response('OK');
+          } else {
+            // Something went wrong - subscription exists but next_lesson_access_at is missing
+            await sendMessageViaTelegram(chatId,
+              `You already have an active subscription until ${expiryDate}.`,
+              env,
+              { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }
+            );
+            return new Response('OK');
+          }
+        }
+      }
+      
+      // If we get here, user doesn't have an active subscription or it has expired
+      // Process the new subscription
       try {
         // Call the payment worker directly using the service binding
         const paymentResponse = await env.PAYMENT.fetch('https://internal/', {
