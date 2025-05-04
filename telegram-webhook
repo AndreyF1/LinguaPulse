@@ -44,7 +44,7 @@ export default {
       } else {
         // Format human-readable profile info
         const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
-        const subscriptionEnd = profile.subscription_end ? new Date(profile.subscription_end).toLocaleDateString() : 'No active subscription';
+        const subscriptionEnd = profile.subscription_expired_at ? new Date(profile.subscription_expired_at).toLocaleDateString() : 'No active subscription';
         const lessonsTotal = profile.lessons_total || 0;
         const lessonsStreak = profile.lessons_streak || 0;
         
@@ -123,16 +123,36 @@ export default {
     
     // 2.1 handle subscription button
     if (update.callback_query?.data === 'sub:weekly') {
-      // Acknowledge the callback query
+      // Acknowledge the callback query to remove the loading indicator
       await callTelegram('answerCallbackQuery', {
         callback_query_id: update.callback_query.id
       }, env);
       
-      // Send payment info
-      await sendMessageViaTelegram(chatId,
-        'To subscribe for $1/week, please follow this payment link:', env, {
-        inline_keyboard: [[{ text: 'Subscribe now', url: 'https://pay.linguapulse.com/' + chatId }]]
-      });
+      try {
+        // Call the payment worker directly using the service binding
+        const paymentResponse = await env.PAYMENT.fetch('https://internal/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            telegram_id: chatId,
+            action: 'process_subscription'
+          })
+        });
+        
+        if (!paymentResponse.ok) {
+          throw new Error(`Payment processing failed: ${paymentResponse.status}`);
+        }
+        
+        // The payment worker will handle sending the confirmation message
+        // and updating the user's subscription status
+        
+      } catch (error) {
+        console.error('Payment error:', error);
+        
+        // Send error message to user
+        await sendMessageViaTelegram(chatId,
+          'Sorry, there was an error processing your subscription. Please try again later.', env);
+      }
       
       return new Response('OK');
     }
