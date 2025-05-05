@@ -60,8 +60,8 @@ export default {
           // Format human-readable profile info
           const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
           const subscriptionEnd = profile.subscription_expired_at ? new Date(profile.subscription_expired_at).toLocaleDateString() : 'No active subscription';
-          const lessonsTotal = profile.lessons_total || 0;
-          const lessonsStreak = profile.lessons_streak || 0;
+          const lessonsTotal = profile.number_of_lessons || 0;
+          const lessonsStreak = profile.lessons_in_row || 0;
           
           await sendMessageViaTelegram(chatId, 
             `Your language profile:\n\n` +
@@ -479,8 +479,8 @@ async function handleLessonCommand(chatId, env) {
   
   // Basic profile info
   const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
-  const lessonsTotal = profile.lessons_total || 0;
-  const lessonsStreak = profile.lessons_streak || 0;
+  const lessonsTotal = profile.number_of_lessons || 0;
+  const lessonsStreak = profile.lessons_in_row || 0;
   
   let message = `Your language profile:\n` +
     `Language level: ${profile.eng_level}\n` +
