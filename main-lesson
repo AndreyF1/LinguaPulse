@@ -25,353 +25,253 @@ export default {
       }
 
       // Handle user voice message during lesson
-if (raw.message?.voice) {
-  // Get message ID for deduplication
-  const messageId = raw.message.message_id;
-  const processedKey = `main_processed:${chatId}:${messageId}`;
-  
-  // Check if this exact message was already processed
-  const alreadyProcessed = await safeKvGet(kv, processedKey);
-  if (alreadyProcessed) {
-    console.log(`Message ${messageId} already processed, ignoring duplicate`);
-    return new Response('OK');
-  }
-  
-  // Mark this message as being processed
-  await safeKvPut(kv, processedKey, "1", { expirationTtl: 3600 }); // 1 hour TTL
-  
-  // Get conversation history
-  const histKey = `main_hist:${chatId}`;
-  const stored = await safeKvGet(kv, histKey) || '[]';
-  const hist = JSON.parse(stored);
-  
-  // Check current session ID and activity - FIXED to be more robust
-  const sessionKey = `main_session:${chatId}`;
-  const currentSession = await safeKvGet(kv, sessionKey);
-  
-  // CRITICAL FIX: Ensure we're checking the right worker's session
-  if (!currentSession) {
-    console.log("No active main-lesson session found");
-    
-    // Check if there might be a lesson0 session instead
-    const lesson0SessionKey = `session:${chatId}`;
-    const lesson0Session = await safeKvGet(kv, lesson0SessionKey);
-    
-    if (lesson0Session) {
-      // This is a lesson0 session, we shouldn't process it here
-      // Just acknowledge receiving it and let telegram-webhook route it correctly
-      console.log("Found lesson0 session instead, not processing in main-lesson");
-      return new Response('OK');
-    }
-    
-    // Otherwise, we have no active session at all
-    await sendText(chatId, 
-      "You don't have an active lesson. Please start a new lesson by using the /talk command.", 
-      env,
-      [[{ text: "Start Lesson", callback_data: "lesson:start" }]]);
-    return new Response('OK');
-  }
-  
-  // Now check for session timeout only if we have a valid session
-  const isSessionActive = await checkSessionActive(chatId, kv);
-  if (!isSessionActive) {
-    console.log("Session inactive or timed out");
-    // Different message based on how many turns we had
-    const botTurns = hist.filter(h => h.role === 'assistant').length;
-    
-    if (botTurns >= 5) {
-      // Enough turns, session completed due to inactivity
-      await sendText(chatId, 
-        "Your lesson has been completed as you had several exchanges already. You can start a new lesson when the next one becomes available.", 
-        env);
-    } else {
-      // Not enough turns, but session timed out
-      await sendText(chatId, 
-        "Your lesson session timed out due to inactivity. You can start a new lesson by pressing the Start Lesson button or using the /talk command.",
-        env,
-        [[{ text: "Start Lesson", callback_data: "lesson:start" }]]);
-    }
-    return new Response('OK');
-  }
-  
-  // Check if user has already spoken and we're waiting for their response
-  const lastMessage = hist.length > 0 ? hist[hist.length - 1] : null;
-  if (lastMessage && lastMessage.role === 'user') {
-    console.log("Last message was from user, waiting for bot response. Possible race condition.");
-    return new Response('OK');
-  }
-  
-  // Set a "processing" flag to prevent concurrent processing of messages
-  const processingKey = `main_processing:${chatId}`;
-  const isProcessing = await safeKvGet(kv, processingKey);
-  
-  if (isProcessing) {
-    console.log("Already processing a message for this user, ignoring duplicate");
-    return new Response('OK');
-  }
-  
-  // Set processing flag with 60-second expiration
-  await safeKvPut(kv, processingKey, "1", { expirationTtl: 60 });
-  
-  try {
-    // Transcribe user voice
-    const userText = await transcribeVoice(raw.message.voice.file_id, env);
-    console.log(`User said: ${userText}`);
-    
-    // Add user message to history
-    hist.push({ role: 'user', content: userText });
-    
-    // Count assistant turns (not counting initial greeting)
-    const botTurns = hist.filter(h => h.role === 'assistant').length;
-    
-    // If we've already had 5-6 bot responses after greeting, end the lesson
-    if (botTurns >= 6) { // 1 greeting + 5 responses = 6 total
-      // Farewell message
-      const bye = "That's all for today's lesson! You did great. Let's continue our practice tomorrow with new exercises. Have a wonderful day!";
-      hist.push({ role: 'assistant', content: bye });
-      await safeKvPut(kv, histKey, JSON.stringify(hist));
-      await safeSendTTS(chatId, bye, env);
-
-      // Grammar analysis of all user utterances
-      const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
-      const analyses = await analyzeLanguage(userUtterances, env);
-      
-      // First, send an introduction message
-      if (analyses.length > 0) {
-        await sendText(
-          chatId, 
-          "📝 *Here's your language feedback from today's practice:*", 
-          env
-        );
+      if (raw.message?.voice) {
+        // Get message ID for deduplication
+        const messageId = raw.message.message_id;
+        const processedKey = `main_processed:${chatId}:${messageId}`;
         
-        // Then send individual analysis for each utterance
-        for (const analysis of analyses) {
-          // Type guard to ensure we're dealing with the correct structure
-          if (typeof analysis === 'object' && analysis !== null && 'utterance' in analysis && 'feedback' in analysis) {
+        // Check if this exact message was already processed
+        const alreadyProcessed = await safeKvGet(kv, processedKey);
+        if (alreadyProcessed) {
+          console.log(`Message ${messageId} already processed, ignoring duplicate`);
+          return new Response('OK');
+        }
+        
+        // Mark this message as being processed
+        await safeKvPut(kv, processedKey, "1", { expirationTtl: 3600 }); // 1 hour TTL
+        
+        // Get conversation history
+        const histKey = `main_hist:${chatId}`;
+        const stored = await safeKvGet(kv, histKey) || '[]';
+        const hist = JSON.parse(stored);
+        
+        // Check current session ID and activity - FIXED to be more robust
+        const sessionKey = `main_session:${chatId}`;
+        const currentSession = await safeKvGet(kv, sessionKey);
+        
+        // CRITICAL FIX: Ensure we're checking the right worker's session
+        if (!currentSession) {
+          console.log("No active main-lesson session found");
+          
+          // Check if there might be a lesson0 session instead
+          const lesson0SessionKey = `session:${chatId}`;
+          const lesson0Session = await safeKvGet(kv, lesson0SessionKey);
+          
+          if (lesson0Session) {
+            // This is a lesson0 session, we shouldn't process it here
+            // Just acknowledge receiving it and let telegram-webhook route it correctly
+            console.log("Found lesson0 session instead, not processing in main-lesson");
+            return new Response('OK');
+          }
+          
+          // Otherwise, we have no active session at all
+          await sendText(chatId, 
+            "You don't have an active lesson. Please start a new lesson by using the /talk command.", 
+            env,
+            [[{ text: "Start Lesson", callback_data: "lesson:start" }]]);
+          return new Response('OK');
+        }
+        
+        // Now check for session timeout only if we have a valid session
+        const isSessionActive = await checkSessionActive(chatId, kv);
+        if (!isSessionActive) {
+          console.log("Session inactive or timed out");
+          // Different message based on how many turns we had
+          const botTurns = hist.filter(h => h.role === 'assistant').length;
+          
+          if (botTurns >= 5) {
+            // Enough turns, session completed due to inactivity
+            await sendText(chatId, 
+              "Your lesson has been completed as you had several exchanges already. You can start a new lesson when the next one becomes available.", 
+              env);
+          } else {
+            // Not enough turns, but session timed out
+            await sendText(chatId, 
+              "Your lesson session timed out due to inactivity. You can start a new lesson by pressing the Start Lesson button or using the /talk command.",
+              env,
+              [[{ text: "Start Lesson", callback_data: "lesson:start" }]]);
+          }
+          return new Response('OK');
+        }
+        
+        // Check if user has already spoken and we're waiting for their response
+        const lastMessage = hist.length > 0 ? hist[hist.length - 1] : null;
+        if (lastMessage && lastMessage.role === 'user') {
+          console.log("Last message was from user, waiting for bot response. Possible race condition.");
+          return new Response('OK');
+        }
+        
+        // Set a "processing" flag to prevent concurrent processing of messages
+        const processingKey = `main_processing:${chatId}`;
+        const isProcessing = await safeKvGet(kv, processingKey);
+        
+        if (isProcessing) {
+          console.log("Already processing a message for this user, ignoring duplicate");
+          return new Response('OK');
+        }
+        
+        // Set processing flag with 60-second expiration
+        await safeKvPut(kv, processingKey, "1", { expirationTtl: 60 });
+        
+        try {
+          // Transcribe user voice
+          const userText = await transcribeVoice(raw.message.voice.file_id, env);
+          console.log(`User said: ${userText}`);
+          
+          // Add user message to history
+          hist.push({ role: 'user', content: userText });
+          
+          // Count assistant turns (not counting initial greeting)
+          const botTurns = hist.filter(h => h.role === 'assistant').length;
+          
+          // If we've already had 5-6 bot responses after greeting, end the lesson
+          if (botTurns >= 6) { // 1 greeting + 5 responses = 6 total
+            // Farewell message
+            const bye = "That's all for today's lesson! You did great. Let's continue our practice tomorrow with new exercises. Have a wonderful day!";
+            hist.push({ role: 'assistant', content: bye });
+            await safeKvPut(kv, histKey, JSON.stringify(hist));
+            await safeSendTTS(chatId, bye, env);
+
+            // Grammar analysis of all user utterances
+            const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
+            const analyses = await analyzeLanguage(userUtterances, env);
+            
+            // First, send an introduction message
+            if (analyses.length > 0) {
+              await sendText(
+                chatId, 
+                "📝 *Here's your language feedback from today's practice:*", 
+                env
+              );
+              
+              // Then send individual analysis for each utterance
+              for (const analysis of analyses) {
+                // Type guard to ensure we're dealing with the correct structure
+                if (typeof analysis === 'object' && analysis !== null && 'utterance' in analysis && 'feedback' in analysis) {
+                  await sendText(
+                    chatId,
+                    `*Your phrase:* "${analysis.utterance}"\n\n${analysis.feedback}`,
+                    env
+                  );
+                  
+                  // Add a short delay between messages to avoid flooding
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              }
+              
+              // After all analyses, send encouragement message
+              await sendText(
+                chatId,
+                "🌟 *Keep practicing! With consistent practice, you'll see steady improvement in your speaking skills!*",
+                env
+              );
+            }
+
+            // Send message about next lesson
+            await new Promise(resolve => setTimeout(resolve, 1000));
             await sendText(
               chatId,
-              `*Your phrase:* "${analysis.utterance}"\n\n${analysis.feedback}`,
+              "Your next lesson will be available tomorrow. Come back then to continue improving your English!",
               env
             );
+
+            // Update user profile in database
+            // 1. Increment lessons_total
+            // 2. Update lessons_streak
+            // 3. Set next_lesson_access_at to tomorrow at 2 AM
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(2, 0, 0, 0);
+            const nextLessonAt = tomorrow.toISOString();
             
-            // Add a short delay between messages to avoid flooding
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Get current profile values first
+            const { results } = await db.prepare(
+              `SELECT lessons_total, lessons_streak, last_lesson_at FROM user_profiles WHERE telegram_id = ?`
+            )
+            .bind(parseInt(chatId, 10))
+            .all();
+            
+            let lessonsTotal = 1;
+            let lessonsStreak = 1;
+            
+            if (results.length > 0) {
+              lessonsTotal = (results[0].lessons_total || 0) + 1;
+              
+              // Calculate streak logic
+              const lastLessonDate = results[0].last_lesson_at ? new Date(results[0].last_lesson_at) : null;
+              const currentStreak = results[0].lessons_streak || 0;
+              
+              if (lastLessonDate) {
+                // Check if the last lesson was yesterday or earlier today
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                
+                const todayStart = new Date(now);
+                todayStart.setHours(0, 0, 0, 0);
+                
+                if ((lastLessonDate >= yesterday && lastLessonDate < todayStart) || 
+                    (lastLessonDate >= todayStart)) {
+                  // Last lesson was yesterday or today, increment streak
+                  lessonsStreak = currentStreak + 1;
+                } else {
+                  // Streak broken, reset to 1
+                  lessonsStreak = 1;
+                }
+              }
+            }
+            
+            // Update the database with new values
+            const lessonCompletedAt = now.toISOString();
+            await db.prepare(
+              `UPDATE user_profiles 
+               SET next_lesson_access_at = ?,
+                   lessons_total = ?,
+                   lessons_streak = ?,
+                   last_lesson_at = ?
+               WHERE telegram_id = ?`
+            )
+            .bind(
+              nextLessonAt,
+              lessonsTotal,
+              lessonsStreak,
+              lessonCompletedAt,
+              parseInt(chatId, 10)
+            )
+            .run();
+            
+            // Clean up session data
+            await safeKvDelete(kv, histKey);
+            await safeKvDelete(kv, `main_session:${chatId}`);
+            await safeKvDelete(kv, `main_last_activity:${chatId}`);
+            // Delete all processed message markers
+            const keys = await kv.list({ prefix: `main_processed:${chatId}:` });
+            for (const key of keys.keys) {
+              await safeKvDelete(kv, key.name);
+            }
+            
+            return new Response('OK');
           }
-        }
-        
-        // After all analyses, send encouragement message
-        await sendText(
-          chatId,
-          "🌟 *Keep practicing! With consistent practice, you'll see steady improvement in your speaking skills!*",
-          env
-        );
-      }
 
-      // Send message about next lesson
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await sendText(
-        chatId,
-        "Your next lesson will be available tomorrow. Come back then to continue improving your English!",
-        env
-      );
-
-      // Update user profile in database
-      // 1. Increment lessons_total
-      // 2. Update lessons_streak
-      // 3. Set next_lesson_access_at to tomorrow at 2 AM
-      const now = new Date();
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(2, 0, 0, 0);
-      const nextLessonAt = tomorrow.toISOString();
-      
-      // Get current profile values first
-      const { results } = await db.prepare(
-        `SELECT lessons_total, lessons_streak, last_lesson_at FROM user_profiles WHERE telegram_id = ?`
-      )
-      .bind(parseInt(chatId, 10))
-      .all();
-      
-      let lessonsTotal = 1;
-      let lessonsStreak = 1;
-      
-      if (results.length > 0) {
-        lessonsTotal = (results[0].lessons_total || 0) + 1;
-        
-        // Calculate streak logic
-        const lastLessonDate = results[0].last_lesson_at ? new Date(results[0].last_lesson_at) : null;
-        const currentStreak = results[0].lessons_streak || 0;
-        
-        if (lastLessonDate) {
-          // Check if the last lesson was yesterday or earlier today
-          const yesterday = new Date(now);
-          yesterday.setDate(yesterday.getDate() - 1);
-          yesterday.setHours(0, 0, 0, 0);
+          // Generate GPT reply based on conversation history
+          const reply = await chatGPT(hist, env);
+          const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
           
-          const todayStart = new Date(now);
-          todayStart.setHours(0, 0, 0, 0);
+          // Add bot response to history
+          hist.push({ role: 'assistant', content: safeReply });
+          await safeKvPut(kv, histKey, JSON.stringify(hist));
           
-          if ((lastLessonDate >= yesterday && lastLessonDate < todayStart) || 
-              (lastLessonDate >= todayStart)) {
-            // Last lesson was yesterday or today, increment streak
-            lessonsStreak = currentStreak + 1;
-          } else {
-            // Streak broken, reset to 1
-            lessonsStreak = 1;
-          }
+          // Update activity timestamp
+          await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
+          
+          // Send audio response
+          await safeSendTTS(chatId, safeReply, env);
+        } finally {
+          // Clear processing flag
+          await safeKvDelete(kv, processingKey);
         }
       }
-      
-      // Update the database with new values
-      const lessonCompletedAt = now.toISOString();
-      await db.prepare(
-        `UPDATE user_profiles 
-         SET next_lesson_access_at = ?,
-             lessons_total = ?,
-             lessons_streak = ?,
-             last_lesson_at = ?
-         WHERE telegram_id = ?`
-      )
-      .bind(
-        nextLessonAt,
-        lessonsTotal,
-        lessonsStreak,
-        lessonCompletedAt,
-        parseInt(chatId, 10)
-      )
-      .run();
-      
-      // Clean up session data
-      await safeKvDelete(kv, histKey);
-      await safeKvDelete(kv, `main_session:${chatId}`);
-      await safeKvDelete(kv, `main_last_activity:${chatId}`);
-      // Delete all processed message markers
-      const keys = await kv.list({ prefix: `main_processed:${chatId}:` });
-      for (const key of keys.keys) {
-        await safeKvDelete(kv, key.name);
-      }
-      
-      return new Response('OK');
-    }
-
-    // Generate GPT reply based on conversation history
-    const reply = await chatGPT(hist, env);
-    const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
-    
-    // Add bot response to history
-    hist.push({ role: 'assistant', content: safeReply });
-    await safeKvPut(kv, histKey, JSON.stringify(hist));
-    
-    // Update activity timestamp
-    await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
-    
-    // Send audio response
-    await safeSendTTS(chatId, safeReply, env);
-  } finally {
-    // Clear processing flag
-    await safeKvDelete(kv, processingKey);
-  }
-}
-
-// Modify the first greeting to be more concrete and topic-oriented
-async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
-  try {
-    // Format prompt based on user's language level
-    let levelPrompt;
-    
-    switch(userLevel) {
-      case 'A1':
-        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short, basic sentences. Ask about a specific topic like 'family', 'daily routine', 'food', or 'hobbies'.";
-        break;
-      case 'A2':
-        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary and straightforward sentences. Start the conversation with a concrete topic like 'weekend activities', 'travel', 'shopping', or 'weather'.";
-        break;
-      case 'B1':
-        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary. Begin with a specific discussion topic like 'recent movies', 'technology', 'sports', or 'cooking'.";
-        break;
-      case 'B2':
-        levelPrompt = "The student is at upper-intermediate level (B2). Use natural language with varied vocabulary. Start with an engaging topic like 'current events', 'environmental issues', 'work-life balance', or 'cultural differences'.";
-        break;
-      case 'C1':
-      case 'C2':
-        levelPrompt = "The student is at advanced level (C1/C2). Use sophisticated vocabulary. Initiate discussion on a specific topic like 'global economics', 'societal trends', 'psychological concepts', or 'technological innovations'.";
-        break;
-      default:
-        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and introduce a concrete topic like 'hobbies', 'travel', or 'recent news'.";
-    }
-    
-    const prompt = `Generate a friendly, conversational opening for an English language practice session. ${levelPrompt} 
-
-IMPORTANT:
-1. Choose ONE specific concrete topic for today's conversation
-2. Introduce that topic clearly
-3. Ask ONE specific question about that topic
-4. Keep your entire response between 2-3 sentences
-5. Do NOT ask about expectations or preferences - pick a topic yourself
-6. Do NOT mention that this is a "lesson" or "practice" - make it natural
-
-Example good greeting: "Hi there! Today I thought we could chat about movies. Have you watched anything interesting lately?"`;
-    
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 
-        Authorization: `Bearer ${env.OPENAI_KEY}`, 
-        'Content-Type': 'application/json' 
-      },
-      body: JSON.stringify({ 
-        model: 'gpt-4o-mini', 
-        messages: [
-          { role: 'system', content: prompt }
-        ], 
-        temperature: 0.7,
-        max_tokens: 100 // Even more limited to ensure very focused greeting
-      })
-    });
-    
-    if (!res.ok) {
-      throw new Error(`OpenAI API error: ${await res.text()}`);
-    }
-    
-    const j = await res.json();
-    const greeting = j.choices[0].message.content.trim();
-    
-    console.log(`First greeting: ${greeting}`);
-    
-    // Add greeting to history
-    history.push({ role: 'assistant', content: greeting });
-    await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
-    
-    // Send greeting as voice message
-    await safeSendTTS(chatId, greeting, env);
-  } catch (error) {
-    console.error("Error generating first greeting:", error);
-    
-    // Concrete topic-focused fallback greetings based on level
-    let fallbackGreeting;
-    
-    switch(userLevel) {
-      case 'A1':
-        fallbackGreeting = "Hello! Let's talk about food today. What did you eat for breakfast?";
-        break;
-      case 'A2':
-        fallbackGreeting = "Hi there! I'd love to chat about weekend activities. What did you do last weekend?";
-        break;
-      case 'B1':
-      default:
-        fallbackGreeting = "Hi! Today we can talk about movies and TV shows. Have you watched anything interesting lately?";
-        break;
-      case 'B2':
-      case 'C1':
-      case 'C2':
-        fallbackGreeting = "Hello! I thought we could discuss technology today. How do you think AI will change our daily lives in the next few years?";
-        break;
-    }
-    
-    history.push({ role: 'assistant', content: fallbackGreeting });
-    await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
-    await safeSendTTS(chatId, fallbackGreeting, env);
-  }
-}
 
       return new Response('OK');
     } catch (e) {
@@ -470,7 +370,7 @@ async function handleLessonStart(chatId, env, db, kv) {
   await safeKvPut(kv, `main_session:${chatId}`, sessionId);
   await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
   
-  // Generate first GPT greeting - FIX: Pass user's eng_level to sendFirstGreeting
+  // Generate first GPT greeting - Pass user's eng_level to sendFirstGreeting
   const userLevel = profile.eng_level || "B1"; // Default to B1 if level is missing
   await sendFirstGreeting(chatId, history, env, kv, userLevel);
   return new Response('OK');
@@ -520,7 +420,7 @@ async function safeKvDelete(kv, key) {
   }
 }
 
-// Generate first greeting using GPT - FIX: Adjusted to consider user's language level
+// Generate first greeting using GPT - Adjusted to consider user's language level
 async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   try {
     // Format prompt based on user's language level
@@ -610,7 +510,7 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   }
 }
 
-// Chat with GPT based on conversation history - FIX: Adjusted to fetch user level and adapt to it
+// Chat with GPT based on conversation history - Adjusted to fetch user level and adapt to it
 async function chatGPT(history, env) {
   try {
     // The ideal approach would be to get the user's level from the database here,
@@ -712,7 +612,7 @@ async function chatGPT(history, env) {
   }
 }
 
-// Analyze user language for grammar and vocabulary feedback - FIX: Adapted analysis to user level
+// Analyze user language for grammar and vocabulary feedback - Adapted analysis to user level
 async function analyzeLanguage(utterances, env) {
   if (!utterances.length) return "Not enough conversation data to analyze.";
   
