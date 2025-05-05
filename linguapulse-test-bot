@@ -158,8 +158,9 @@ async function generateTest(env) {
         temperature: 0.7,
         max_tokens: 800,
         messages: [
-          { role: 'system', content: env.SYSTEM_PROMPT || "Create 10 English language assessment questions with multiple choice options." },
-          { role: 'user', content: env.USER_PROMPT || "Generate 10 English language assessment multiple choice questions with 4 options each. Format as JSON array." }
+          { role: 'system', content: env.SYSTEM_PROMPT || 
+          "You are an expert English language assessment specialist. Create questions to evaluate a person's English language proficiency according to CEFR levels (A1-C2). Each question should test grammar, vocabulary, or language usage." },
+          { role: 'user', content: env.USER_PROMPT || "Generate 10 multiple-choice questions to assess English language proficiency. Each question must have 4 options (A, B, C, D) with only one correct answer. Questions should test grammar rules, vocabulary usage, or proper English expressions. Do NOT create general knowledge questions about history, geography, literature, etc. ONLY create English language assessment questions. Format the output as a JSON array with each question having 'question', 'options', and 'answer' fields." }
         ],
         response_format: { type: "json_object" } // Request JSON format directly
       })
