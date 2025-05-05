@@ -21,12 +21,19 @@ export default {
         '/start - Begin the language placement test or see your profile\n' +
         '/profile - View your language level and progress\n' +
         '/lesson - Access your lessons and subscription status\n' +
+        '/talk - Start today\'s lesson (for subscribers)\n' +
         '/help - Show this help message\n\n' +
         'After completing the test, you can:\n' +
         '• Start a free audio lesson by clicking the "Free audio lesson" button\n' +
         '• Send voice messages during the lesson to practice your speaking\n' +
         '• The lesson ends automatically when completed', env);
       return new Response('OK');
+    }
+
+    // Handle /talk command - route to main-lesson
+    if (update.message?.text === '/talk') {
+      // Forward directly to main-lesson worker
+      return forward(env.MAIN_LESSON, update);
     }
 
     // Handle /profile command - show user-friendly profile data
@@ -107,18 +114,34 @@ export default {
     // 2. handle lesson buttons
     if (update.callback_query?.data === 'lesson:free' || 
         update.callback_query?.data === 'lesson:start') {
-      // send the "Starting…" text back immediately
-      await sendMessageViaTelegram(chatId,
-        'Starting audio lesson…', env);
+      // Acknowledge the callback query
+      await callTelegram('answerCallbackQuery', {
+        callback_query_id: update.callback_query.id
+      }, env);
+      
+      // If this is the free lesson, handle it as before
+      if (update.callback_query?.data === 'lesson:free') {
+        // send the "Starting…" text back immediately
+        await sendMessageViaTelegram(chatId,
+          'Starting audio lesson…', env);
 
-      // mark lesson in progress
-      await env.USER_PROFILE.put(flagKey, 'in_progress');
+        // mark lesson in progress
+        await env.USER_PROFILE.put(flagKey, 'in_progress');
 
-      // forward the start payload to lesson0-bot
-      return forward(env.LESSON0, {
-        user_id: chatId,
-        action : update.callback_query?.data === 'lesson:free' ? 'start_free' : 'start_lesson'
-      });
+        // forward the start payload to lesson0-bot
+        return forward(env.LESSON0, {
+          user_id: chatId,
+          action : 'start_free'
+        });
+      } 
+      // If this is the main lesson (from subscription)
+      else if (update.callback_query?.data === 'lesson:start') {
+        // Forward to the main-lesson worker with appropriate action
+        return forward(env.MAIN_LESSON, {
+          user_id: chatId,
+          action : 'start_lesson'
+        });
+      }
     }
     
     // 2.1 handle subscription button
