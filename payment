@@ -52,14 +52,20 @@ export default {
     expirationDate.setHours(23, 59, 59, 999);
     const subscription_expired_at = expirationDate.toISOString();
     
-    // Set next lesson access time to 2 AM today
-    const nextLessonDate = new Date(now);
-    nextLessonDate.setHours(2, 0, 0, 0);
-    
-    // If it's already past 2 AM, set to tomorrow
-    if (now.getHours() >= 2) {
-      nextLessonDate.setDate(nextLessonDate.getDate() + 1);
-    }
+    // For new subscriptions, make the lesson immediately available
+const nextLessonDate = new Date(now);
+// Check if this is the user's first subscription
+if (!profile.subscription_expired_at || new Date(profile.subscription_expired_at) < now) {
+  // First time subscriber or subscription was expired - make lesson available immediately
+  nextLessonDate.setTime(now.getTime() - 60000); // Set to 1 minute ago to ensure it's available
+} else {
+  // Renewal - follow the normal schedule
+  nextLessonDate.setHours(2, 0, 0, 0);
+  // If it's already past 2 AM, set to tomorrow
+  if (now.getHours() >= 2) {
+    nextLessonDate.setDate(nextLessonDate.getDate() + 1);
+  }
+}
     
     const next_lesson_access_at = nextLessonDate.toISOString();
     
