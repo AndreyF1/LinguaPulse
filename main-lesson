@@ -147,7 +147,10 @@ export default {
 
             // Grammar analysis of all user utterances
             const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
-            const analyses = await analyzeLanguage(userUtterances, env);
+            
+            // Get user's actual level from KV storage
+            const userLevel = await safeKvGet(kv, `main_user_level:${chatId}`) || "B1";
+            const analyses = await analyzeLanguage(userUtterances, env, userLevel);
             
             // First, send an introduction message
             if (analyses.utteranceAnalyses && analyses.utteranceAnalyses.length > 0) {
@@ -201,10 +204,11 @@ export default {
               env
             );
 
-            // Update user profile in database
-            // 1. Increment lessons_total
-            // 2. Update lessons_streak
+            // Update user profile in database - FIXED: field names adjusted to match schema
+            // 1. Increment number_of_lessons 
+            // 2. Update lessons_in_row
             // 3. Set next_lesson_access_at to tomorrow at 2 AM
+            // 4. Set daily_lesson_pass_at to now
             const now = new Date();
             const tomorrow = new Date(now);
             tomorrow.setDate(tomorrow.getDate() + 1);
@@ -213,7 +217,7 @@ export default {
             
             // Get current profile values first
             const { results } = await db.prepare(
-              `SELECT lessons_total, lessons_streak, last_lesson_at FROM user_profiles WHERE telegram_id = ?`
+              `SELECT number_of_lessons, lessons_in_row, daily_lesson_pass_at FROM user_profiles WHERE telegram_id = ?`
             )
             .bind(parseInt(chatId, 10))
             .all();
@@ -222,11 +226,11 @@ export default {
             let lessonsStreak = 1;
             
             if (results.length > 0) {
-              lessonsTotal = (results[0].lessons_total || 0) + 1;
+              lessonsTotal = (results[0].number_of_lessons || 0) + 1;
               
               // Calculate streak logic
-              const lastLessonDate = results[0].last_lesson_at ? new Date(results[0].last_lesson_at) : null;
-              const currentStreak = results[0].lessons_streak || 0;
+              const lastLessonDate = results[0].daily_lesson_pass_at ? new Date(results[0].daily_lesson_pass_at) : null;
+              const currentStreak = results[0].lessons_in_row || 0;
               
               if (lastLessonDate) {
                 // Check if the last lesson was yesterday or earlier today
@@ -248,14 +252,14 @@ export default {
               }
             }
             
-            // Update the database with new values
+            // Update the database with new values - FIXED: field names
             const lessonCompletedAt = now.toISOString();
             await db.prepare(
               `UPDATE user_profiles 
                SET next_lesson_access_at = ?,
-                   lessons_total = ?,
-                   lessons_streak = ?,
-                   last_lesson_at = ?
+                   number_of_lessons = ?,
+                   lessons_in_row = ?,
+                   daily_lesson_pass_at = ?
                WHERE telegram_id = ?`
             )
             .bind(
@@ -270,8 +274,11 @@ export default {
             return new Response('OK');
           }
 
-          // Generate GPT reply based on conversation history
-          const reply = await chatGPT(hist, env);
+          // Get user's level for proper response generation
+          const userLevel = await safeKvGet(kv, `main_user_level:${chatId}`) || "B1";
+          
+          // Generate GPT reply based on conversation history and actual user level
+          const reply = await chatGPT(hist, env, userLevel);
           const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
           
           // Add bot response to history
@@ -386,8 +393,11 @@ async function handleLessonStart(chatId, env, db, kv) {
   await safeKvPut(kv, `main_session:${chatId}`, sessionId);
   await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
   
-  // Generate first GPT greeting - FIX: Pass user's eng_level to sendFirstGreeting
-  const userLevel = profile.eng_level || "B1"; // Default to B1 if level is missing
+  // FIXED: Store user's level in KV for reference throughout the session
+  const userLevel = profile.eng_level || "B1";
+  await safeKvPut(kv, `main_user_level:${chatId}`, userLevel);
+  
+  // Generate first GPT greeting with user's actual level
   await sendFirstGreeting(chatId, history, env, kv, userLevel);
   return new Response('OK');
 }
@@ -436,10 +446,10 @@ async function safeKvDelete(kv, key) {
   }
 }
 
-// Generate first greeting using GPT - Adjusted to consider user's language level
+// Generate first greeting using GPT - FIXED: Uses actual user level
 async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   try {
-    // Format prompt based on user's language level
+    // Format prompt based on user's actual language level
     let levelPrompt;
     
     switch(userLevel) {
@@ -526,43 +536,13 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   }
 }
 
-// Chat with GPT based on conversation history - Adjusted to fetch user level and adapt to it
-async function chatGPT(history, env) {
+// Chat with GPT based on conversation history - FIXED: Use actual user level
+async function chatGPT(history, env, userLevel = "B1") {
   try {
-    // The ideal approach would be to get the user's level from the database here,
-    // but for simplicity, we'll infer it from the conversation complexity or
-    // rely on the system prompt to handle different levels appropriately
-    
-    // Basic analysis to estimate user level based on conversation
-    let estimatedLevel = "B1"; // Default to intermediate
-    const userMessages = history.filter(h => h.role === 'user');
-    
-    if (userMessages.length > 1) {
-      // Simple analysis using message length and vocabulary
-      const avgLength = userMessages.reduce((sum, msg) => sum + msg.content.length, 0) / userMessages.length;
-      const uniqueWords = new Set(
-        userMessages.flatMap(msg => 
-          msg.content.toLowerCase().split(/\s+/).filter(word => word.length > 2)
-        )
-      ).size;
-      
-      if (avgLength < 15 && uniqueWords < 20) {
-        estimatedLevel = "A1";
-      } else if (avgLength < 30 && uniqueWords < 50) {
-        estimatedLevel = "A2";
-      } else if (avgLength < 60 && uniqueWords < 100) {
-        estimatedLevel = "B1";
-      } else if (avgLength < 100 && uniqueWords < 150) {
-        estimatedLevel = "B2";
-      } else {
-        estimatedLevel = "C1";
-      }
-    }
-    
-    // Construct system prompt based on estimated level
+    // Construct system prompt based on user's actual level
     let levelPrompt;
     
-    switch(estimatedLevel) {
+    switch(userLevel) {
       case 'A1':
         levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short sentences. Speak slowly and clearly with basic grammar. Focus on everyday topics.";
         break;
@@ -628,8 +608,8 @@ async function chatGPT(history, env) {
   }
 }
 
-// Analyze user language for grammar and vocabulary feedback - Enhanced with skill assessment
-async function analyzeLanguage(utterances, env) {
+// Analyze user language for grammar and vocabulary feedback - FIXED: Use actual user level and avoid redundant encouragement
+async function analyzeLanguage(utterances, env, userLevel = "B1") {
   if (!utterances.length) return {
     utteranceAnalyses: [],
     skillAssessment: null,
@@ -642,29 +622,10 @@ async function analyzeLanguage(utterances, env) {
   for (const utterance of utterances) {
     if (!utterance.trim()) continue; // Skip empty utterances
     
-    // First, do a simple complexity analysis to estimate the user's level
-    const wordCount = utterance.split(/\s+/).length;
-    const uniqueWords = new Set(utterance.toLowerCase().split(/\s+/).filter(word => word.length > 2)).size;
-    const avgWordLength = utterance.split(/\s+/).reduce((sum, word) => sum + word.length, 0) / wordCount;
-    
-    let estimatedLevel = "B1"; // Default
-    
-    if (wordCount < 5 && uniqueWords < 5) {
-      estimatedLevel = "A1";
-    } else if (wordCount < 10 && uniqueWords < 10) {
-      estimatedLevel = "A2";
-    } else if (wordCount < 20 && uniqueWords < 15) {
-      estimatedLevel = "B1";
-    } else if (wordCount < 30 && uniqueWords < 25) {
-      estimatedLevel = "B2";
-    } else {
-      estimatedLevel = "C1";
-    }
-    
-    // Adjust prompt based on estimated level
+    // Adjust prompt based on actual user level
     let levelPrompt;
     
-    switch(estimatedLevel) {
+    switch(userLevel) {
       case 'A1':
         levelPrompt = "The student is a beginner (A1). Focus on very basic grammar (subject-verb agreement, simple present/past tense). Provide simple alternatives with common, everyday vocabulary. Be very encouraging.";
         break;
@@ -683,6 +644,7 @@ async function analyzeLanguage(utterances, env) {
         break;
     }
     
+    // FIXED: Updated prompt to avoid redundant encouragement
     const prompt = `
 As an English language teacher for a paying subscriber, provide a concise yet detailed language analysis for this specific student utterance:
 "${utterance}"
@@ -695,10 +657,12 @@ Provide a brief analysis with:
 3. How a native speaker might express the same idea more naturally
 
 FORMAT: 
-- Keep feedback constructive and focused
+- Keep feedback constructive and focused on just this utterance
 - Use clear bullet points 
 - Keep total response under 150 words
 - Start with a specific positive comment
+- DO NOT include generic encouragement phrases like "Keep up the good work" at the end
+- DO NOT mention the student's level in your response
 `;
     
     try {
@@ -737,22 +701,9 @@ FORMAT:
   
   // After analyzing individual utterances, perform overall skill assessment
   try {
-    // Calculate metrics for overall assessment
-    const totalWords = utterances.join(' ').split(/\s+/).length;
-    const avgUtteranceLength = totalWords / utterances.length;
-    
-    // Collect unique words for vocabulary assessment
-    const uniqueWords = new Set(
-      utterances.flatMap(u => 
-        u.toLowerCase()
-        .replace(/[^\w\s]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 2)
-    )
-  );
-  
-  const prompt = `
-As a language assessment expert, evaluate this student's English speaking skills based on these utterances:
+    // FIXED: Include actual user level in assessment prompt
+    const prompt = `
+As a language assessment expert, evaluate this ${userLevel}-level student's English speaking skills based on these utterances:
 
 "${utterances.join('"\n"')}"
 
@@ -761,7 +712,7 @@ Provide objective numerical scores (1-100) for:
 2. Vocabulary: range, appropriateness, precision of word choice
 3. Grammar: accuracy, complexity of structures used
 
-Then provide 1-2 sentences explaining each score. Format your response as JSON:
+Contextualize these scores relative to their ${userLevel} level - do not evaluate them against native speakers. Then provide 1-2 sentences explaining each score. Format your response as JSON:
 {
 "speaking": { "score": 75, "feedback": "Good fluency with some hesitations..." },
 "vocabulary": { "score": 80, "feedback": "Uses a variety of words appropriate to the topic..." },
@@ -769,241 +720,240 @@ Then provide 1-2 sentences explaining each score. Format your response as JSON:
 }
 `;
   
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        Authorization: `Bearer ${env.OPENAI_KEY}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({ 
+        model: 'gpt-4o-mini', 
+        messages: [
+          { role: 'system', content: prompt }
+        ], 
+        temperature: 0.3,
+        response_format: { type: "json_object" }
+      })
+    });
+  
+    if (!res.ok) {
+      throw new Error(`OpenAI API error: ${await res.text()}`);
+    }
+  
+    const j = await res.json();
+    const assessment = JSON.parse(j.choices[0].message.content.trim());
+  
+    return {
+      utteranceAnalyses: analyses,
+      skillAssessment: assessment
+    };
+  } catch (error) {
+    console.error(`Skill assessment error:`, error);
+    // Return just the utterance analyses if skill assessment fails
+    return {
+      utteranceAnalyses: analyses,
+      skillAssessment: null
+    };
+  }
+}
+
+// Send TTS audio message safely
+async function safeSendTTS(chatId, text, env) {
+  const t = text.trim();
+  if (!t) return;
+
+  try {
+    console.log(`Generating TTS for: ${t}`);
+    const rawBuf = await openaiTTS(t, env);
+    const voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
+    const dur = calculateDuration(voipBuf);
+    await telegramSendVoice(chatId, voipBuf, dur, env);
+    
+    // Add a small delay after sending audio to prevent flooding
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    return true;
+  } catch (e) {
+    console.error("TTS failed:", e);
+    // Fallback to text if TTS fails
+    await sendText(chatId, "📝 " + t, env);
+    return false;
+  }
+}
+
+// Convert audio to Telegram-compatible format with Transloadit
+async function encodeVoipWithTransloadit(buf, env) {
+  const params = { 
+    auth: { key: env.TRANSLOADIT_KEY }, 
+    template_id: env.TRANSLOADIT_TPL, 
+    fields: { filename: 'src.ogg' } 
+  };
+  
+  const fd = new FormData();
+  fd.append('params', JSON.stringify(params));
+  fd.append('file', new File([buf], 'src.ogg', { type: 'audio/ogg' }));
+  
+  const init = await (
+    await fetch('https://api2.transloadit.com/assemblies', { 
+      method: 'POST', 
+      body: fd 
+    })
+  ).json();
+  
+  const done = await waitAssembly(init.assembly_ssl_url, 90000);
+  const url = done.results['encoded-audio'][0].ssl_url;
+  return (await fetch(url)).arrayBuffer();
+}
+
+// Wait for Transloadit assembly to complete
+async function waitAssembly(url, ms) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    const j = await (await fetch(url)).json();
+    if (j.ok === 'ASSEMBLY_COMPLETED') return j;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  throw new Error('Transloadit timeout');
+}
+
+// Generate TTS with OpenAI
+async function openaiTTS(text, env) {
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: { 
       Authorization: `Bearer ${env.OPENAI_KEY}`, 
       'Content-Type': 'application/json' 
     },
     body: JSON.stringify({ 
-      model: 'gpt-4o-mini', 
-      messages: [
-        { role: 'system', content: prompt }
-      ], 
-      temperature: 0.3,
-      response_format: { type: "json_object" }
+      model: 'tts-1', 
+      voice: 'echo', 
+      format: 'ogg_opus', 
+      input: text 
     })
   });
   
   if (!res.ok) {
-    throw new Error(`OpenAI API error: ${await res.text()}`);
+    const errorText = await res.text();
+    throw new Error(`OpenAI TTS error: ${errorText}`);
   }
   
-  const j = await res.json();
-  const assessment = JSON.parse(j.choices[0].message.content.trim());
-  
-  return {
-    utteranceAnalyses: analyses,
-    skillAssessment: assessment
-  };
-} catch (error) {
-  console.error(`Skill assessment error:`, error);
-  // Return just the utterance analyses if skill assessment fails
-  return {
-    utteranceAnalyses: analyses,
-    skillAssessment: null
-  };
-}
-}
-
-// Send TTS audio message safely
-async function safeSendTTS(chatId, text, env) {
-const t = text.trim();
-if (!t) return;
-
-try {
-  console.log(`Generating TTS for: ${t}`);
-  const rawBuf = await openaiTTS(t, env);
-  const voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
-  const dur = calculateDuration(voipBuf);
-  await telegramSendVoice(chatId, voipBuf, dur, env);
-  
-  // Add a small delay after sending audio to prevent flooding
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  return true;
-} catch (e) {
-  console.error("TTS failed:", e);
-  // Fallback to text if TTS fails
-  await sendText(chatId, "📝 " + t, env);
-  return false;
-}
-}
-
-// Convert audio to Telegram-compatible format with Transloadit
-async function encodeVoipWithTransloadit(buf, env) {
-const params = { 
-  auth: { key: env.TRANSLOADIT_KEY }, 
-  template_id: env.TRANSLOADIT_TPL, 
-  fields: { filename: 'src.ogg' } 
-};
-
-const fd = new FormData();
-fd.append('params', JSON.stringify(params));
-fd.append('file', new File([buf], 'src.ogg', { type: 'audio/ogg' }));
-
-const init = await (
-  await fetch('https://api2.transloadit.com/assemblies', { 
-    method: 'POST', 
-    body: fd 
-  })
-).json();
-
-const done = await waitAssembly(init.assembly_ssl_url, 90000);
-const url = done.results['encoded-audio'][0].ssl_url;
-return (await fetch(url)).arrayBuffer();
-}
-
-// Wait for Transloadit assembly to complete
-async function waitAssembly(url, ms) {
-const start = Date.now();
-while (Date.now() - start < ms) {
-  const j = await (await fetch(url)).json();
-  if (j.ok === 'ASSEMBLY_COMPLETED') return j;
-  await new Promise(r => setTimeout(r, 1000));
-}
-throw new Error('Transloadit timeout');
-}
-
-// Generate TTS with OpenAI
-async function openaiTTS(text, env) {
-const res = await fetch('https://api.openai.com/v1/audio/speech', {
-  method: 'POST',
-  headers: { 
-    Authorization: `Bearer ${env.OPENAI_KEY}`, 
-    'Content-Type': 'application/json' 
-  },
-  body: JSON.stringify({ 
-    model: 'tts-1', 
-    voice: 'echo', 
-    format: 'ogg_opus', 
-    input: text 
-  })
-});
-
-if (!res.ok) {
-  const errorText = await res.text();
-  throw new Error(`OpenAI TTS error: ${errorText}`);
-}
-
-return res.arrayBuffer();
+  return res.arrayBuffer();
 }
 
 // Send voice message via Telegram
 async function telegramSendVoice(chatId, buf, dur, env) {
-const fd = new FormData();
-fd.append('chat_id', String(chatId));
-fd.append('duration', dur);
-fd.append('voice', new File([buf], 'voice.ogg', { type: 'audio/ogg; codecs=opus' }));
-
-const res = await fetch(
-  `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
-  { method: 'POST', body: fd }
-);
-
-if (!res.ok) {
-  const errorText = await res.text();
-  throw new Error(`Telegram sendVoice error: ${errorText}`);
-}
+  const fd = new FormData();
+  fd.append('chat_id', String(chatId));
+  fd.append('duration', dur);
+  fd.append('voice', new File([buf], 'voice.ogg', { type: 'audio/ogg; codecs=opus' }));
+  
+  const res = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
+    { method: 'POST', body: fd }
+  );
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Telegram sendVoice error: ${errorText}`);
+  }
 }
 
 // Send text message via Telegram
 async function sendText(chatId, text, env, keyboard) {
-const body = { 
-  chat_id: String(chatId), 
-  text,
-  parse_mode: 'Markdown'
-};
-
-if (keyboard) {
-  body.reply_markup = { inline_keyboard: keyboard };
-}
-
-const res = await fetch(
-  `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
-  { 
-    method: 'POST', 
-    headers: { 'Content-Type': 'application/json' }, 
-    body: JSON.stringify(body) 
+  const body = { 
+    chat_id: String(chatId), 
+    text,
+    parse_mode: 'Markdown'
+  };
+  
+  if (keyboard) {
+    body.reply_markup = { inline_keyboard: keyboard };
   }
-);
-
-if (!res.ok) {
-  const errorText = await res.text();
-  throw new Error(`Telegram sendMessage error: ${errorText}`);
-}
+  
+  const res = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+    { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(body) 
+    }
+  );
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Telegram sendMessage error: ${errorText}`);
+  }
 }
 
 // Transcribe voice message using Whisper
 async function transcribeVoice(fileId, env) {
-// Get file path from Telegram
-const fileRes = await fetch(
-  `https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${fileId}`
-);
-
-if (!fileRes.ok) {
-  throw new Error(`Failed to get file info: ${await fileRes.text()}`);
-}
-
-const info = await fileRes.json();
-const filePath = info.result.file_path;
-
-// Download voice file
-const fileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${filePath}`;
-const fileData = await fetch(fileUrl).then(r => r.arrayBuffer());
-
-// Prepare form data for OpenAI API
-const fd = new FormData();
-fd.append('model', 'whisper-1');
-fd.append('language', 'en');
-fd.append('file', new File([fileData], 'voice.ogg', { type: 'audio/ogg' }));
-
-// Call OpenAI Whisper API
-const whisperRes = await fetch(
-  'https://api.openai.com/v1/audio/transcriptions', 
-  { 
-    method: 'POST', 
-    headers: { Authorization: `Bearer ${env.OPENAI_KEY}` }, 
-    body: fd 
+  // Get file path from Telegram
+  const fileRes = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${fileId}`
+  );
+  
+  if (!fileRes.ok) {
+    throw new Error(`Failed to get file info: ${await fileRes.text()}`);
   }
-);
-
-if (!whisperRes.ok) {
-  throw new Error(`Whisper API error: ${await whisperRes.text()}`);
-}
-
-const transcription = await whisperRes.json();
-return transcription.text.trim();
+  
+  const info = await fileRes.json();
+  const filePath = info.result.file_path;
+  
+  // Download voice file
+  const fileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${filePath}`;
+  const fileData = await fetch(fileUrl).then(r => r.arrayBuffer());
+  
+  // Prepare form data for OpenAI API
+  const fd = new FormData();
+  fd.append('model', 'whisper-1');
+  fd.append('language', 'en');
+  fd.append('file', new File([fileData], 'voice.ogg', { type: 'audio/ogg' }));
+  
+  // Call OpenAI Whisper API
+  const whisperRes = await fetch(
+    'https://api.openai.com/v1/audio/transcriptions', 
+    { 
+      method: 'POST', 
+      headers: { Authorization: `Bearer ${env.OPENAI_KEY}` }, 
+      body: fd 
+    }
+  );
+  
+  if (!whisperRes.ok) {
+    throw new Error(`Whisper API error: ${await whisperRes.text()}`);
+  }
+  
+  const transcription = await whisperRes.json();
+  return transcription.text.trim();
 }
 
 // Calculate approximate duration from buffer size
 function calculateDuration(buf) {
-// More accurate duration calculation based on Opus encoding
-// For Opus format at speech quality, estimate roughly 20KB per second
-const estimatedSeconds = Math.max(1, Math.round(buf.byteLength / 20000));
-console.log(`Audio size: ${buf.byteLength} bytes, estimated duration: ${estimatedSeconds} seconds`);
-return estimatedSeconds;
+  // More accurate duration calculation based on Opus encoding
+  // For Opus format at speech quality, estimate roughly 20KB per second
+  const estimatedSeconds = Math.max(1, Math.round(buf.byteLength / 20000));
+  console.log(`Audio size: ${buf.byteLength} bytes, estimated duration: ${estimatedSeconds} seconds`);
+  return estimatedSeconds;
 }
 
 // Format time until date in human-readable form
 function formatTimeUntil(date) {
-const now = new Date();
-const diffMs = date.getTime() - now.getTime();
+  const now    = Date.now();
+  const diffMs = date.getTime() - now;
+  if (diffMs <= 0) return 'now';
 
-if (diffMs <= 0) return 'now';
+  const diffSec  = Math.floor(diffMs / 1000);
+  const diffMin  = Math.floor(diffSec / 60);
+  const diffHr   = Math.floor(diffMin / 60);
+  const remMin   = diffMin % 60;
 
-const diffSec = Math.floor(diffMs / 1000);
-const diffMin = Math.floor(diffSec / 60);
-const diffHr = Math.floor(diffMin / 60);
-const diffDays = Math.floor(diffHr / 24);
-
-if (diffDays > 0) {
-  return `${diffDays} day${diffDays > 1 ? 's' : ''}`;
-} else if (diffHr > 0) {
-  return `${diffHr} hour${diffHr > 1 ? 's' : ''}`;
-} else if (diffMin > 0) {
-  return `${diffMin} minute${diffMin > 1 ? 's' : ''}`;
-} else {
-  return `${diffSec} second${diffSec > 1 ? 's' : ''}`;
-}
+  if (diffHr > 0) {
+    if (remMin > 0) {
+      return `${diffHr}h ${remMin}m`;
+    }
+    return `${diffHr}h`;
+  }
+  // less than 1 hour
+  if (diffMin > 0) return `${diffMin}m`;
+  return `${diffSec}s`;
 }
