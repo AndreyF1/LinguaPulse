@@ -68,7 +68,7 @@ async function handleUpdate(update, env, ctx) {
   }
 
   // /start → generate questions, record start_test_at, ask first
-  if (update.message?.text === '/start') {
+  if (update.message?.text === '/start' || update.retake_test) {
     questions = await generateTest(env);
     answers = [];
     index = 0;
@@ -142,44 +142,140 @@ async function handleUpdate(update, env, ctx) {
 }
 
 // GPT-based question generation
+// In linguapulse-test-bot/worker.js, update the generateTest function
 async function generateTest(env) {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.OPENAI_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'gpt-3.5-turbo',
-      temperature: 0.7,
-      max_tokens: 800,
-      messages: [
-        { role: 'system', content: env.SYSTEM_PROMPT },
-        { role: 'user',   content: env.USER_PROMPT }
-      ]
-    })
-  });
-
-  const data = await res.json();
-  let txt = data.choices?.[0]?.message?.content?.trim() || '';
-  txt = txt.replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
-
-  let parsed;
   try {
-    parsed = JSON.parse(txt);
-  } catch (e) {
-    console.error('generateTest parse error:', txt, e);
-    throw new Error('Failed to parse questions JSON');
-  }
+    console.log("Sending request to OpenAI API for test generation");
+    
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.OPENAI_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        temperature: 0.7,
+        max_tokens: 800,
+        messages: [
+          { role: 'system', content: env.SYSTEM_PROMPT || "Create 10 English language assessment questions with multiple choice options." },
+          { role: 'user', content: env.USER_PROMPT || "Generate 10 English language assessment multiple choice questions with 4 options each. Format as JSON array." }
+        ],
+        response_format: { type: "json_object" } // Request JSON format directly
+      })
+    });
 
-  const arr = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray(parsed.questions) ? parsed.questions : [];
-  return arr.slice(0, 10).map(q => ({
-    question: q.question,
-    options: Array.isArray(q.options) ? q.options.slice(0, 4) : [],
-    answer: q.answer
-  }));
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("OpenAI API error:", errorText);
+      throw new Error(`OpenAI API error: ${errorText}`);
+    }
+
+    const data = await res.json();
+    console.log("OpenAI API response received");
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+      console.error("Invalid API response structure:", JSON.stringify(data).substring(0, 200));
+      throw new Error("Invalid API response structure");
+    }
+    
+    let txt = data.choices[0].message.content.trim();
+    console.log("Raw content length:", txt.length, "First 100 chars:", txt.substring(0, 100));
+    
+    // More robust JSON extraction
+    if (txt.includes("```")) {
+      const match = txt.match(/```(?:json)?([\s\S]+?)```/);
+      if (match && match[1]) {
+        txt = match[1].trim();
+      } else {
+        txt = txt.replace(/```json/g, '').replace(/```/g, '').trim();
+      }
+    }
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(txt);
+      console.log("Successfully parsed JSON");
+    } catch (e) {
+      console.error('generateTest parse error:', e, "Content:", txt);
+      return getDefaultQuestions(); // Use fallback questions instead of throwing
+    }
+
+    const arr = Array.isArray(parsed) ? parsed : 
+                Array.isArray(parsed.questions) ? parsed.questions : [];
+                
+    if (arr.length === 0) {
+      console.error("Parsed to empty array, using default questions");
+      return getDefaultQuestions();
+    }
+    
+    console.log(`Returning ${arr.length} questions`);
+    return arr.slice(0, 10).map(q => ({
+      question: q.question,
+      options: Array.isArray(q.options) ? q.options.slice(0, 4) : [],
+      answer: q.answer
+    }));
+  } catch (error) {
+    console.error("Error in generateTest:", error);
+    return getDefaultQuestions();
+  }
+}
+
+// Helper function to provide fallback questions
+function getDefaultQuestions() {
+  console.log("Using default questions");
+  return [
+    {
+      question: "What is the correct way to form a question in the present simple tense?",
+      options: ["You are going?", "Do you going?", "Are you go?", "Do you go?"],
+      answer: "Do you go?"
+    },
+    {
+      question: "Choose the correct sentence:",
+      options: ["I have been to Paris last year.", "I went to Paris last year.", "I have went to Paris last year.", "I go to Paris last year."],
+      answer: "I went to Paris last year."
+    },
+    {
+      question: "What is the correct form of the verb in this sentence: 'She _____ TV every evening.'",
+      options: ["watch", "watchs", "watches", "watching"],
+      answer: "watches"
+    },
+    {
+      question: "Which sentence is in the future tense?",
+      options: ["I go to school.", "I went to school.", "I am going to school.", "I will go to school."],
+      answer: "I will go to school."
+    },
+    {
+      question: "Which word is an adverb?",
+      options: ["quick", "quicken", "quickly", "quickness"],
+      answer: "quickly"
+    },
+    {
+      question: "Choose the correct preposition: 'I am afraid _____ spiders.'",
+      options: ["from", "of", "about", "for"],
+      answer: "of"
+    },
+    {
+      question: "What is the correct comparative form of 'good'?",
+      options: ["gooder", "more good", "better", "goodder"],
+      answer: "better"
+    },
+    {
+      question: "Which sentence contains a modal verb?",
+      options: ["I eat breakfast every day.", "I am eating breakfast now.", "I should eat breakfast.", "I have eaten breakfast."],
+      answer: "I should eat breakfast."
+    },
+    {
+      question: "Choose the correct article: '_____ book on the table is mine.'",
+      options: ["A", "An", "The", "No article needed"],
+      answer: "The"
+    },
+    {
+      question: "Which verb is irregular?",
+      options: ["talk", "play", "work", "swim"],
+      answer: "swim"
+    }
+  ];
 }
 
 // simple evaluation
