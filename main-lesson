@@ -25,226 +25,353 @@ export default {
       }
 
       // Handle user voice message during lesson
-      if (raw.message?.voice) {
-        // Get message ID for deduplication
-        const messageId = raw.message.message_id;
-        const processedKey = `main_processed:${chatId}:${messageId}`;
-        
-        // Check if this exact message was already processed
-        const alreadyProcessed = await safeKvGet(kv, processedKey);
-        if (alreadyProcessed) {
-          console.log(`Message ${messageId} already processed, ignoring duplicate`);
-          return new Response('OK');
-        }
-        
-        // Mark this message as being processed
-        await safeKvPut(kv, processedKey, "1", { expirationTtl: 3600 }); // 1 hour TTL
-        
-        // Get conversation history
-        const histKey = `main_hist:${chatId}`;
-        const stored = await safeKvGet(kv, histKey) || '[]';
-        const hist = JSON.parse(stored);
-        
-        // Check current session ID and activity
-        const isSessionActive = await checkSessionActive(chatId, kv);
-        if (!isSessionActive) {
-          console.log("Session inactive or timed out");
-          // Different message based on how many turns we had
-          const botTurns = hist.filter(h => h.role === 'assistant').length;
-          
-          if (botTurns >= 5) {
-            // Enough turns, session completed due to inactivity
-            await sendText(chatId, 
-              "Your lesson has been completed as you had several exchanges already. You can start a new lesson when the next one becomes available.", 
-              env);
-          } else {
-            // Not enough turns, but session timed out
-            await sendText(chatId, 
-              "Your lesson session timed out due to inactivity. You can start a new lesson by pressing the Start Lesson button or using the /talk command.",
-              env,
-              [[{ text: "Start Lesson", callback_data: "lesson:start" }]]);
-          }
-          return new Response('OK');
-        }
-        
-        // Check if user has already spoken and we're waiting for their response
-        const lastMessage = hist.length > 0 ? hist[hist.length - 1] : null;
-        if (lastMessage && lastMessage.role === 'user') {
-          console.log("Last message was from user, waiting for bot response. Possible race condition.");
-          return new Response('OK');
-        }
-        
-        // Set a "processing" flag to prevent concurrent processing of messages
-        const processingKey = `main_processing:${chatId}`;
-        const isProcessing = await safeKvGet(kv, processingKey);
-        
-        if (isProcessing) {
-          console.log("Already processing a message for this user, ignoring duplicate");
-          return new Response('OK');
-        }
-        
-        // Set processing flag with 60-second expiration
-        await safeKvPut(kv, processingKey, "1", { expirationTtl: 60 });
-        
-        try {
-          // Transcribe user voice
-          const userText = await transcribeVoice(raw.message.voice.file_id, env);
-          console.log(`User said: ${userText}`);
-          
-          // Add user message to history
-          hist.push({ role: 'user', content: userText });
-          
-          // Count assistant turns (not counting initial greeting)
-          const botTurns = hist.filter(h => h.role === 'assistant').length;
-          
-          // If we've already had 5-6 bot responses after greeting, end the lesson
-          if (botTurns >= 6) { // 1 greeting + 5 responses = 6 total
-            // Farewell message
-            const bye = "That's all for today's lesson! You did great. Let's continue our practice tomorrow with new exercises. Have a wonderful day!";
-            hist.push({ role: 'assistant', content: bye });
-            await safeKvPut(kv, histKey, JSON.stringify(hist));
-            await safeSendTTS(chatId, bye, env);
+if (raw.message?.voice) {
+  // Get message ID for deduplication
+  const messageId = raw.message.message_id;
+  const processedKey = `main_processed:${chatId}:${messageId}`;
+  
+  // Check if this exact message was already processed
+  const alreadyProcessed = await safeKvGet(kv, processedKey);
+  if (alreadyProcessed) {
+    console.log(`Message ${messageId} already processed, ignoring duplicate`);
+    return new Response('OK');
+  }
+  
+  // Mark this message as being processed
+  await safeKvPut(kv, processedKey, "1", { expirationTtl: 3600 }); // 1 hour TTL
+  
+  // Get conversation history
+  const histKey = `main_hist:${chatId}`;
+  const stored = await safeKvGet(kv, histKey) || '[]';
+  const hist = JSON.parse(stored);
+  
+  // Check current session ID and activity - FIXED to be more robust
+  const sessionKey = `main_session:${chatId}`;
+  const currentSession = await safeKvGet(kv, sessionKey);
+  
+  // CRITICAL FIX: Ensure we're checking the right worker's session
+  if (!currentSession) {
+    console.log("No active main-lesson session found");
+    
+    // Check if there might be a lesson0 session instead
+    const lesson0SessionKey = `session:${chatId}`;
+    const lesson0Session = await safeKvGet(kv, lesson0SessionKey);
+    
+    if (lesson0Session) {
+      // This is a lesson0 session, we shouldn't process it here
+      // Just acknowledge receiving it and let telegram-webhook route it correctly
+      console.log("Found lesson0 session instead, not processing in main-lesson");
+      return new Response('OK');
+    }
+    
+    // Otherwise, we have no active session at all
+    await sendText(chatId, 
+      "You don't have an active lesson. Please start a new lesson by using the /talk command.", 
+      env,
+      [[{ text: "Start Lesson", callback_data: "lesson:start" }]]);
+    return new Response('OK');
+  }
+  
+  // Now check for session timeout only if we have a valid session
+  const isSessionActive = await checkSessionActive(chatId, kv);
+  if (!isSessionActive) {
+    console.log("Session inactive or timed out");
+    // Different message based on how many turns we had
+    const botTurns = hist.filter(h => h.role === 'assistant').length;
+    
+    if (botTurns >= 5) {
+      // Enough turns, session completed due to inactivity
+      await sendText(chatId, 
+        "Your lesson has been completed as you had several exchanges already. You can start a new lesson when the next one becomes available.", 
+        env);
+    } else {
+      // Not enough turns, but session timed out
+      await sendText(chatId, 
+        "Your lesson session timed out due to inactivity. You can start a new lesson by pressing the Start Lesson button or using the /talk command.",
+        env,
+        [[{ text: "Start Lesson", callback_data: "lesson:start" }]]);
+    }
+    return new Response('OK');
+  }
+  
+  // Check if user has already spoken and we're waiting for their response
+  const lastMessage = hist.length > 0 ? hist[hist.length - 1] : null;
+  if (lastMessage && lastMessage.role === 'user') {
+    console.log("Last message was from user, waiting for bot response. Possible race condition.");
+    return new Response('OK');
+  }
+  
+  // Set a "processing" flag to prevent concurrent processing of messages
+  const processingKey = `main_processing:${chatId}`;
+  const isProcessing = await safeKvGet(kv, processingKey);
+  
+  if (isProcessing) {
+    console.log("Already processing a message for this user, ignoring duplicate");
+    return new Response('OK');
+  }
+  
+  // Set processing flag with 60-second expiration
+  await safeKvPut(kv, processingKey, "1", { expirationTtl: 60 });
+  
+  try {
+    // Transcribe user voice
+    const userText = await transcribeVoice(raw.message.voice.file_id, env);
+    console.log(`User said: ${userText}`);
+    
+    // Add user message to history
+    hist.push({ role: 'user', content: userText });
+    
+    // Count assistant turns (not counting initial greeting)
+    const botTurns = hist.filter(h => h.role === 'assistant').length;
+    
+    // If we've already had 5-6 bot responses after greeting, end the lesson
+    if (botTurns >= 6) { // 1 greeting + 5 responses = 6 total
+      // Farewell message
+      const bye = "That's all for today's lesson! You did great. Let's continue our practice tomorrow with new exercises. Have a wonderful day!";
+      hist.push({ role: 'assistant', content: bye });
+      await safeKvPut(kv, histKey, JSON.stringify(hist));
+      await safeSendTTS(chatId, bye, env);
 
-            // Grammar analysis of all user utterances
-            const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
-            const analyses = await analyzeLanguage(userUtterances, env);
-            
-            // First, send an introduction message
-            if (analyses.length > 0) {
-              await sendText(
-                chatId, 
-                "📝 *Here's your language feedback from today's practice:*", 
-                env
-              );
-              
-              // Then send individual analysis for each utterance
-              for (const analysis of analyses) {
-                // Type guard to ensure we're dealing with the correct structure
-                if (typeof analysis === 'object' && analysis !== null && 'utterance' in analysis && 'feedback' in analysis) {
-                  await sendText(
-                    chatId,
-                    `*Your phrase:* "${analysis.utterance}"\n\n${analysis.feedback}`,
-                    env
-                  );
-                  
-                  // Add a short delay between messages to avoid flooding
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              }
-              
-              // After all analyses, send encouragement message
-              await sendText(
-                chatId,
-                "🌟 *Keep practicing! With consistent practice, you'll see steady improvement in your speaking skills!*",
-                env
-              );
-            }
-
-            // Send message about next lesson
-            await new Promise(resolve => setTimeout(resolve, 1000));
+      // Grammar analysis of all user utterances
+      const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
+      const analyses = await analyzeLanguage(userUtterances, env);
+      
+      // First, send an introduction message
+      if (analyses.length > 0) {
+        await sendText(
+          chatId, 
+          "📝 *Here's your language feedback from today's practice:*", 
+          env
+        );
+        
+        // Then send individual analysis for each utterance
+        for (const analysis of analyses) {
+          // Type guard to ensure we're dealing with the correct structure
+          if (typeof analysis === 'object' && analysis !== null && 'utterance' in analysis && 'feedback' in analysis) {
             await sendText(
               chatId,
-              "Your next lesson will be available tomorrow. Come back then to continue improving your English!",
+              `*Your phrase:* "${analysis.utterance}"\n\n${analysis.feedback}`,
               env
             );
-
-            // Update user profile in database
-            // 1. Increment lessons_total
-            // 2. Update lessons_streak
-            // 3. Set next_lesson_access_at to tomorrow at 2 AM
-            const now = new Date();
-            const tomorrow = new Date(now);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(2, 0, 0, 0);
-            const nextLessonAt = tomorrow.toISOString();
             
-            // Get current profile values first
-            const { results } = await db.prepare(
-              `SELECT lessons_total, lessons_streak, last_lesson_at FROM user_profiles WHERE telegram_id = ?`
-            )
-            .bind(parseInt(chatId, 10))
-            .all();
-            
-            let lessonsTotal = 1;
-            let lessonsStreak = 1;
-            
-            if (results.length > 0) {
-              lessonsTotal = (results[0].lessons_total || 0) + 1;
-              
-              // Calculate streak logic
-              const lastLessonDate = results[0].last_lesson_at ? new Date(results[0].last_lesson_at) : null;
-              const currentStreak = results[0].lessons_streak || 0;
-              
-              if (lastLessonDate) {
-                // Check if the last lesson was yesterday or earlier today
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
-                yesterday.setHours(0, 0, 0, 0);
-                
-                const todayStart = new Date(now);
-                todayStart.setHours(0, 0, 0, 0);
-                
-                if ((lastLessonDate >= yesterday && lastLessonDate < todayStart) || 
-                    (lastLessonDate >= todayStart)) {
-                  // Last lesson was yesterday or today, increment streak
-                  lessonsStreak = currentStreak + 1;
-                } else {
-                  // Streak broken, reset to 1
-                  lessonsStreak = 1;
-                }
-              }
-            }
-            
-            // Update the database with new values
-            const lessonCompletedAt = now.toISOString();
-            await db.prepare(
-              `UPDATE user_profiles 
-               SET next_lesson_access_at = ?,
-                   lessons_total = ?,
-                   lessons_streak = ?,
-                   last_lesson_at = ?
-               WHERE telegram_id = ?`
-            )
-            .bind(
-              nextLessonAt,
-              lessonsTotal,
-              lessonsStreak,
-              lessonCompletedAt,
-              parseInt(chatId, 10)
-            )
-            .run();
-            
-            // Clean up session data
-            await safeKvDelete(kv, histKey);
-            await safeKvDelete(kv, `main_session:${chatId}`);
-            await safeKvDelete(kv, `main_last_activity:${chatId}`);
-            // Delete all processed message markers
-            const keys = await kv.list({ prefix: `main_processed:${chatId}:` });
-            for (const key of keys.keys) {
-              await safeKvDelete(kv, key.name);
-            }
-            
-            return new Response('OK');
+            // Add a short delay between messages to avoid flooding
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
+        }
+        
+        // After all analyses, send encouragement message
+        await sendText(
+          chatId,
+          "🌟 *Keep practicing! With consistent practice, you'll see steady improvement in your speaking skills!*",
+          env
+        );
+      }
 
-          // Generate GPT reply based on conversation history
-          const reply = await chatGPT(hist, env);
-          const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
+      // Send message about next lesson
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await sendText(
+        chatId,
+        "Your next lesson will be available tomorrow. Come back then to continue improving your English!",
+        env
+      );
+
+      // Update user profile in database
+      // 1. Increment lessons_total
+      // 2. Update lessons_streak
+      // 3. Set next_lesson_access_at to tomorrow at 2 AM
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(2, 0, 0, 0);
+      const nextLessonAt = tomorrow.toISOString();
+      
+      // Get current profile values first
+      const { results } = await db.prepare(
+        `SELECT lessons_total, lessons_streak, last_lesson_at FROM user_profiles WHERE telegram_id = ?`
+      )
+      .bind(parseInt(chatId, 10))
+      .all();
+      
+      let lessonsTotal = 1;
+      let lessonsStreak = 1;
+      
+      if (results.length > 0) {
+        lessonsTotal = (results[0].lessons_total || 0) + 1;
+        
+        // Calculate streak logic
+        const lastLessonDate = results[0].last_lesson_at ? new Date(results[0].last_lesson_at) : null;
+        const currentStreak = results[0].lessons_streak || 0;
+        
+        if (lastLessonDate) {
+          // Check if the last lesson was yesterday or earlier today
+          const yesterday = new Date(now);
+          yesterday.setDate(yesterday.getDate() - 1);
+          yesterday.setHours(0, 0, 0, 0);
           
-          // Add bot response to history
-          hist.push({ role: 'assistant', content: safeReply });
-          await safeKvPut(kv, histKey, JSON.stringify(hist));
+          const todayStart = new Date(now);
+          todayStart.setHours(0, 0, 0, 0);
           
-          // Update activity timestamp
-          await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
-          
-          // Send audio response
-          await safeSendTTS(chatId, safeReply, env);
-        } finally {
-          // Clear processing flag
-          await safeKvDelete(kv, processingKey);
+          if ((lastLessonDate >= yesterday && lastLessonDate < todayStart) || 
+              (lastLessonDate >= todayStart)) {
+            // Last lesson was yesterday or today, increment streak
+            lessonsStreak = currentStreak + 1;
+          } else {
+            // Streak broken, reset to 1
+            lessonsStreak = 1;
+          }
         }
       }
+      
+      // Update the database with new values
+      const lessonCompletedAt = now.toISOString();
+      await db.prepare(
+        `UPDATE user_profiles 
+         SET next_lesson_access_at = ?,
+             lessons_total = ?,
+             lessons_streak = ?,
+             last_lesson_at = ?
+         WHERE telegram_id = ?`
+      )
+      .bind(
+        nextLessonAt,
+        lessonsTotal,
+        lessonsStreak,
+        lessonCompletedAt,
+        parseInt(chatId, 10)
+      )
+      .run();
+      
+      // Clean up session data
+      await safeKvDelete(kv, histKey);
+      await safeKvDelete(kv, `main_session:${chatId}`);
+      await safeKvDelete(kv, `main_last_activity:${chatId}`);
+      // Delete all processed message markers
+      const keys = await kv.list({ prefix: `main_processed:${chatId}:` });
+      for (const key of keys.keys) {
+        await safeKvDelete(kv, key.name);
+      }
+      
+      return new Response('OK');
+    }
+
+    // Generate GPT reply based on conversation history
+    const reply = await chatGPT(hist, env);
+    const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
+    
+    // Add bot response to history
+    hist.push({ role: 'assistant', content: safeReply });
+    await safeKvPut(kv, histKey, JSON.stringify(hist));
+    
+    // Update activity timestamp
+    await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
+    
+    // Send audio response
+    await safeSendTTS(chatId, safeReply, env);
+  } finally {
+    // Clear processing flag
+    await safeKvDelete(kv, processingKey);
+  }
+}
+
+// Modify the first greeting to be more concrete and topic-oriented
+async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
+  try {
+    // Format prompt based on user's language level
+    let levelPrompt;
+    
+    switch(userLevel) {
+      case 'A1':
+        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short, basic sentences. Ask about a specific topic like 'family', 'daily routine', 'food', or 'hobbies'.";
+        break;
+      case 'A2':
+        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary and straightforward sentences. Start the conversation with a concrete topic like 'weekend activities', 'travel', 'shopping', or 'weather'.";
+        break;
+      case 'B1':
+        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary. Begin with a specific discussion topic like 'recent movies', 'technology', 'sports', or 'cooking'.";
+        break;
+      case 'B2':
+        levelPrompt = "The student is at upper-intermediate level (B2). Use natural language with varied vocabulary. Start with an engaging topic like 'current events', 'environmental issues', 'work-life balance', or 'cultural differences'.";
+        break;
+      case 'C1':
+      case 'C2':
+        levelPrompt = "The student is at advanced level (C1/C2). Use sophisticated vocabulary. Initiate discussion on a specific topic like 'global economics', 'societal trends', 'psychological concepts', or 'technological innovations'.";
+        break;
+      default:
+        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and introduce a concrete topic like 'hobbies', 'travel', or 'recent news'.";
+    }
+    
+    const prompt = `Generate a friendly, conversational opening for an English language practice session. ${levelPrompt} 
+
+IMPORTANT:
+1. Choose ONE specific concrete topic for today's conversation
+2. Introduce that topic clearly
+3. Ask ONE specific question about that topic
+4. Keep your entire response between 2-3 sentences
+5. Do NOT ask about expectations or preferences - pick a topic yourself
+6. Do NOT mention that this is a "lesson" or "practice" - make it natural
+
+Example good greeting: "Hi there! Today I thought we could chat about movies. Have you watched anything interesting lately?"`;
+    
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        Authorization: `Bearer ${env.OPENAI_KEY}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({ 
+        model: 'gpt-4o-mini', 
+        messages: [
+          { role: 'system', content: prompt }
+        ], 
+        temperature: 0.7,
+        max_tokens: 100 // Even more limited to ensure very focused greeting
+      })
+    });
+    
+    if (!res.ok) {
+      throw new Error(`OpenAI API error: ${await res.text()}`);
+    }
+    
+    const j = await res.json();
+    const greeting = j.choices[0].message.content.trim();
+    
+    console.log(`First greeting: ${greeting}`);
+    
+    // Add greeting to history
+    history.push({ role: 'assistant', content: greeting });
+    await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
+    
+    // Send greeting as voice message
+    await safeSendTTS(chatId, greeting, env);
+  } catch (error) {
+    console.error("Error generating first greeting:", error);
+    
+    // Concrete topic-focused fallback greetings based on level
+    let fallbackGreeting;
+    
+    switch(userLevel) {
+      case 'A1':
+        fallbackGreeting = "Hello! Let's talk about food today. What did you eat for breakfast?";
+        break;
+      case 'A2':
+        fallbackGreeting = "Hi there! I'd love to chat about weekend activities. What did you do last weekend?";
+        break;
+      case 'B1':
+      default:
+        fallbackGreeting = "Hi! Today we can talk about movies and TV shows. Have you watched anything interesting lately?";
+        break;
+      case 'B2':
+      case 'C1':
+      case 'C2':
+        fallbackGreeting = "Hello! I thought we could discuss technology today. How do you think AI will change our daily lives in the next few years?";
+        break;
+    }
+    
+    history.push({ role: 'assistant', content: fallbackGreeting });
+    await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
+    await safeSendTTS(chatId, fallbackGreeting, env);
+  }
+}
 
       return new Response('OK');
     } catch (e) {
@@ -257,39 +384,18 @@ export default {
 // Check if session is still active and valid
 async function checkSessionActive(chatId, kv) {
   const sessionKey = `main_session:${chatId}`;
-  const histKey = `main_hist:${chatId}`;
-  
-  // Get current session
-  const sessionId = await safeKvGet(kv, sessionKey);
-  if (!sessionId) return false;
+  const lastActivityKey = `main_last_activity:${chatId}`;
   
   // Get last activity timestamp
-  const lastActivityKey = `main_last_activity:${chatId}`;
   const lastActivity = await safeKvGet(kv, lastActivityKey);
   
   if (lastActivity) {
     const lastActiveTime = parseInt(lastActivity, 10);
     const now = Date.now();
     
-    // If inactive for more than 5 minutes (300000 ms)
-    if (now - lastActiveTime > 300000) {
-      // Get history to check number of bot turns
-      const histData = await safeKvGet(kv, histKey) || '[]';
-      const hist = JSON.parse(histData);
-      const botTurns = hist.filter(h => h.role === 'assistant').length;
-      
-      // If fewer than 5 bot turns, allow resuming
-      if (botTurns < 5) {
-        // Update activity timestamp
-        await safeKvPut(kv, lastActivityKey, Date.now().toString());
-        return true;
-      } else {
-        // End session due to inactivity and enough turns
-        await safeKvDelete(kv, sessionKey);
-        await safeKvDelete(kv, histKey);
-        await safeKvDelete(kv, lastActivityKey);
-        return false;
-      }
+    // If inactive for more than 10 minutes (600000 ms) - increased from 5 min for better UX
+    if (now - lastActiveTime > 600000) {
+      return false;
     }
   }
   
@@ -302,7 +408,7 @@ async function checkSessionActive(chatId, kv) {
 async function handleLessonStart(chatId, env, db, kv) {
   // First, check if user has active subscription and lesson is available
   const { results } = await db.prepare(
-    `SELECT subscription_expired_at, next_lesson_access_at 
+    `SELECT subscription_expired_at, next_lesson_access_at, eng_level
      FROM user_profiles 
      WHERE telegram_id = ?`
   )
@@ -364,8 +470,9 @@ async function handleLessonStart(chatId, env, db, kv) {
   await safeKvPut(kv, `main_session:${chatId}`, sessionId);
   await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
   
-  // Generate first GPT greeting
-  await sendFirstGreeting(chatId, history, env, kv);
+  // Generate first GPT greeting - FIX: Pass user's eng_level to sendFirstGreeting
+  const userLevel = profile.eng_level || "B1"; // Default to B1 if level is missing
+  await sendFirstGreeting(chatId, history, env, kv, userLevel);
   return new Response('OK');
 }
 
@@ -413,10 +520,34 @@ async function safeKvDelete(kv, key) {
   }
 }
 
-// Generate first greeting using GPT
-async function sendFirstGreeting(chatId, history, env, kv) {
+// Generate first greeting using GPT - FIX: Adjusted to consider user's language level
+async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   try {
-    const prompt = "Generate a friendly, conversational opening greeting for an English language practice session with a subscriber. Make it a bit more personalized and advanced than for a free trial user. Ask the student an engaging question about their goals or recent English practice to start the conversation. Keep it natural but slightly more educational in tone.";
+    // Format prompt based on user's language level
+    let levelPrompt;
+    
+    switch(userLevel) {
+      case 'A1':
+        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short, basic sentences. Speak slowly and clearly. Ask only one simple question at a time. Focus on everyday topics the student would be familiar with.";
+        break;
+      case 'A2':
+        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary and straightforward sentences. Ask one clear question at a time. Focus on familiar topics and everyday situations.";
+        break;
+      case 'B1':
+        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and sentence structures. You can ask one or two related questions. Discuss a range of familiar and some unfamiliar topics.";
+        break;
+      case 'B2':
+        levelPrompt = "The student is at upper-intermediate level (B2). Use natural language with varied vocabulary and sentence structures. You can ask related questions on a variety of topics including abstract concepts.";
+        break;
+      case 'C1':
+      case 'C2':
+        levelPrompt = "The student is at advanced level (C1/C2). Use sophisticated vocabulary and complex sentences. You can ask challenging questions on any topic, including abstract and specialized subjects.";
+        break;
+      default:
+        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and sentence structures. You can ask one or two related questions. Discuss a range of familiar and some unfamiliar topics.";
+    }
+    
+    const prompt = `Generate a friendly, conversational opening greeting for an English language practice session with a subscriber. ${levelPrompt} Make the greeting engaging and personalized. Ask a thoughtful question to start the conversation naturally. Keep your response between 1-3 sentences total.`;
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -429,7 +560,8 @@ async function sendFirstGreeting(chatId, history, env, kv) {
         messages: [
           { role: 'system', content: prompt }
         ], 
-        temperature: 0.7 
+        temperature: 0.7,
+        max_tokens: 150 // Limit token length to ensure short, focused greeting
       })
     });
     
@@ -450,25 +582,99 @@ async function sendFirstGreeting(chatId, history, env, kv) {
     await safeSendTTS(chatId, greeting, env);
   } catch (error) {
     console.error("Error generating first greeting:", error);
-    // Fallback to a simple greeting if GPT fails
-    const fallbackGreeting = "Welcome to today's English practice session! How have you been using English since our last lesson?";
+    
+    // Fallback greetings based on level
+    let fallbackGreeting;
+    
+    switch(userLevel) {
+      case 'A1':
+        fallbackGreeting = "Hello! How are you today?";
+        break;
+      case 'A2':
+        fallbackGreeting = "Hi there! How was your day? Tell me about it.";
+        break;
+      case 'B1':
+      default:
+        fallbackGreeting = "Welcome to today's English practice! What have you been up to recently?";
+        break;
+      case 'B2':
+      case 'C1':
+      case 'C2':
+        fallbackGreeting = "Welcome back to our English practice session! I'm curious to hear what's been on your mind lately.";
+        break;
+    }
+    
     history.push({ role: 'assistant', content: fallbackGreeting });
     await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
     await safeSendTTS(chatId, fallbackGreeting, env);
   }
 }
 
-// Chat with GPT based on conversation history
+// Chat with GPT based on conversation history - FIX: Adjusted to fetch user level and adapt to it
 async function chatGPT(history, env) {
   try {
-    // Get system prompt from environment or use default
-    const systemPrompt = env.MAIN_SYSTEM_PROMPT || 
+    // The ideal approach would be to get the user's level from the database here,
+    // but for simplicity, we'll infer it from the conversation complexity or
+    // rely on the system prompt to handle different levels appropriately
+    
+    // Basic analysis to estimate user level based on conversation
+    let estimatedLevel = "B1"; // Default to intermediate
+    const userMessages = history.filter(h => h.role === 'user');
+    
+    if (userMessages.length > 1) {
+      // Simple analysis using message length and vocabulary
+      const avgLength = userMessages.reduce((sum, msg) => sum + msg.content.length, 0) / userMessages.length;
+      const uniqueWords = new Set(
+        userMessages.flatMap(msg => 
+          msg.content.toLowerCase().split(/\s+/).filter(word => word.length > 2)
+        )
+      ).size;
+      
+      if (avgLength < 15 && uniqueWords < 20) {
+        estimatedLevel = "A1";
+      } else if (avgLength < 30 && uniqueWords < 50) {
+        estimatedLevel = "A2";
+      } else if (avgLength < 60 && uniqueWords < 100) {
+        estimatedLevel = "B1";
+      } else if (avgLength < 100 && uniqueWords < 150) {
+        estimatedLevel = "B2";
+      } else {
+        estimatedLevel = "C1";
+      }
+    }
+    
+    // Construct system prompt based on estimated level
+    let levelPrompt;
+    
+    switch(estimatedLevel) {
+      case 'A1':
+        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short sentences. Speak slowly and clearly with basic grammar. Focus on everyday topics.";
+        break;
+      case 'A2':
+        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary and straightforward sentences. Focus on familiar topics and everyday situations.";
+        break;
+      case 'B1':
+        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and sentence structures. Discuss a range of familiar and some unfamiliar topics.";
+        break;
+      case 'B2':
+        levelPrompt = "The student is at upper-intermediate level (B2). Use natural language with varied vocabulary and sentence structures. Discuss a variety of topics including abstract concepts.";
+        break;
+      case 'C1':
+      case 'C2':
+        levelPrompt = "The student is at advanced level (C1/C2). Use sophisticated vocabulary and complex sentences. Discuss any topic, including abstract and specialized subjects.";
+        break;
+    }
+    
+    // Get system prompt from environment or use enhanced default with level adaptation
+    const baseSystemPrompt = env.MAIN_SYSTEM_PROMPT || 
       "You are a professional English language tutor having a conversation with a paying subscriber. " +
       "Keep your responses conversational but educational, supportive, and engaging. " +
       "Ask follow-up questions that challenge the student appropriately for their level. " +
       "Your goal is to help the student practice their English in a natural way while gradually improving. " +
       "Keep responses fairly short (1-3 sentences) to maintain a flowing conversation. " +
       "Try to correct major grammar errors indirectly by rephrasing what they said correctly in your response.";
+    
+    const systemPrompt = `${baseSystemPrompt} ${levelPrompt}`;
     
     // Format messages for OpenAI API
     const messages = [
@@ -488,7 +694,7 @@ async function chatGPT(history, env) {
         model: 'gpt-4o-mini', 
         messages, 
         temperature: 0.7,
-        max_tokens: 200 // Limit response length for conversation flow
+        max_tokens: 150 // Reduced from 200 to keep responses shorter and more focused
       })
     });
     
@@ -502,11 +708,11 @@ async function chatGPT(history, env) {
     return response;
   } catch (error) {
     console.error("Error in chatGPT function:", error);
-    return "I'm interested in hearing more about that. Could you elaborate a bit?";
+    return "I'm interested in hearing more about that. Could you tell me a bit more?";
   }
 }
 
-// Analyze user language for grammar and vocabulary feedback
+// Analyze user language for grammar and vocabulary feedback - FIX: Adapted analysis to user level
 async function analyzeLanguage(utterances, env) {
   if (!utterances.length) return "Not enough conversation data to analyze.";
   
@@ -516,13 +722,56 @@ async function analyzeLanguage(utterances, env) {
   for (const utterance of utterances) {
     if (!utterance.trim()) continue; // Skip empty utterances
     
+    // First, do a simple complexity analysis to estimate the user's level
+    const wordCount = utterance.split(/\s+/).length;
+    const uniqueWords = new Set(utterance.toLowerCase().split(/\s+/).filter(word => word.length > 2)).size;
+    const avgWordLength = utterance.split(/\s+/).reduce((sum, word) => sum + word.length, 0) / wordCount;
+    
+    let estimatedLevel = "B1"; // Default
+    
+    if (wordCount < 5 && uniqueWords < 5) {
+      estimatedLevel = "A1";
+    } else if (wordCount < 10 && uniqueWords < 10) {
+      estimatedLevel = "A2";
+    } else if (wordCount < 20 && uniqueWords < 15) {
+      estimatedLevel = "B1";
+    } else if (wordCount < 30 && uniqueWords < 25) {
+      estimatedLevel = "B2";
+    } else {
+      estimatedLevel = "C1";
+    }
+    
+    // Adjust prompt based on estimated level
+    let levelPrompt;
+    
+    switch(estimatedLevel) {
+      case 'A1':
+        levelPrompt = "The student is a beginner (A1). Focus on very basic grammar (subject-verb agreement, simple present/past tense). Provide simple alternatives with common, everyday vocabulary. Be very encouraging.";
+        break;
+      case 'A2':
+        levelPrompt = "The student is at elementary level (A2). Focus on basic sentence structure, common tenses, and everyday vocabulary. Keep feedback simple and encouraging.";
+        break;
+      case 'B1':
+        levelPrompt = "The student is at intermediate level (B1). You can suggest improvements to grammar accuracy, vocabulary range, and basic sentence structure. Balance encouragement with constructive feedback.";
+        break;
+      case 'B2':
+        levelPrompt = "The student is at upper-intermediate level (B2). You can provide feedback on more nuanced grammar points, varied vocabulary, cohesion, and natural phrasing. Challenge them appropriately.";
+        break;
+      case 'C1':
+      case 'C2':
+        levelPrompt = "The student is at advanced level (C1/C2). Focus on sophisticated language use, nuanced expressions, subtle grammar points, and native-like fluency. Your feedback can be more detailed.";
+        break;
+    }
+    
     const prompt = `
 As an English language teacher for a paying subscriber, provide a concise yet detailed language analysis for this specific student utterance:
 "${utterance}"
 
+${levelPrompt}
+
 Provide a brief analysis with:
 1. What the student did well (be specific)
-2. One or two specific grammar or vocabulary improvements if needed
+2. One specific grammar or vocabulary improvement if needed
 3. How a native speaker might express the same idea more naturally
 
 FORMAT: 
