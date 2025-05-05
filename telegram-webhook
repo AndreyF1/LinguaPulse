@@ -99,36 +99,29 @@ export default {
         
       // Modified /start command to check for existing level
       if (update.message?.text === '/start') {
-        // This will only run if the user has not completed the test
-        // (because the previous condition would have caught it otherwise)
+        // Check if user is new or needs to register first
+        const { results } = await env.USER_DB
+          .prepare('SELECT telegram_id FROM user_profiles WHERE telegram_id = ?')
+          .bind(parseInt(chatId, 10))
+          .all();
         
-        // Continue with original /start flow to generate questions
-        const questions = await generateTest(env);
-        const answers = [];
-        const index = 0;
+        if (results.length === 0) {
+          // New user - create initial record in database
+          const startAt = new Date().toISOString();
+          await env.USER_DB
+            .prepare(
+              `INSERT INTO user_profiles (telegram_id, start_test_at)
+               VALUES (?, ?)
+               ON CONFLICT(telegram_id) DO UPDATE
+                 SET start_test_at = excluded.start_test_at`
+            )
+            .bind(parseInt(chatId, 10), startAt)
+            .run();
+        }
         
-        const stateKey = STATE_PREFIX + chatId;
-        await env.TEST_KV.put(stateKey, JSON.stringify({ questions, answers, index }));
-        
-        const startAt = new Date().toISOString();
-        await env.USER_DB
-          .prepare(
-            `INSERT INTO user_profiles (telegram_id, start_test_at)
-             VALUES (?, ?)
-             ON CONFLICT(telegram_id) DO UPDATE
-               SET start_test_at = excluded.start_test_at`
-          )
-          .bind(parseInt(chatId, 10), startAt)
-          .run();
-        
-        // Ask first question
-        const kb = questions[0].options.map(o => [{
-          text: o,
-          callback_data: `next:${o}`
-        }]);
-        
-        await sendMessageViaTelegram(chatId, questions[0].question, env, { inline_keyboard: kb });
-        return new Response('OK');
+        // Forward to TEST bot for test generation and question flow
+        console.log("Forwarding /start command to TEST bot");
+        return forward(env.TEST, update);
       }
 
       // Handle voice messages with improved routing
@@ -564,46 +557,4 @@ function formatTimeUntil(date) {
   // less than 1 hour
   if (diffMin > 0) return `${diffMin}m`;
   return `${diffSec}s`;
-}
-
-
-// GPT-based question generation
-async function generateTest(env) {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.OPENAI_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'gpt-3.5-turbo',
-      temperature: 0.7,
-      max_tokens: 800,
-      messages: [
-        { role: 'system', content: env.SYSTEM_PROMPT },
-        { role: 'user',   content: env.USER_PROMPT }
-      ]
-    })
-  });
-
-  const data = await res.json();
-  let txt = data.choices?.[0]?.message?.content?.trim() || '';
-  txt = txt.replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
-
-  let parsed;
-  try {
-    parsed = JSON.parse(txt);
-  } catch (e) {
-    console.error('generateTest parse error:', txt, e);
-    throw new Error('Failed to parse questions JSON');
-  }
-
-  const arr = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray(parsed.questions) ? parsed.questions : [];
-  return arr.slice(0, 10).map(q => ({
-    question: q.question,
-    options: Array.isArray(q.options) ? q.options.slice(0, 4) : [],
-    answer: q.answer
-  }));
 }
