@@ -193,7 +193,7 @@ export default {
               await sendMessageViaTelegram(chatId,
                 "Your subscription has expired. Subscribe again to continue with daily lessons!",
                 env,
-                { inline_keyboard: [[{ text: "Subscribe for $1/week", callback_data: "sub:weekly" }]] });
+                { inline_keyboard: [[{ text: "Subscribe for $1/week", callback_data: "subscribe:weekly" }]] });
               return new Response('OK');
             }
           }
@@ -272,7 +272,7 @@ export default {
             await sendMessageViaTelegram(chatId,
               "You need an active subscription to access lessons. Subscribe now to continue improving your English!",
               env,
-              { inline_keyboard: [[{ text: "Subscribe for $1/week", callback_data: "sub:weekly" }]] });
+              { inline_keyboard: [[{ text: "Subscribe for $1/week", callback_data: "subscribe:weekly" }]] });
             return new Response('OK');
           }
         }
@@ -314,7 +314,7 @@ export default {
       }
       
       // 2.1 handle subscription button
-      if (update.callback_query?.data === 'sub:weekly') {
+      if (update.callback_query?.data === 'subscribe:weekly') {
         // Acknowledge the callback query to remove the loading indicator
         await callTelegram('answerCallbackQuery', {
           callback_query_id: update.callback_query.id
@@ -514,7 +514,7 @@ async function handleLessonCommand(chatId, env) {
     // No active subscription or it's expired - show subscribe button
     message += 'Your subscription has expired or you haven\'t subscribed yet.';
     await sendMessageViaTelegram(chatId, message, env, {
-      inline_keyboard: [[{ text: 'Subscribe for $1/week', callback_data: 'sub:weekly' }]]
+      inline_keyboard: [[{ text: 'Subscribe for $1/week', callback_data: 'subscribe:weekly' }]]
     });
     return;
   }
