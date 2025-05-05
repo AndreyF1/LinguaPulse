@@ -115,9 +115,159 @@ export default {
         return new Response('OK');
       }
 
-      // 1. read current lesson flag
-      const flagKey = `lesson:${chatId}`;
-      const lessonFlg = (await env.USER_PROFILE.get(flagKey)) || 'idle';
+      // Handle voice messages with improved routing
+      if (update.message?.voice) {
+        try {
+          console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
+          
+          // First check if it's a main lesson session
+          const mainSessionKey = `main_session:${chatId}`;
+          let mainSession = null;
+          
+          if (env.CHAT_KV) {
+            console.log(`Checking CHAT_KV for ${mainSessionKey}`);
+            mainSession = await env.CHAT_KV.get(mainSessionKey);
+            
+            if (mainSession) {
+              console.log(`Found active main-lesson session (${mainSession}), forwarding voice message to MAIN_LESSON`);
+              return forward(env.MAIN_LESSON, update);
+            }
+            
+            // If not found in main session, check for lesson0 session directly in CHAT_KV
+            const lesson0SessionKey = `session:${chatId}`;
+            const lesson0Session = await env.CHAT_KV.get(lesson0SessionKey);
+            
+            if (lesson0Session) {
+              console.log(`Found active lesson0 session (${lesson0Session}), forwarding voice message to LESSON0`);
+              return forward(env.LESSON0, update);
+            }
+          }
+          
+          // If no active session found, check if user has completed the lesson recently
+          // and provide information about next lesson or subscription
+          const { results } = await env.USER_DB
+            .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
+            .bind(parseInt(chatId, 10))
+            .all();
+          
+          if (results.length > 0) {
+            const profile = results[0];
+            const now = new Date();
+            
+            // Check if subscription is active
+            const hasActiveSubscription = profile.subscription_expired_at && 
+                                        (new Date(profile.subscription_expired_at) > now);
+            
+            if (hasActiveSubscription) {
+              // Check when next lesson is available
+              if (profile.next_lesson_access_at) {
+                const nextLessonAt = new Date(profile.next_lesson_access_at);
+                
+                if (nextLessonAt > now) {
+                  // Next lesson in the future - tell user when it will be available
+                  const timeUntil = formatTimeUntil(nextLessonAt);
+                  await sendMessageViaTelegram(chatId,
+                    `Your next lesson will be available in ${timeUntil}. I look forward to our next conversation!`,
+                    env);
+                  return new Response('OK');
+                } else {
+                  // Lesson is available now - suggest starting it
+                  await sendMessageViaTelegram(chatId,
+                    "Your next lesson is available now! Would you like to start?",
+                    env,
+                    { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] });
+                  return new Response('OK');
+                }
+              }
+            } else {
+              // No active subscription - offer to subscribe
+              await sendMessageViaTelegram(chatId,
+                "Your subscription has expired. Subscribe again to continue with daily lessons!",
+                env,
+                { inline_keyboard: [[{ text: "Subscribe for $1/week", callback_data: "sub:weekly" }]] });
+              return new Response('OK');
+            }
+          }
+          
+          // Generic fallback if no user profile found or other conditions not met
+          await sendMessageViaTelegram(chatId, 
+            "You don't have an active lesson. Please use /start to begin the placement test or /talk to start a lesson if you've already completed it.", 
+            env);
+          return new Response('OK');
+        } catch (error) {
+          console.error(`Voice message handling error: ${error.message}`);
+          console.error(error.stack); // Log the full stack trace
+          return new Response('OK');  // Always return OK to Telegram
+        }
+      }
+
+      // Handle regular text messages outside of sessions
+      if (update.message?.text && !update.message.text.startsWith('/')) {
+        // Check if user has an active session
+        let activeSession = false;
+        
+        if (env.CHAT_KV) {
+          const mainSession = await env.CHAT_KV.get(`main_session:${chatId}`);
+          const lesson0Session = await env.CHAT_KV.get(`session:${chatId}`);
+          
+          if (mainSession || lesson0Session) {
+            activeSession = true;
+          }
+        }
+        
+        // If no active session, provide info about next lesson or subscription
+        if (!activeSession) {
+          const { results } = await env.USER_DB
+            .prepare('SELECT subscription_expired_at, next_lesson_access_at, eng_level FROM user_profiles WHERE telegram_id = ?')
+            .bind(parseInt(chatId, 10))
+            .all();
+          
+          // If user hasn't taken the test yet
+          if (!results.length || !results[0].eng_level) {
+            await sendMessageViaTelegram(chatId, 
+              "Please use /start to begin the placement test so I can determine your English level.", 
+              env);
+            return new Response('OK');
+          }
+          
+          const profile = results[0];
+          const now = new Date();
+          
+          // Check if subscription is active
+          const hasActiveSubscription = profile.subscription_expired_at && 
+                                       (new Date(profile.subscription_expired_at) > now);
+          
+          if (hasActiveSubscription) {
+            // Check when next lesson is available
+            if (profile.next_lesson_access_at) {
+              const nextLessonAt = new Date(profile.next_lesson_access_at);
+              
+              if (nextLessonAt > now) {
+                // Next lesson in the future - tell user when it will be available
+                const timeUntil = formatTimeUntil(nextLessonAt);
+                await sendMessageViaTelegram(chatId,
+                  `Your next lesson will be available in ${timeUntil}. You can use /profile to see your progress.`,
+                  env);
+                return new Response('OK');
+              } else {
+                // Lesson is available now - suggest starting it
+                await sendMessageViaTelegram(chatId,
+                  "Your next lesson is available now! Would you like to start?",
+                  env,
+                  { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] });
+                return new Response('OK');
+              }
+            }
+          } else {
+            // No active subscription - offer to subscribe
+            await sendMessageViaTelegram(chatId,
+              "You need an active subscription to access lessons. Subscribe now to continue improving your English!",
+              env,
+              { inline_keyboard: [[{ text: "Subscribe for $1/week", callback_data: "sub:weekly" }]] });
+            return new Response('OK');
+          }
+        }
+      }
 
       // 2. handle lesson buttons
       if (update.callback_query?.data === 'lesson:free' || 
@@ -134,7 +284,7 @@ export default {
             'Starting audio lesson…', env);
 
           // mark lesson in progress
-          await env.USER_PROFILE.put(flagKey, 'in_progress');
+          await env.USER_PROFILE.put(`lesson:${chatId}`, 'in_progress');
 
           // forward the start payload to lesson0-bot
           console.log("Forwarding lesson:free action to LESSON0");
@@ -252,53 +402,9 @@ export default {
         return new Response('OK');
       }
 
-      // 3. Handle voice messages with improved routing
-      if (update.message?.voice) {
-        try {
-          // First check if it's a main lesson session - check both possible KV namespaces
-          const mainSessionKey = `main_session:${chatId}`;
-          let mainSession = null;
-          
-          // Try LESSON_KV first if available
-          if (env.LESSON_KV) {
-            console.log(`Checking LESSON_KV for ${mainSessionKey}`);
-            mainSession = await env.LESSON_KV.get(mainSessionKey);
-          }
-          
-          // Fall back to CHAT_KV if needed
-          if (!mainSession && env.CHAT_KV) {
-            console.log(`Checking CHAT_KV for ${mainSessionKey}`);
-            mainSession = await env.CHAT_KV.get(mainSessionKey);
-          }
-          
-          if (mainSession) {
-            console.log(`Found active main-lesson session (${mainSession}), forwarding voice message to MAIN_LESSON`);
-            return forward(env.MAIN_LESSON, update);
-          }
-          
-          // Then check for lesson0 free session
-          console.log(`Checking USER_PROFILE for ${flagKey}, current value: ${lessonFlg}`);
-          
-          if (lessonFlg === 'in_progress') {
-            console.log("Found active lesson0 session, forwarding voice message to LESSON0");
-            return forward(env.LESSON0, update);
-          }
-          
-          // If no session is active, inform the user
-          console.log("No active session found for voice message, sending help message");
-          await sendMessageViaTelegram(chatId, 
-            "You don't have an active lesson. Please use /start to begin the placement test or /talk to start a lesson if you've already completed it.", 
-            env);
-          return new Response('OK');
-        } catch (error) {
-          console.error(`Voice message handling error: ${error.message}`);
-          return new Response('OK');  // Always return OK to Telegram
-        }
-      }
-
       // 4. receive end-of-lesson notification (if you choose to send it)
       if (update.lesson_done) {
-        await env.USER_PROFILE.put(flagKey, 'finished', { expirationTtl: 86400 });
+        await env.USER_PROFILE.put(`lesson:${chatId}`, 'finished', { expirationTtl: 86400 });
         return new Response('OK');
       }
 
