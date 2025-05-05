@@ -129,7 +129,20 @@ export default {
             // Farewell message
             const bye = "That's all for today's lesson! You did great. Let's continue our practice tomorrow with new exercises. Have a wonderful day!";
             hist.push({ role: 'assistant', content: bye });
-            await safeKvPut(kv, histKey, JSON.stringify(hist));
+            
+            // CRITICAL FIX: Clean up session data BEFORE sending any more messages
+            // This prevents users from sending more messages during lesson conclusion
+            await safeKvDelete(kv, histKey);
+            await safeKvDelete(kv, `main_session:${chatId}`);
+            await safeKvDelete(kv, `main_last_activity:${chatId}`);
+            
+            // Delete all processed message markers
+            const keys = await kv.list({ prefix: `main_processed:${chatId}:` });
+            for (const key of keys.keys) {
+              await safeKvDelete(kv, key.name);
+            }
+            
+            // Now send the farewell message
             await safeSendTTS(chatId, bye, env);
 
             // Grammar analysis of all user utterances
@@ -137,7 +150,7 @@ export default {
             const analyses = await analyzeLanguage(userUtterances, env);
             
             // First, send an introduction message
-            if (analyses.length > 0) {
+            if (analyses.utteranceAnalyses && analyses.utteranceAnalyses.length > 0) {
               await sendText(
                 chatId, 
                 "📝 *Here's your language feedback from today's practice:*", 
@@ -145,7 +158,7 @@ export default {
               );
               
               // Then send individual analysis for each utterance
-              for (const analysis of analyses) {
+              for (const analysis of analyses.utteranceAnalyses) {
                 // Type guard to ensure we're dealing with the correct structure
                 if (typeof analysis === 'object' && analysis !== null && 'utterance' in analysis && 'feedback' in analysis) {
                   await sendText(
@@ -157,6 +170,19 @@ export default {
                   // Add a short delay between messages to avoid flooding
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
+              }
+              
+              // Add skill assessment if available
+              if (analyses.skillAssessment) {
+                const skills = analyses.skillAssessment;
+                await sendText(
+                  chatId,
+                  "🏆 *Your Skill Assessment*\n\n" +
+                  `*Speaking:* ${skills.speaking.score}/100\n${skills.speaking.feedback}\n\n` +
+                  `*Vocabulary:* ${skills.vocabulary.score}/100\n${skills.vocabulary.feedback}\n\n` +
+                  `*Grammar:* ${skills.grammar.score}/100\n${skills.grammar.feedback}`,
+                  env
+                );
               }
               
               // After all analyses, send encouragement message
@@ -240,16 +266,6 @@ export default {
               parseInt(chatId, 10)
             )
             .run();
-            
-            // Clean up session data
-            await safeKvDelete(kv, histKey);
-            await safeKvDelete(kv, `main_session:${chatId}`);
-            await safeKvDelete(kv, `main_last_activity:${chatId}`);
-            // Delete all processed message markers
-            const keys = await kv.list({ prefix: `main_processed:${chatId}:` });
-            for (const key of keys.keys) {
-              await safeKvDelete(kv, key.name);
-            }
             
             return new Response('OK');
           }
@@ -370,7 +386,7 @@ async function handleLessonStart(chatId, env, db, kv) {
   await safeKvPut(kv, `main_session:${chatId}`, sessionId);
   await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
   
-  // Generate first GPT greeting - Pass user's eng_level to sendFirstGreeting
+  // Generate first GPT greeting - FIX: Pass user's eng_level to sendFirstGreeting
   const userLevel = profile.eng_level || "B1"; // Default to B1 if level is missing
   await sendFirstGreeting(chatId, history, env, kv, userLevel);
   return new Response('OK');
@@ -612,9 +628,13 @@ async function chatGPT(history, env) {
   }
 }
 
-// Analyze user language for grammar and vocabulary feedback - Adapted analysis to user level
+// Analyze user language for grammar and vocabulary feedback - Enhanced with skill assessment
 async function analyzeLanguage(utterances, env) {
-  if (!utterances.length) return "Not enough conversation data to analyze.";
+  if (!utterances.length) return {
+    utteranceAnalyses: [],
+    skillAssessment: null,
+    message: "Not enough conversation data to analyze."
+  };
   
   // Analyze each utterance separately
   const analyses = [];
@@ -715,207 +735,275 @@ FORMAT:
     }
   }
   
-  return analyses;
-}
-
-// Send TTS audio message safely
-async function safeSendTTS(chatId, text, env) {
-  const t = text.trim();
-  if (!t) return;
-  
+  // After analyzing individual utterances, perform overall skill assessment
   try {
-    console.log(`Generating TTS for: ${t}`);
-    const rawBuf = await openaiTTS(t, env);
-    const voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
-    const dur = calculateDuration(voipBuf);
-    await telegramSendVoice(chatId, voipBuf, dur, env);
+    // Calculate metrics for overall assessment
+    const totalWords = utterances.join(' ').split(/\s+/).length;
+    const avgUtteranceLength = totalWords / utterances.length;
     
-    // Add a small delay after sending audio to prevent flooding
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return true;
-  } catch (e) {
-    console.error("TTS failed:", e);
-    // Fallback to text if TTS fails
-    await sendText(chatId, "📝 " + t, env);
-    return false;
-  }
-}
-
-// Convert audio to Telegram-compatible format with Transloadit
-async function encodeVoipWithTransloadit(buf, env) {
-  const params = { 
-    auth: { key: env.TRANSLOADIT_KEY }, 
-    template_id: env.TRANSLOADIT_TPL, 
-    fields: { filename: 'src.ogg' } 
-  };
+    // Collect unique words for vocabulary assessment
+    const uniqueWords = new Set(
+      utterances.flatMap(u => 
+        u.toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 2)
+    )
+  );
   
-  const fd = new FormData();
-  fd.append('params', JSON.stringify(params));
-  fd.append('file', new File([buf], 'src.ogg', { type: 'audio/ogg' }));
-  
-  const init = await (
-    await fetch('https://api2.transloadit.com/assemblies', { 
-      method: 'POST', 
-      body: fd 
-    })
-  ).json();
-  
-  const done = await waitAssembly(init.assembly_ssl_url, 90000);
-  const url = done.results['encoded-audio'][0].ssl_url;
-  return (await fetch(url)).arrayBuffer();
-}
+  const prompt = `
+As a language assessment expert, evaluate this student's English speaking skills based on these utterances:
 
-// Wait for Transloadit assembly to complete
-async function waitAssembly(url, ms) {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    const j = await (await fetch(url)).json();
-    if (j.ok === 'ASSEMBLY_COMPLETED') return j;
-    await new Promise(r => setTimeout(r, 1000));
-  }
-  throw new Error('Transloadit timeout');
-}
+"${utterances.join('"\n"')}"
 
-// Generate TTS with OpenAI
-async function openaiTTS(text, env) {
-  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+Provide objective numerical scores (1-100) for:
+1. Speaking: fluency, pronunciation, clarity of expression
+2. Vocabulary: range, appropriateness, precision of word choice
+3. Grammar: accuracy, complexity of structures used
+
+Then provide 1-2 sentences explaining each score. Format your response as JSON:
+{
+"speaking": { "score": 75, "feedback": "Good fluency with some hesitations..." },
+"vocabulary": { "score": 80, "feedback": "Uses a variety of words appropriate to the topic..." },
+"grammar": { "score": 70, "feedback": "Generally correct with some minor errors..." }
+}
+`;
+  
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 
       Authorization: `Bearer ${env.OPENAI_KEY}`, 
       'Content-Type': 'application/json' 
     },
     body: JSON.stringify({ 
-      model: 'tts-1', 
-      voice: 'alloy', 
-      format: 'ogg_opus', 
-      input: text 
+      model: 'gpt-4o-mini', 
+      messages: [
+        { role: 'system', content: prompt }
+      ], 
+      temperature: 0.3,
+      response_format: { type: "json_object" }
     })
   });
   
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`OpenAI TTS error: ${errorText}`);
+    throw new Error(`OpenAI API error: ${await res.text()}`);
   }
   
-  return res.arrayBuffer();
+  const j = await res.json();
+  const assessment = JSON.parse(j.choices[0].message.content.trim());
+  
+  return {
+    utteranceAnalyses: analyses,
+    skillAssessment: assessment
+  };
+} catch (error) {
+  console.error(`Skill assessment error:`, error);
+  // Return just the utterance analyses if skill assessment fails
+  return {
+    utteranceAnalyses: analyses,
+    skillAssessment: null
+  };
+}
+}
+
+// Send TTS audio message safely
+async function safeSendTTS(chatId, text, env) {
+const t = text.trim();
+if (!t) return;
+
+try {
+  console.log(`Generating TTS for: ${t}`);
+  const rawBuf = await openaiTTS(t, env);
+  const voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
+  const dur = calculateDuration(voipBuf);
+  await telegramSendVoice(chatId, voipBuf, dur, env);
+  
+  // Add a small delay after sending audio to prevent flooding
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  return true;
+} catch (e) {
+  console.error("TTS failed:", e);
+  // Fallback to text if TTS fails
+  await sendText(chatId, "📝 " + t, env);
+  return false;
+}
+}
+
+// Convert audio to Telegram-compatible format with Transloadit
+async function encodeVoipWithTransloadit(buf, env) {
+const params = { 
+  auth: { key: env.TRANSLOADIT_KEY }, 
+  template_id: env.TRANSLOADIT_TPL, 
+  fields: { filename: 'src.ogg' } 
+};
+
+const fd = new FormData();
+fd.append('params', JSON.stringify(params));
+fd.append('file', new File([buf], 'src.ogg', { type: 'audio/ogg' }));
+
+const init = await (
+  await fetch('https://api2.transloadit.com/assemblies', { 
+    method: 'POST', 
+    body: fd 
+  })
+).json();
+
+const done = await waitAssembly(init.assembly_ssl_url, 90000);
+const url = done.results['encoded-audio'][0].ssl_url;
+return (await fetch(url)).arrayBuffer();
+}
+
+// Wait for Transloadit assembly to complete
+async function waitAssembly(url, ms) {
+const start = Date.now();
+while (Date.now() - start < ms) {
+  const j = await (await fetch(url)).json();
+  if (j.ok === 'ASSEMBLY_COMPLETED') return j;
+  await new Promise(r => setTimeout(r, 1000));
+}
+throw new Error('Transloadit timeout');
+}
+
+// Generate TTS with OpenAI
+async function openaiTTS(text, env) {
+const res = await fetch('https://api.openai.com/v1/audio/speech', {
+  method: 'POST',
+  headers: { 
+    Authorization: `Bearer ${env.OPENAI_KEY}`, 
+    'Content-Type': 'application/json' 
+  },
+  body: JSON.stringify({ 
+    model: 'tts-1', 
+    voice: 'echo', 
+    format: 'ogg_opus', 
+    input: text 
+  })
+});
+
+if (!res.ok) {
+  const errorText = await res.text();
+  throw new Error(`OpenAI TTS error: ${errorText}`);
+}
+
+return res.arrayBuffer();
 }
 
 // Send voice message via Telegram
 async function telegramSendVoice(chatId, buf, dur, env) {
-  const fd = new FormData();
-  fd.append('chat_id', String(chatId));
-  fd.append('duration', dur);
-  fd.append('voice', new File([buf], 'voice.ogg', { type: 'audio/ogg; codecs=opus' }));
-  
-  const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
-    { method: 'POST', body: fd }
-  );
-  
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Telegram sendVoice error: ${errorText}`);
-  }
+const fd = new FormData();
+fd.append('chat_id', String(chatId));
+fd.append('duration', dur);
+fd.append('voice', new File([buf], 'voice.ogg', { type: 'audio/ogg; codecs=opus' }));
+
+const res = await fetch(
+  `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
+  { method: 'POST', body: fd }
+);
+
+if (!res.ok) {
+  const errorText = await res.text();
+  throw new Error(`Telegram sendVoice error: ${errorText}`);
+}
 }
 
 // Send text message via Telegram
 async function sendText(chatId, text, env, keyboard) {
-  const body = { 
-    chat_id: String(chatId), 
-    text,
-    parse_mode: 'Markdown'
-  };
-  
-  if (keyboard) {
-    body.reply_markup = { inline_keyboard: keyboard };
+const body = { 
+  chat_id: String(chatId), 
+  text,
+  parse_mode: 'Markdown'
+};
+
+if (keyboard) {
+  body.reply_markup = { inline_keyboard: keyboard };
+}
+
+const res = await fetch(
+  `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+  { 
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' }, 
+    body: JSON.stringify(body) 
   }
-  
-  const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
-    { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify(body) 
-    }
-  );
-  
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Telegram sendMessage error: ${errorText}`);
-  }
+);
+
+if (!res.ok) {
+  const errorText = await res.text();
+  throw new Error(`Telegram sendMessage error: ${errorText}`);
+}
 }
 
 // Transcribe voice message using Whisper
 async function transcribeVoice(fileId, env) {
-  // Get file path from Telegram
-  const fileRes = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${fileId}`
-  );
-  
-  if (!fileRes.ok) {
-    throw new Error(`Failed to get file info: ${await fileRes.text()}`);
+// Get file path from Telegram
+const fileRes = await fetch(
+  `https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${fileId}`
+);
+
+if (!fileRes.ok) {
+  throw new Error(`Failed to get file info: ${await fileRes.text()}`);
+}
+
+const info = await fileRes.json();
+const filePath = info.result.file_path;
+
+// Download voice file
+const fileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${filePath}`;
+const fileData = await fetch(fileUrl).then(r => r.arrayBuffer());
+
+// Prepare form data for OpenAI API
+const fd = new FormData();
+fd.append('model', 'whisper-1');
+fd.append('language', 'en');
+fd.append('file', new File([fileData], 'voice.ogg', { type: 'audio/ogg' }));
+
+// Call OpenAI Whisper API
+const whisperRes = await fetch(
+  'https://api.openai.com/v1/audio/transcriptions', 
+  { 
+    method: 'POST', 
+    headers: { Authorization: `Bearer ${env.OPENAI_KEY}` }, 
+    body: fd 
   }
-  
-  const info = await fileRes.json();
-  const filePath = info.result.file_path;
-  
-  // Download voice file
-  const fileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${filePath}`;
-  const fileData = await fetch(fileUrl).then(r => r.arrayBuffer());
-  
-  // Prepare form data for OpenAI API
-  const fd = new FormData();
-  fd.append('model', 'whisper-1');
-  fd.append('language', 'en');
-  fd.append('file', new File([fileData], 'voice.ogg', { type: 'audio/ogg' }));
-  
-  // Call OpenAI Whisper API
-  const whisperRes = await fetch(
-    'https://api.openai.com/v1/audio/transcriptions', 
-    { 
-      method: 'POST', 
-      headers: { Authorization: `Bearer ${env.OPENAI_KEY}` }, 
-      body: fd 
-    }
-  );
-  
-  if (!whisperRes.ok) {
-    throw new Error(`Whisper API error: ${await whisperRes.text()}`);
-  }
-  
-  const transcription = await whisperRes.json();
-  return transcription.text.trim();
+);
+
+if (!whisperRes.ok) {
+  throw new Error(`Whisper API error: ${await whisperRes.text()}`);
+}
+
+const transcription = await whisperRes.json();
+return transcription.text.trim();
 }
 
 // Calculate approximate duration from buffer size
 function calculateDuration(buf) {
-  // More accurate duration calculation based on Opus encoding
-  // For Opus format at speech quality, estimate roughly 20KB per second
-  const estimatedSeconds = Math.max(1, Math.round(buf.byteLength / 20000));
-  console.log(`Audio size: ${buf.byteLength} bytes, estimated duration: ${estimatedSeconds} seconds`);
-  return estimatedSeconds;
+// More accurate duration calculation based on Opus encoding
+// For Opus format at speech quality, estimate roughly 20KB per second
+const estimatedSeconds = Math.max(1, Math.round(buf.byteLength / 20000));
+console.log(`Audio size: ${buf.byteLength} bytes, estimated duration: ${estimatedSeconds} seconds`);
+return estimatedSeconds;
 }
 
 // Format time until date in human-readable form
 function formatTimeUntil(date) {
-  const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-  
-  if (diffMs <= 0) return 'now';
-  
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHr = Math.floor(diffMin / 60);
-  const diffDays = Math.floor(diffHr / 24);
-  
-  if (diffDays > 0) {
-    return `${diffDays} day${diffDays > 1 ? 's' : ''}`;
-  } else if (diffHr > 0) {
-    return `${diffHr} hour${diffHr > 1 ? 's' : ''}`;
-  } else if (diffMin > 0) {
-    return `${diffMin} minute${diffMin > 1 ? 's' : ''}`;
-  } else {
-    return `${diffSec} second${diffSec > 1 ? 's' : ''}`;
-  }
+const now = new Date();
+const diffMs = date.getTime() - now.getTime();
+
+if (diffMs <= 0) return 'now';
+
+const diffSec = Math.floor(diffMs / 1000);
+const diffMin = Math.floor(diffSec / 60);
+const diffHr = Math.floor(diffMin / 60);
+const diffDays = Math.floor(diffHr / 24);
+
+if (diffDays > 0) {
+  return `${diffDays} day${diffDays > 1 ? 's' : ''}`;
+} else if (diffHr > 0) {
+  return `${diffHr} hour${diffHr > 1 ? 's' : ''}`;
+} else if (diffMin > 0) {
+  return `${diffMin} minute${diffMin > 1 ? 's' : ''}`;
+} else {
+  return `${diffSec} second${diffSec > 1 ? 's' : ''}`;
+}
 }
