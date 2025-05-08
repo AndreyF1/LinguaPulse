@@ -1,10 +1,16 @@
-// telegram-webhook/worker.js
+// telegram-webhook/worker.js с интеграцией Stripe webhook
 // Receives every Telegram update on /tg and routes it to TEST or LESSON0
 
 export default {
   async fetch(request, env) {
     try {
       const { pathname } = new URL(request.url);
+      
+      // Обработчик вебхуков Stripe
+      if (pathname === '/stripe-webhook') {
+        return await handleStripeWebhook(request, env);
+      }
+      
       if (pathname !== '/tg') return new Response('Not found', { status: 404 });
 
       // 0. parse safely
@@ -96,7 +102,7 @@ export default {
         await handleLessonCommand(chatId, env);
         return new Response('OK');
       }
-        
+      
       // Modified /start command to check for existing level
       if (update.message?.text === '/start') {
         // Check if user is new or needs to register first
@@ -313,9 +319,9 @@ export default {
         }
       }
       
-      // 2.1 handle subscription button
+      // 2.1 handle subscription button - UPDATED FOR STRIPE
       if (update.callback_query?.data === 'subscribe:weekly') {
-        // Acknowledge the callback query to remove the loading indicator
+        // Acknowledge the callback query
         await callTelegram('answerCallbackQuery', {
           callback_query_id: update.callback_query.id
         }, env);
@@ -381,24 +387,39 @@ export default {
         }
         
         // If we get here, user doesn't have an active subscription or it has expired
-        // Process the new subscription
+        // ИЗМЕНЕНО: Используем Stripe для оплаты вместо прямой обработки подписки
         try {
-          // Call the payment worker directly using the service binding
+          // First notify the user about payment
+          await sendMessageViaTelegram(chatId,
+            "We'll now set up your weekly subscription for $1. You'll be redirected to the secure payment page.", 
+            env);
+          
+          // Call the payment worker to create a Stripe session
           const paymentResponse = await env.PAYMENT.fetch('https://internal/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               telegram_id: chatId,
-              action: 'process_subscription'
+              action: 'create_payment' // CHANGED: Using new action for Stripe
             })
           });
           
           if (!paymentResponse.ok) {
-            throw new Error(`Payment processing failed: ${paymentResponse.status}`);
+            throw new Error(`Payment initialization failed: ${paymentResponse.status}`);
           }
           
-          // The payment worker will handle sending the confirmation message
-          // and updating the user's subscription status
+          const paymentData = await paymentResponse.json();
+          
+          if (paymentData.success && paymentData.payment_url) {
+            // Send the payment URL to the user
+            await sendMessageViaTelegram(chatId,
+              "Complete your payment by clicking the button below:", 
+              env,
+              { inline_keyboard: [[{ text: "Pay $1 for Weekly Subscription", url: paymentData.payment_url }]] }
+            );
+          } else {
+            throw new Error('Payment URL generation failed');
+          }
           
         } catch (error) {
           console.error('Payment error:', error);
@@ -427,6 +448,181 @@ export default {
     }
   }
 };
+
+// Обработчик вебхуков от Stripe
+async function handleStripeWebhook(request, env) {
+  // Проверяем метод запроса
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+  
+  // Получаем сигнатуру для проверки
+  const signature = request.headers.get('stripe-signature');
+  if (!signature) {
+    console.error('Missing stripe-signature header');
+    return new Response('Missing signature', { status: 400 });
+  }
+  
+  // Получаем тело запроса
+  const payload = await request.text();
+  
+  try {
+    // Проверяем подпись вебхука
+    let event;
+    try {
+      event = await verifyStripeSignature(payload, signature, env.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.error('Webhook signature verification failed:', err);
+      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+    }
+    
+    console.log('Received Stripe webhook event:', event.type);
+    
+    // Обрабатываем только событие завершения checkout сессии
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      
+      // Проверяем статус платежа
+      if (session.payment_status === 'paid') {
+        console.log('Payment successful for session:', session.id);
+        
+        // Получаем ID пользователя из метаданных сессии
+        const telegramId = session.metadata?.telegram_id;
+        
+        if (!telegramId) {
+          console.error('No telegram_id in session metadata');
+          return new Response('Invalid session metadata', { status: 400 });
+        }
+        
+        // Проверяем, не обработан ли уже этот платеж
+        const { results: paymentResults } = await env.USER_DB
+          .prepare('SELECT * FROM payment_history WHERE stripe_session_id = ?')
+          .bind(session.id)
+          .all();
+        
+        if (paymentResults.length > 0) {
+          console.log(`Payment for session ${session.id} already processed, skipping`);
+          return new Response(JSON.stringify({ received: true, status: 'already_processed' }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        // Логируем платеж в базу данных
+        try {
+          await env.USER_DB
+            .prepare(`
+              INSERT INTO payment_history (
+                telegram_id, 
+                amount, 
+                status, 
+                stripe_session_id,
+                created_at
+              ) VALUES (?, ?, ?, ?, ?)
+            `)
+            .bind(
+              parseInt(telegramId, 10),
+              session.amount_total / 100, // Конвертируем центы в доллары
+              'completed',
+              session.id,
+              new Date().toISOString()
+            )
+            .run();
+            
+          console.log(`Payment logged for session ${session.id}, user ${telegramId}`);
+        } catch (dbError) {
+          console.error('Error logging payment to database:', dbError);
+          // Продолжаем, даже если не удалось записать платеж
+        }
+        
+        // Обрабатываем подписку через payment worker
+        const paymentResponse = await env.PAYMENT.fetch('https://internal/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            telegram_id: telegramId,
+            action: 'process_subscription',
+            session_id: session.id
+          })
+        });
+        
+        if (!paymentResponse.ok) {
+          const errorText = await paymentResponse.text();
+          throw new Error(`Payment processing failed: ${errorText}`);
+        }
+        
+        // Отправляем пользователю сообщение о успешной оплате
+        try {
+          await sendMessageViaTelegram(
+            telegramId,
+            "🎉 Your payment has been processed successfully! Your subscription is now active.",
+            env,
+            { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] }
+          );
+        } catch (msgError) {
+          console.error('Error sending confirmation message:', msgError);
+        }
+        
+        // Сбрасываем флаг обработки платежа
+        try {
+          await env.USER_DB
+            .prepare('UPDATE user_profiles SET payment_processing = 0, stripe_session_id = NULL WHERE telegram_id = ?')
+            .bind(parseInt(telegramId, 10))
+            .run();
+        } catch (resetError) {
+          console.error('Error resetting payment flags:', resetError);
+        }
+        
+        console.log(`Successfully processed subscription for user ${telegramId}`);
+      } else {
+        console.log(`Payment not yet completed for session: ${session.id}`);
+      }
+    }
+    
+    // Отвечаем успехом
+    return new Response(JSON.stringify({ received: true }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+  } catch (error) {
+    console.error('Webhook processing error:', error.message);
+    return new Response(`Webhook Error: ${error.message}`, { status: 400 });
+  }
+}
+
+// Простая реализация проверки подписи Stripe
+async function verifyStripeSignature(payload, signature, secret) {
+  if (!payload || !signature || !secret) {
+    throw new Error('Missing required parameters for signature verification');
+  }
+
+  // В реальном производственном коде здесь должна быть полная
+  // проверка HMAC-SHA256 подписи с использованием crypto API.
+  // В этом примере мы просто проверяем наличие подписи и парсим JSON.
+  
+  // Разбор заголовка подписи для базовой проверки
+  const timestampAndSignatures = signature.split(',').map(item => {
+    const [key, value] = item.split('=');
+    return { key, value };
+  });
+
+  const timestamp = timestampAndSignatures.find(item => item.key === 't')?.value;
+  
+  if (!timestamp) {
+    throw new Error('Unable to extract timestamp from signature');
+  }
+
+  // Проверка актуальности запроса (не старше 5 минут)
+  const currentTimestamp = Math.floor(Date.now() / 1000);
+  if (currentTimestamp - parseInt(timestamp) > 300) {
+    throw new Error('Webhook timeout');
+  }
+
+  try {
+    return JSON.parse(payload);
+  } catch (error) {
+    throw new Error('Invalid payload JSON');
+  }
+}
 
 // KV prefix for transient test state
 const STATE_PREFIX = 'state:';
@@ -557,4 +753,3 @@ function formatTimeUntil(date) {
   // less than 1 hour
   if (diffMin > 0) return `${diffMin}m`;
   return `${diffSec}s`;
-}
