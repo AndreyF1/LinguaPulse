@@ -130,8 +130,11 @@ async function createPaymentSession(telegramId, env) {
   }
 }
 
-// Обрабатываем подписку после успешной оплаты
+// payment-worker.js - улучшенная функция processSubscription
+
 async function processSubscription(telegramId, env, sessionId = null) {
+  console.log(`Processing subscription for user ${telegramId}, session ID: ${sessionId || 'Not provided'}`);
+  
   try {
     // Получаем текущий профиль пользователя
     const { results } = await env.USER_DB
@@ -140,10 +143,16 @@ async function processSubscription(telegramId, env, sessionId = null) {
       .all();
     
     if (!results.length) {
+      console.error(`User not found: ${telegramId}`);
       return new Response('User not found', { status: 404 });
     }
     
     const profile = results[0];
+    console.log(`Processing subscription for user profile:`, {
+      telegramId,
+      current_subscription: profile.subscription_expired_at,
+      current_next_lesson: profile.next_lesson_access_at
+    });
     
     // Проверяем, не была ли эта сессия уже обработана
     if (sessionId) {
@@ -153,21 +162,35 @@ async function processSubscription(telegramId, env, sessionId = null) {
         .all();
       
       if (paymentResults.length > 0) {
-        console.log(`Payment for session ${sessionId} already processed, skipping`);
+        console.log(`Payment for session ${sessionId} already processed, checking subscription status`);
         
-        // Сбрасываем флаг обработки на всякий случай
-        await env.USER_DB
-          .prepare('UPDATE user_profiles SET payment_processing = 0 WHERE telegram_id = ?')
-          .bind(parseInt(telegramId, 10))
-          .run();
+        // Проверяем, была ли подписка активирована
+        const now = new Date();
+        const hasActiveSubscription = profile.subscription_expired_at && 
+                                   (new Date(profile.subscription_expired_at) > now);
         
-        return new Response(JSON.stringify({
-          success: true,
-          message: "Payment already processed",
-          already_processed: true
-        }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+        console.log('Current subscription status:', hasActiveSubscription);
+        
+        // Если платеж записан, но подписка не активирована - это ошибка, исправляем
+        if (!hasActiveSubscription) {
+          console.log('Payment recorded but subscription not active, fixing profile');
+          // Продолжаем обработку для исправления профиля
+        } else {
+          // Сбрасываем флаг обработки на всякий случай
+          await env.USER_DB
+            .prepare('UPDATE user_profiles SET payment_processing = 0 WHERE telegram_id = ?')
+            .bind(parseInt(telegramId, 10))
+            .run();
+          
+          console.log('Payment already processed and subscription is active');
+          return new Response(JSON.stringify({
+            success: true,
+            message: "Payment already processed",
+            already_processed: true
+          }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
       }
     }
     
@@ -202,60 +225,95 @@ async function processSubscription(telegramId, env, sessionId = null) {
     const currentAmount = profile.amount_paid || 0;
     const amount_paid = currentAmount + 1;
     
-    // Записываем платеж в таблицу payment_history если не записан ранее
+    // Записываем платеж в таблицу payment_history если не записан ранее и предоставлен session_id
     if (sessionId) {
       try {
-        await env.USER_DB
-          .prepare(`
-            INSERT INTO payment_history (
-              telegram_id, 
-              amount, 
-              status, 
-              stripe_session_id,
-              created_at
-            ) VALUES (?, ?, ?, ?, ?)
-          `)
-          .bind(
-            parseInt(telegramId, 10),
-            1.00, // $1.00
-            'completed',
-            sessionId,
-            new Date().toISOString()
-          )
-          .run();
+        const { results: existingPayments } = await env.USER_DB
+          .prepare('SELECT * FROM payment_history WHERE stripe_session_id = ?')
+          .bind(sessionId)
+          .all();
         
-        console.log(`Payment recorded for user ${telegramId}, session ${sessionId}`);
+        if (existingPayments.length === 0) {
+          await env.USER_DB
+            .prepare(`
+              INSERT INTO payment_history (
+                telegram_id, 
+                amount, 
+                status, 
+                stripe_session_id,
+                created_at
+              ) VALUES (?, ?, ?, ?, ?)
+            `)
+            .bind(
+              parseInt(telegramId, 10),
+              1.00, // $1.00
+              'completed',
+              sessionId,
+              new Date().toISOString()
+            )
+            .run();
+          
+          console.log(`Payment recorded for user ${telegramId}, session ${sessionId}`);
+        } else {
+          console.log(`Payment already recorded for session ${sessionId}, updating only profile`);
+        }
       } catch (paymentError) {
         console.error('Error recording payment:', paymentError);
         // Продолжаем даже при ошибке записи платежа
       }
     }
     
-    // Обновляем профиль пользователя в базе данных
-    await env.USER_DB
-      .prepare(`
-        UPDATE user_profiles 
-        SET subscribed_at = ?, 
-            subscription_expired_at = ?, 
-            next_lesson_access_at = ?, 
-            amount_paid = ?,
-            payment_processing = 0,
-            stripe_session_id = NULL
-        WHERE telegram_id = ?
-      `)
-      .bind(
-        subscribed_at,
-        subscription_expired_at,
-        next_lesson_access_at,
-        amount_paid,
-        parseInt(telegramId, 10)
-      )
-      .run();
+    // Важно: прямое обновление профиля пользователя с более подробным логированием
+    console.log(`Updating user profile with new subscription data:`, {
+      telegramId,
+      new_subscription_expired_at: subscription_expired_at,
+      new_next_lesson_access_at: next_lesson_access_at
+    });
+    
+    try {
+      const updateResult = await env.USER_DB
+        .prepare(`
+          UPDATE user_profiles 
+          SET subscribed_at = ?, 
+              subscription_expired_at = ?, 
+              next_lesson_access_at = ?, 
+              amount_paid = ?,
+              payment_processing = 0,
+              stripe_session_id = NULL
+          WHERE telegram_id = ?
+        `)
+        .bind(
+          subscribed_at,
+          subscription_expired_at,
+          next_lesson_access_at,
+          amount_paid,
+          parseInt(telegramId, 10)
+        )
+        .run();
+      
+      console.log('Profile update result:', updateResult);
+      
+      // Дополнительная проверка, что обновление прошло успешно
+      const { results: updatedProfile } = await env.USER_DB
+        .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
+        .bind(parseInt(telegramId, 10))
+        .all();
+      
+      if (updatedProfile.length > 0) {
+        console.log('Profile after update:', {
+          subscription_expired_at: updatedProfile[0].subscription_expired_at,
+          next_lesson_access_at: updatedProfile[0].next_lesson_access_at
+        });
+      }
+    } catch (updateError) {
+      console.error('Error updating user profile:', updateError);
+      throw updateError; // Пробрасываем ошибку дальше для обработки
+    }
     
     console.log(`Subscription activated for user ${telegramId} until ${subscription_expired_at}`);
     
     // Отправляем подтверждение пользователю
-    await sendSubscriptionConfirmation(telegramId, env);
+    // await sendSubscriptionConfirmation(telegramId, env);
     
     return new Response(JSON.stringify({
       success: true,
