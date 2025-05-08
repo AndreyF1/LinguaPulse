@@ -753,3 +753,4 @@ function formatTimeUntil(date) {
   // less than 1 hour
   if (diffMin > 0) return `${diffMin}m`;
   return `${diffSec}s`;
+}
