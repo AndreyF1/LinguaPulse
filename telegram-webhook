@@ -6,73 +6,10 @@ export default {
     
     try {
       const { pathname } = new URL(request.url);
-      
-      // Handle debug Tribute webhook
-      if (pathname === '/debug-tribute-webhook') {
-        const url = new URL(request.url);
-        const telegramId = url.searchParams.get('user_id');
-        const days = parseInt(url.searchParams.get('days') || '7', 10);
-        
-        if (!telegramId) {
-          return new Response('Missing user_id parameter', { status: 400 });
-        }
-        
-        // Создаем фейковый вебхук от Tribute
-        const now = new Date();
-        const expiryDate = new Date(now);
-        expiryDate.setDate(expiryDate.getDate() + days);
-        
-        // Даты для подписки
-        const subscribed_at = now.toISOString();
-        const subscription_expired_at = expiryDate.toISOString();
-        
-        // Для новых подписок делаем урок сразу доступным
-        const nextLessonDate = new Date(now);
-        nextLessonDate.setTime(now.getTime() - 60000); // 1 минута назад
-        const next_lesson_access_at = nextLessonDate.toISOString();
-        
-        // Обновляем профиль пользователя если он существует
-        const { results } = await env.USER_DB
-          .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
-          .bind(parseInt(telegramId, 10))
-          .all();
-        
-        if (results.length === 0) {
-          return new Response(`User ${telegramId} not found in database`, { status: 404 });
-        }
-        
-        // Обновляем информацию о подписке
-        await env.USER_DB
-          .prepare(`
-            UPDATE user_profiles
-            SET subscribed_at = ?,
-                subscription_expired_at = ?,
-                next_lesson_access_at = ?
-            WHERE telegram_id = ?
-          `)
-          .bind(
-            subscribed_at,
-            subscription_expired_at,
-            next_lesson_access_at,
-            parseInt(telegramId, 10)
-          )
-          .run();
-        
-        // Отправляем уведомление пользователю (опционально)
-        if (url.searchParams.get('notify') === 'true') {
-          await sendMessageViaTelegram(telegramId,
-            "🎉 TEST: Your subscription has been activated for testing purposes!",
-            env,
-            { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] }
-          );
-        }
-        
-        return new Response(`Successfully activated test subscription for user ${telegramId}\n\n` +
-          `Subscribed at: ${subscribed_at}\n` +
-          `Expires at: ${subscription_expired_at}\n` +
-          `Next lesson available at: ${next_lesson_access_at}`, 
-          { headers: { 'Content-Type': 'text/plain' } }
-        );
+
+      // Handle Tribute webhook
+      if (pathname === '/tribute-webhook') {
+        return await handleTributeWebhook(request, env);
       }
 
       // Keep existing Stripe webhook handler for backward compatibility
