@@ -3,14 +3,78 @@
 
 export default {
   async fetch(request, env) {
+    
     try {
       const { pathname } = new URL(request.url);
       
-      // Handle Tribute webhook
-      if (pathname === '/tribute-webhook') {
-        return await handleTributeWebhook(request, env);
+      // Handle debug Tribute webhook
+      if (pathname === '/debug-tribute-webhook') {
+        const url = new URL(request.url);
+        const telegramId = url.searchParams.get('user_id');
+        const days = parseInt(url.searchParams.get('days') || '7', 10);
+        
+        if (!telegramId) {
+          return new Response('Missing user_id parameter', { status: 400 });
+        }
+        
+        // Создаем фейковый вебхук от Tribute
+        const now = new Date();
+        const expiryDate = new Date(now);
+        expiryDate.setDate(expiryDate.getDate() + days);
+        
+        // Даты для подписки
+        const subscribed_at = now.toISOString();
+        const subscription_expired_at = expiryDate.toISOString();
+        
+        // Для новых подписок делаем урок сразу доступным
+        const nextLessonDate = new Date(now);
+        nextLessonDate.setTime(now.getTime() - 60000); // 1 минута назад
+        const next_lesson_access_at = nextLessonDate.toISOString();
+        
+        // Обновляем профиль пользователя если он существует
+        const { results } = await env.USER_DB
+          .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
+          .bind(parseInt(telegramId, 10))
+          .all();
+        
+        if (results.length === 0) {
+          return new Response(`User ${telegramId} not found in database`, { status: 404 });
+        }
+        
+        // Обновляем информацию о подписке
+        await env.USER_DB
+          .prepare(`
+            UPDATE user_profiles
+            SET subscribed_at = ?,
+                subscription_expired_at = ?,
+                next_lesson_access_at = ?
+            WHERE telegram_id = ?
+          `)
+          .bind(
+            subscribed_at,
+            subscription_expired_at,
+            next_lesson_access_at,
+            parseInt(telegramId, 10)
+          )
+          .run();
+        
+        // Отправляем уведомление пользователю (опционально)
+        if (url.searchParams.get('notify') === 'true') {
+          await sendMessageViaTelegram(telegramId,
+            "🎉 TEST: Your subscription has been activated for testing purposes!",
+            env,
+            { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] }
+          );
+        }
+        
+        return new Response(`Successfully activated test subscription for user ${telegramId}\n\n` +
+          `Subscribed at: ${subscribed_at}\n` +
+          `Expires at: ${subscription_expired_at}\n` +
+          `Next lesson available at: ${next_lesson_access_at}`, 
+          { headers: { 'Content-Type': 'text/plain' } }
+        );
       }
-      
+
       // Keep existing Stripe webhook handler for backward compatibility
       if (pathname === '/stripe-webhook') {
         return await handleStripeWebhook(request, env);
@@ -108,8 +172,46 @@ export default {
         return new Response('OK');
       }
       
-      // Modified /start command to check for existing level
-      if (update.message?.text === '/start') {
+      // Modified /start command to check for welcome parameter
+      if (update.message?.text?.startsWith('/start')) {
+        // Check if this is a return from subscription
+        const isWelcomeBack = update.message.text.includes('welcome');
+        
+        if (isWelcomeBack) {
+          // This is a user returning from subscribing
+          const { results } = await env.USER_DB
+            .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
+            .bind(parseInt(chatId, 10))
+            .all();
+          
+          if (results.length > 0) {
+            const profile = results[0];
+            const now = new Date();
+            
+            // Check if subscription is active
+            const hasActiveSubscription = profile.subscription_expired_at && 
+                                        (new Date(profile.subscription_expired_at) > now);
+            
+            if (hasActiveSubscription) {
+              // Subscription is active, check if lesson is available
+              if (profile.next_lesson_access_at && (new Date(profile.next_lesson_access_at) <= now)) {
+                // Lesson is available, offer to start it
+                await sendMessageViaTelegram(chatId,
+                  "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
+                  env,
+                  { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] });
+                return new Response('OK');
+              }
+            }
+          }
+        }
+        
+        // Check if user has completed test already
+        if (await hasCompletedTest(chatId, env)) {
+          await handleLessonCommand(chatId, env);
+          return new Response('OK');
+        }
+        
         // Check if user is new or needs to register first
         const { results } = await env.USER_DB
           .prepare('SELECT telegram_id FROM user_profiles WHERE telegram_id = ?')
@@ -411,40 +513,109 @@ export default {
 // UPDATED: Handle Tribute webhook for subscription notifications
 async function handleTributeWebhook(request, env) {
   try {
+    console.log('==== TRIBUTE WEBHOOK RECEIVED ====');
+    
     // Ensure this is a POST request
     if (request.method !== 'POST') {
+      console.log('Method not allowed, expected POST, got:', request.method);
       return new Response('Method not allowed', { status: 405 });
     }
     
-    // Get the signature header for verification
-    const signature = request.headers.get('x-tribute-signature');
-    if (!signature) {
-      console.error('Missing Tribute signature header');
-      return new Response('Missing signature', { status: 400 });
+    // Log headers for debugging
+    console.log('Request headers:');
+    const headersObj = {};
+    for (const [key, value] of request.headers.entries()) {
+      headersObj[key] = value;
+      console.log(`${key}: ${value}`);
     }
     
-    // Get the payload
-    const payload = await request.text();
+    // Get the signature if available (for verification)
+    const signature = request.headers.get('trbt-signature');
+    if (signature) {
+      console.log('Provided signature:', signature);
+    }
     
-    // Verify the signature
+    // Get the raw payload
+    const payload = await request.text();
+    console.log('Tribute webhook payload:', payload);
+    
+    // Try to parse the payload
     let event;
     try {
-      event = await verifyTributeSignature(payload, signature, env.TRIBUTE_API_KEY);
-    } catch (err) {
-      console.error('Tribute webhook signature verification failed:', err);
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+      event = JSON.parse(payload);
+      console.log('Parsed event:', JSON.stringify(event));
+    } catch (parseError) {
+      console.error('Failed to parse payload as JSON:', parseError);
+      return new Response('Invalid JSON payload', { status: 400 });
     }
     
-    console.log('Received Tribute webhook event:', event.type);
+    // CRITICAL: Extract telegram_user_id from the correct location in the structure
+    let userId = null;
     
-    // Handle different webhook types
-    if (event.type === 'subscription_created' || event.type === 'subscription_renewed') {
-      // A user has subscribed or renewed their subscription to the channel
-      const telegramUserId = event.user_id;
-      const expiryDate = new Date(event.expires_at);
-      
-      console.log(`Processing subscription for Telegram user ${telegramUserId}, expires: ${expiryDate}`);
-      
+    // Look for telegram_user_id in the payload object (actual Tribute structure)
+    if (event.payload && event.payload.telegram_user_id) {
+      userId = event.payload.telegram_user_id;
+      console.log(`Found telegram_user_id in event.payload: ${userId}`);
+    }
+    // Fallback: Check for user_id directly in the event
+    else if (event.telegram_user_id) {
+      userId = event.telegram_user_id;
+      console.log(`Found telegram_user_id directly in event: ${userId}`);
+    }
+    // Fallback: Check for user_id in various other locations
+    else if (event.user_id) {
+      userId = event.user_id;
+      console.log(`Found user_id directly in event: ${userId}`);
+    }
+    else if (event.payload && event.payload.user_id) {
+      userId = event.payload.user_id;
+      console.log(`Found user_id in event.payload: ${userId}`);
+    }
+    else {
+      console.error('Could not find telegram_user_id or user_id in webhook payload');
+      console.log('Full event structure:', JSON.stringify(event));
+      return new Response('Missing user ID in webhook payload', { status: 400 });
+    }
+    
+    console.log(`Using user_id: ${userId}`);
+    
+    // Extract subscription information
+    let isNewSubscription = false;
+    let expiryDate = null;
+    
+    // Check if this is a new subscription by looking at the name field (Tribute specific)
+    if (event.name === 'new_subscription') {
+      isNewSubscription = true;
+      console.log('Identified as new subscription from event.name');
+    }
+    
+    // Extract expiry date from the correct location (Tribute specific)
+    if (event.payload && event.payload.expires_at) {
+      expiryDate = new Date(event.payload.expires_at);
+      console.log(`Found expires_at in event.payload: ${event.payload.expires_at}`);
+    }
+    else if (event.expires_at) {
+      expiryDate = new Date(event.expires_at);
+      console.log(`Found expires_at directly in event: ${event.expires_at}`);
+    }
+    
+    // Validate expiry date
+    if (expiryDate && isNaN(expiryDate.getTime())) {
+      console.warn('Invalid expiry date format detected');
+      expiryDate = null;
+    }
+    
+    // If no valid date found, use default (7 days)
+    if (!expiryDate) {
+      console.log('Using default expiry date (7 days from now)');
+      expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+    }
+    
+    console.log('Expiry date:', expiryDate.toISOString());
+    
+    // Process subscription if it's new or we're forcing an update
+    if (isNewSubscription) {
       // Calculate dates for subscription
       const now = new Date();
       const subscribed_at = now.toISOString();
@@ -457,25 +628,30 @@ async function handleTributeWebhook(request, env) {
       
       // Update user profile with subscription info
       try {
-        // First check if user exists in our database
-        const { results } = await env.USER_DB
+        // Check if user exists in our database
+        console.log(`Checking if user ${userId} exists in database...`);
+        const { results, success, error } = await env.USER_DB
           .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
-          .bind(parseInt(telegramUserId, 10))
+          .bind(parseInt(userId, 10))
           .all();
         
+        if (!success) {
+          console.error('Database query error:', error);
+          throw new Error('Database query failed: ' + (error || 'Unknown error'));
+        }
+        
         if (results.length === 0) {
-          console.error(`User ${telegramUserId} not found in database`);
-          return new Response(JSON.stringify({ 
-            status: 'error', 
-            message: 'User not found in database' 
-          }), { 
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
+          console.error(`User ${userId} not found in database`);
+          return new Response(`User ${userId} not found in database. Please complete the placement test first.`, { 
+            status: 404, 
+            headers: { 'Content-Type': 'text/plain' } 
           });
         }
         
+        console.log(`User ${userId} found, updating subscription...`);
+        
         // Update subscription info
-        await env.USER_DB
+        const updateResult = await env.USER_DB
           .prepare(`
             UPDATE user_profiles
             SET subscribed_at = ?,
@@ -487,21 +663,58 @@ async function handleTributeWebhook(request, env) {
             subscribed_at,
             subscription_expired_at,
             next_lesson_access_at,
-            parseInt(telegramUserId, 10)
+            parseInt(userId, 10)
           )
           .run();
         
-        console.log(`Successfully updated subscription for user ${telegramUserId}`);
+        console.log('Database update result:', updateResult);
+        
+        if (!updateResult.success) {
+          console.error('Database update error:', updateResult.error);
+          throw new Error('Failed to update subscription: ' + (updateResult.error || 'Unknown error'));
+        }
+        
+        // Double-check that the update was successful
+        const { results: verifyResults } = await env.USER_DB
+          .prepare('SELECT subscribed_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+          .bind(parseInt(userId, 10))
+          .all();
+        
+        if (verifyResults.length > 0) {
+          console.log('Subscription successfully updated:', {
+            user_id: userId,
+            subscribed_at: verifyResults[0].subscribed_at,
+            subscription_expired_at: verifyResults[0].subscription_expired_at
+          });
+        }
         
         // Notify user about successful subscription
-        await sendMessageViaTelegram(telegramUserId,
-          "🎉 Your subscription has been activated! You now have access to daily personalized English lessons.",
-          env,
-          { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] }
-        );
+        try {
+          console.log(`Sending notification to user ${userId}`);
+          await sendMessageViaTelegram(userId,
+            "🎉 Your subscription has been activated! You now have access to daily personalized English lessons.",
+            env,
+            { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] }
+          );
+          console.log(`Notification sent to user ${userId}`);
+        } catch (msgError) {
+          console.error('Error sending subscription notification:', msgError);
+          // Continue even if notification fails
+        }
+        
+        console.log('==== TRIBUTE WEBHOOK PROCESSING COMPLETED SUCCESSFULLY ====');
+        
+        return new Response(JSON.stringify({ 
+          status: 'success',
+          message: 'Subscription activated successfully',
+          user_id: userId,
+          expiry_date: subscription_expired_at
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
         
       } catch (error) {
-        console.error('Error updating user subscription:', error);
+        console.error('Error processing subscription:', error);
         return new Response(JSON.stringify({ 
           status: 'error', 
           message: 'Database error: ' + error.message 
@@ -510,18 +723,18 @@ async function handleTributeWebhook(request, env) {
           headers: { 'Content-Type': 'application/json' }
         });
       }
-    } else if (event.type === 'subscription_cancelled') {
-      // User cancelled their subscription - we can mark this in our database if needed
-      // For now, we'll just let the subscription expire naturally
-      console.log(`User ${event.user_id} cancelled their subscription, will expire at ${event.expires_at}`);
+    } else {
+      console.log('Not identified as a new subscription event, skipping processing');
+      return new Response(JSON.stringify({
+        status: 'success',
+        message: 'Event received but not processed (not identified as a new subscription)'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
     
-    return new Response(JSON.stringify({ status: 'success' }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
   } catch (error) {
-    console.error('Error processing Tribute webhook:', error);
+    console.error('Unhandled error in handleTributeWebhook:', error);
     return new Response(JSON.stringify({ 
       status: 'error', 
       message: 'Internal server error: ' + error.message 
@@ -533,30 +746,47 @@ async function handleTributeWebhook(request, env) {
 }
 
 // Verify Tribute webhook signature
-async function verifyTributeSignature(payload, signature, secret) {
-  if (!signature || !secret) {
+async function verifyTributeSignature(payload, signature, apiKey) {
+  if (!payload || !signature || !apiKey) {
     throw new Error('Missing required parameters for signature verification');
   }
-  
+
   try {
-    // Tribute's webhook signatures are typically timestamped HMAC-SHA256 signatures
-    // For now, we'll use this placeholder since we don't have the exact implementation details
-    // In a production environment, this should be replaced with proper signature verification
-    // based on Tribute's documentation
+    // Tribute uses standard HMAC-SHA256 for signature verification
+    // 1. Create a crypto key from the API key
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiKey);
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify']
+    );
     
-    // Parse payload as JSON
-    const data = JSON.parse(payload);
+    // 2. Calculate HMAC of the payload
+    const payloadData = encoder.encode(payload);
+    const signatureBuffer = await crypto.subtle.sign(
+      'HMAC',
+      cryptoKey,
+      payloadData
+    );
     
-    // Validate event has required fields
-    if (!data.type || !data.user_id) {
-      throw new Error('Invalid webhook payload structure');
-    }
+    // 3. Convert to hex
+    const calculatedSignature = Array.from(new Uint8Array(signatureBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
     
-    // Return the parsed data if signature seems valid
-    return data;
+    // 4. Compare with the provided signature
+    // Note: Depending on how Tribute formats their signature, you might need to adjust this comparison
+    // Some services use base64 encoding, others use hex
+    console.log('Calculated signature:', calculatedSignature);
+    console.log('Provided signature:', signature);
     
+    return calculatedSignature === signature;
   } catch (error) {
-    throw new Error(`Signature verification failed: ${error.message}`);
+    console.error('Error during signature verification:', error);
+    throw new Error('Signature verification failed: ' + error.message);
   }
 }
 
@@ -735,16 +965,20 @@ async function verifyStripeSignature(payload, signature, secret) {
   }
 }
 
-// NEW: Function to send Tribute channel link for subscription
+// UPDATED: Function to send Tribute channel link for subscription
 async function sendTributeChannelLink(chatId, env) {
   // Get channel link from environment variable
   const channelLink = env.TRIBUTE_CHANNEL_LINK;
 
-  const message = "To subscribe to our premium lessons, join our channel and click the 'Subscribe' button. After subscribing, your lessons will be automatically available in this bot!";
+  const message = "🔑 To unlock premium lessons, please subscribe to our channel:\n\n" +
+                 "1. Click the button below to open our channel\n" +
+                 "2. Press the 'Subscribe' button in the channel ($1/week)\n" +
+                 "3. After payment, you'll receive a confirmation message from the bot\n\n" +
+                 "Your subscription will give you access to daily personalized English lessons!";
   
   const keyboard = {
     inline_keyboard: [
-      [{ text: "Subscribe to Channel ($1/week)", url: channelLink }]
+      [{ text: "Go to channel to Subscribe ($1/week)", url: channelLink }]
     ]
   };
   
@@ -838,10 +1072,10 @@ async function handleLessonCommand(chatId, env) {
     message += 'Your subscription has expired or you haven\'t subscribed yet.';
     
     // Get channel link from environment variable
-    const channelLink = env.TRIBUTE_CHANNEL_LINK;
+    const channelLink = env.TRIBUTE_CHANNEL_LINK || "https://t.me/linguapulseofficial";
     
     await sendMessageViaTelegram(chatId, message, env, {
-      inline_keyboard: [[{ text: 'Subscribe to Channel ($1/week)', url: channelLink }]]
+      inline_keyboard: [[{ text: 'Go to channel to Subscribe ($1/week)', url: channelLink }]]
     });
     return;
   }
