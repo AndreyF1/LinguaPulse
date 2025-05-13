@@ -1,6 +1,7 @@
 // reminder-worker.js
 // Sends daily reminders to users at 10 AM to encourage consistent practice
 // Triggered by Cloudflare Cron Trigger (daily at 10:00)
+// Also handles streak maintenance - resets streak if user missed a day
 
 export default {
   // This scheduled handler runs once per day at 10:00 AM
@@ -13,13 +14,14 @@ export default {
       const batchSize = 50; // Process 50 users at a time
       let processedCount = 0;
       let remindersSent = 0;
+      let streaksReset = 0;
       
       do {
         // Query user profiles from D1 database
         // Get users with either an active subscription or who have completed the test
         const query = `
           SELECT telegram_id, eng_level, subscription_expired_at, 
-                 next_lesson_access_at, lessons_in_row
+                 next_lesson_access_at, lessons_in_row, daily_lesson_pass_at
           FROM user_profiles
           WHERE eng_level IS NOT NULL
           LIMIT ? ${cursor ? 'OFFSET ?' : ''}
@@ -47,7 +49,11 @@ export default {
           const hasActiveSubscription = user.subscription_expired_at && 
                                       (new Date(user.subscription_expired_at) > now);
           
-          // Now process based on subscription status
+          // Check streak maintenance - regardless of subscription status
+          // This ensures we maintain accurate streaks for all users
+          await checkAndUpdateStreak(user, now, env, streaksReset);
+          
+          // Now process based on subscription status for reminders
           if (hasActiveSubscription) {
             // User has active subscription - check if next lesson is available
             const lessonAvailable = user.next_lesson_access_at && 
@@ -95,7 +101,7 @@ export default {
         
       } while (cursor !== null);
       
-      console.log(`Reminder processing complete. Processed ${processedCount} users, sent ${remindersSent} reminders.`);
+      console.log(`Reminder processing complete. Processed ${processedCount} users, sent ${remindersSent} reminders, reset ${streaksReset} streaks.`);
       
     } catch (error) {
       console.error('Error in reminder worker:', error);
@@ -120,6 +126,50 @@ export default {
     });
   }
 };
+
+// Check and update user's streak status
+async function checkAndUpdateStreak(user, now, env, streaksResetCounter) {
+  // Only process users who have completed at least one lesson
+  if (!user.daily_lesson_pass_at) return;
+  
+  const lastLessonDate = new Date(user.daily_lesson_pass_at);
+  const currentStreak = user.lessons_in_row || 0;
+  
+  // Calculate dates for comparison
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(0, 0, 0, 0);
+  
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  
+  const tomorrowStart = new Date(now);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  tomorrowStart.setHours(0, 0, 0, 0);
+  
+  // Check if the last lesson was completed yesterday or today
+  const isRecentLesson = 
+    (lastLessonDate >= yesterday && lastLessonDate < todayStart) || // Yesterday
+    (lastLessonDate >= todayStart && lastLessonDate < tomorrowStart); // Today
+  
+  // If streak is broken, reset it to 0
+  if (!isRecentLesson && currentStreak > 0) {
+    console.log(`Resetting streak for user ${user.telegram_id}. Last lesson: ${lastLessonDate.toISOString()}, Current streak: ${currentStreak}`);
+    
+    try {
+      await env.USER_DB
+        .prepare('UPDATE user_profiles SET lessons_in_row = 0 WHERE telegram_id = ?')
+        .bind(parseInt(user.telegram_id, 10))
+        .run();
+      
+      if (typeof streaksResetCounter === 'number') {
+        streaksResetCounter++;
+      }
+    } catch (error) {
+      console.error(`Failed to reset streak for user ${user.telegram_id}:`, error);
+    }
+  }
+}
 
 // Helper function to send a message via Telegram Bot API
 async function sendTelegramMessage(chatId, text, env, inlineKeyboard = null) {
