@@ -46,11 +46,6 @@ if (update.message?.text) {
       '*/lesson* - Access your lessons and subscription status\n' +
       '*/talk* - Start today\'s lesson (for subscribers)\n' +
       '*/help* - Show this help message\n\n' +
-      '🔍 *How to use LinguaPulse:*\n\n' +
-      '1️⃣ Take the placement test with /start\n' +
-      '2️⃣ Try your free audio lesson\n' +
-      '3️⃣ Subscribe for daily personalized lessons\n' +
-      '4️⃣ Practice by sending voice messages\n\n' +
       '💡 *Did you know?* Just 10-15 minutes of conversation practice daily can improve your English skills more than years of study without regular speaking practice!\n\n' +
       '• Send voice messages during the lesson to practice speaking\n' +
       '• The AI tutor may take a few seconds to think and respond\n' +
