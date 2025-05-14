@@ -33,21 +33,34 @@ export default {
                   || update.callback_query?.message?.chat?.id;
       if (!chatId) return new Response('OK');
 
-      // Handle /help command directly in webhook
-      if (update.message?.text === '/help') {
-        await sendMessageViaTelegram(chatId, 
-          'Available commands:\n' +
-          '/start - Begin the language placement test or see your profile\n' +
-          '/profile - View your language level and progress\n' +
-          '/lesson - Access your lessons and subscription status\n' +
-          '/talk - Start today\'s lesson (for subscribers)\n' +
-          '/help - Show this help message\n\n' +
-          'After completing the test, you can:\n' +
-          '• Start a free audio lesson by clicking the "Free audio lesson" button\n' +
-          '• Send voice messages during the lesson to practice your speaking\n' +
-          '• The lesson ends automatically when completed', env);
-        return new Response('OK');
-      }
+      // Handle /help command, unknown commands, and regular text messages
+const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help'];
+
+if (update.message?.text) {
+  if (update.message.text === '/help' || 
+      !supportedCommands.some(cmd => update.message.text.startsWith(cmd))) {
+    await sendMessageViaTelegram(chatId, 
+      '🤖 *LinguaPulse Bot Commands:*\n\n' +
+      '*/start* - Begin the language placement test or see your profile\n' +
+      '*/profile* - View your language level and progress\n' +
+      '*/lesson* - Access your lessons and subscription status\n' +
+      '*/talk* - Start today\'s lesson (for subscribers)\n' +
+      '*/help* - Show this help message\n\n' +
+      '🔍 *How to use LinguaPulse:*\n\n' +
+      '1️⃣ Take the placement test with /start\n' +
+      '2️⃣ Try your free audio lesson\n' +
+      '3️⃣ Subscribe for daily personalized lessons\n' +
+      '4️⃣ Practice by sending voice messages\n\n' +
+      '💡 *Did you know?* Just 10-15 minutes of conversation practice daily can improve your English skills more than years of study without regular speaking practice!\n\n' +
+      '• Send voice messages during the lesson to practice speaking\n' +
+      '• The AI tutor may take a few seconds to think and respond\n' +
+      '• Lessons end automatically\n' +
+      '• You\'ll receive personalized grammar and vocabulary feedback after each lesson', 
+      env,
+      { parse_mode: 'Markdown' });
+    return new Response('OK');
+  }
+}
 
       // Handle /talk command - route to main-lesson
       if (update.message?.text === '/talk') {
@@ -926,11 +939,19 @@ async function sendTributeChannelLink(chatId, env) {
 const STATE_PREFIX = 'state:';
 
 /* ──── helper: send a text via Telegram Bot API ──── */
-async function sendMessageViaTelegram(chatId, text, env, keyboard = null) {
+async function sendMessageViaTelegram(chatId, text, env, options = null) {
   const payload = { chat_id: chatId, text };
   
-  if (keyboard) {
-    payload.reply_markup = keyboard;
+  if (options) {
+    // Handle keyboard options
+    if (options.inline_keyboard || options.reply_markup) {
+      payload.reply_markup = options.inline_keyboard || options.reply_markup;
+    }
+    
+    // Handle parse_mode option
+    if (options.parse_mode) {
+      payload.parse_mode = options.parse_mode;
+    }
   }
   
   return callTelegram('sendMessage', payload, env);
