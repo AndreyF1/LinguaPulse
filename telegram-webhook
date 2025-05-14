@@ -1109,7 +1109,7 @@ async function handleLessonCommand(chatId, env) {
       message += 'Your subscription has expired or you haven\'t subscribed yet.';
       
       // Get channel link from environment variable
-      const channelLink = env.TRIBUTE_CHANNEL_LINK || "https://t.me/linguapulseofficial";
+      const channelLink = env.TRIBUTE_CHANNEL_LINK;
       
       await sendMessageViaTelegram(chatId, message, env, {
         inline_keyboard: [[{ text: 'Subscribe ($1/week)', url: channelLink }]]
