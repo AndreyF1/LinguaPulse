@@ -111,11 +111,24 @@ if (update.message?.text) {
       }
 
       // Handle /lesson command - same as /start for users who completed the test
-      if (update.message?.text === '/lesson' || 
-        (update.message?.text === '/start' && await hasCompletedTest(chatId, env))) {
-        await handleLessonCommand(chatId, env);
-        return new Response('OK');
-      }
+if (update.message?.text === '/lesson' || 
+(update.message?.text === '/start' && await hasCompletedTest(chatId, env))) {
+try {
+console.log(`Calling handleLessonCommand for user ${chatId}`);
+await handleLessonCommand(chatId, env);
+} catch (error) {
+console.error(`Error handling /lesson command for user ${chatId}:`, error);
+// Fallback response in case of error
+try {
+  await sendMessageViaTelegram(chatId, 
+    "Sorry, there was an error processing your command. Please try again later or contact support.", 
+    env);
+} catch (sendError) {
+  console.error("Failed to send error message:", sendError);
+}
+}
+return new Response('OK');
+}
       
       // Modified /start command to check for welcome parameter
       if (update.message?.text?.startsWith('/start')) {
@@ -923,7 +936,7 @@ async function sendTributeChannelLink(chatId, env) {
   
   const keyboard = {
     inline_keyboard: [
-      [{ text: "Go to channel to Subscribe ($1/week)", url: channelLink }]
+      [{ text: "Subscribe ($1/week)", url: channelLink }]
     ]
   };
   
@@ -935,30 +948,86 @@ const STATE_PREFIX = 'state:';
 
 /* ──── helper: send a text via Telegram Bot API ──── */
 async function sendMessageViaTelegram(chatId, text, env, options = null) {
-  const payload = { chat_id: chatId, text };
-  
-  if (options) {
-    // Handle keyboard options
-    if (options.inline_keyboard || options.reply_markup) {
-      payload.reply_markup = options.inline_keyboard || options.reply_markup;
+  try {
+    console.log(`Sending message to ${chatId}:`, text.substring(0, 50) + (text.length > 50 ? "..." : ""));
+    
+    const payload = { chat_id: chatId, text };
+    
+    if (options) {
+      console.log(`Message options type:`, typeof options);
+      
+      // If options is directly a keyboard
+      if (options.inline_keyboard) {
+        console.log(`Direct inline_keyboard found:`, JSON.stringify(options).substring(0, 100));
+        payload.reply_markup = options;
+      }
+      // If options has reply_markup
+      else if (options.reply_markup) {
+        console.log(`reply_markup found:`, JSON.stringify(options.reply_markup).substring(0, 100));
+        payload.reply_markup = options.reply_markup;
+      }
+      // If options is an object with other properties
+      else {
+        console.log(`Other options found:`, JSON.stringify(options).substring(0, 100));
+        
+        // Handle parse_mode option
+        if (options.parse_mode) {
+          payload.parse_mode = options.parse_mode;
+        }
+      }
     }
     
-    // Handle parse_mode option
-    if (options.parse_mode) {
-      payload.parse_mode = options.parse_mode;
+    console.log(`Final payload:`, JSON.stringify(payload).substring(0, 200));
+    
+    const response = await callTelegram('sendMessage', payload, env);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Telegram API error:`, errorText);
+      throw new Error(`Telegram API error: ${errorText}`);
     }
+    
+    console.log(`Message sent successfully to ${chatId}`);
+    return response;
+  } catch (error) {
+    console.error(`Error sending message to ${chatId}:`, error);
+    throw error; // Re-throw to handle at the caller level
   }
-  
-  return callTelegram('sendMessage', payload, env);
 }
 
 /* ──── helper: call any Telegram API method ──── */
 async function callTelegram(method, payload, env) {
-  return fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
-    method : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body   : JSON.stringify(payload)
-  });
+  try {
+    console.log(`Calling Telegram API ${method} with payload:`, JSON.stringify(payload).substring(0, 200));
+    
+    if (!env.BOT_TOKEN) {
+      console.error(`Missing BOT_TOKEN in environment`);
+      throw new Error("Missing BOT_TOKEN");
+    }
+    
+    const apiUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`;
+    console.log(`API URL:`, apiUrl);
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    console.log(`Telegram API ${method} response status:`, response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Telegram API ${method} error:`, errorText);
+    } else {
+      console.log(`Telegram API ${method} call successful`);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error(`Error calling Telegram API ${method}:`, error);
+    throw error;
+  }
 }
 
 /* ──── helper: proxy payload to another Worker ──── */
@@ -982,73 +1051,103 @@ async function hasCompletedTest(chatId, env) {
 
 /* ──── helper: handle lesson command ──── */
 async function handleLessonCommand(chatId, env) {
-  // Get user profile with all necessary fields
-  const { results } = await env.USER_DB
-    .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
-    .bind(parseInt(chatId, 10))
-    .all();
-  
-  if (!results.length) {
-    await sendMessageViaTelegram(chatId, 
-      'You need to take the placement test first. Use /start to begin.', env);
-    return;
-  }
-  
-  const profile = results[0];
-  
-  // Basic profile info
-  const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
-  const lessonsTotal = profile.number_of_lessons || 0;
-  const lessonsStreak = profile.lessons_in_row || 0;
-  
-  let message = `Your language profile:\n` +
-    `Language level: ${profile.eng_level}\n` +
-    `Total lessons completed: ${lessonsTotal}\n` +
-    `Current lesson streak: ${lessonsStreak}\n\n`;
-  
-  // Check pass_lesson0_at first
-  if (!profile.pass_lesson0_at) {
-    // Free lesson not taken yet - show button
-    message += 'You haven\'t taken your free introductory lesson yet.';
-    await sendMessageViaTelegram(chatId, message, env, {
-      inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
-    });
-    return;
-  }
-  
-  // Check subscription status
-  const now = new Date();
-  const subExpiredAt = profile.subscription_expired_at ? new Date(profile.subscription_expired_at) : null;
-  
-  if (!subExpiredAt || subExpiredAt.getTime() < now.getTime()) {
-    // No active subscription or it's expired - show subscribe button to Tribute channel
-    message += 'Your subscription has expired or you haven\'t subscribed yet.';
+  try {
+    console.log(`handleLessonCommand started for user ${chatId}`);
     
-    // Get channel link from environment variable
-    const channelLink = env.TRIBUTE_CHANNEL_LINK || "https://t.me/linguapulseofficial";
+    // Get user profile with all necessary fields
+    console.log(`Querying database for user ${chatId}`);
+    const { results } = await env.USER_DB
+      .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
+      .bind(parseInt(chatId, 10))
+      .all();
     
-    await sendMessageViaTelegram(chatId, message, env, {
-      inline_keyboard: [[{ text: 'Go to channel to Subscribe ($1/week)', url: channelLink }]]
+    console.log(`Database query results for user ${chatId}:`, results.length ? "Found" : "Not found");
+    
+    if (!results.length) {
+      console.log(`User ${chatId} not found, sending test message`);
+      await sendMessageViaTelegram(chatId, 
+        'You need to take the placement test first. Use /start to begin.', env);
+      return;
+    }
+    
+    const profile = results[0];
+    console.log(`User ${chatId} profile:`, {
+      eng_level: profile.eng_level,
+      pass_lesson0_at: !!profile.pass_lesson0_at,
+      subscription_expired_at: profile.subscription_expired_at,
+      next_lesson_access_at: profile.next_lesson_access_at
     });
-    return;
+    
+    // Basic profile info
+    const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
+    const lessonsTotal = profile.number_of_lessons || 0;
+    const lessonsStreak = profile.lessons_in_row || 0;
+    
+    let message = `Your language profile:\n` +
+      `Language level: ${profile.eng_level}\n` +
+      `Total lessons completed: ${lessonsTotal}\n` +
+      `Current lesson streak: ${lessonsStreak}\n\n`;
+    
+    // Check pass_lesson0_at first
+    if (!profile.pass_lesson0_at) {
+      console.log(`User ${chatId} hasn't taken free lesson, showing free lesson button`);
+      // Free lesson not taken yet - show button
+      message += 'You haven\'t taken your free introductory lesson yet.';
+      await sendMessageViaTelegram(chatId, message, env, {
+        inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
+      });
+      return;
+    }
+    
+    // Check subscription status
+    const now = new Date();
+    const subExpiredAt = profile.subscription_expired_at ? new Date(profile.subscription_expired_at) : null;
+    
+    if (!subExpiredAt || subExpiredAt.getTime() < now.getTime()) {
+      console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
+      // No active subscription or it's expired - show subscribe button to Tribute channel
+      message += 'Your subscription has expired or you haven\'t subscribed yet.';
+      
+      // Get channel link from environment variable
+      const channelLink = env.TRIBUTE_CHANNEL_LINK || "https://t.me/linguapulseofficial";
+      
+      await sendMessageViaTelegram(chatId, message, env, {
+        inline_keyboard: [[{ text: 'Subscribe ($1/week)', url: channelLink }]]
+      });
+      return;
+    }
+    
+    // Active subscription - show next lesson access time
+    const nextLessonAt = profile.next_lesson_access_at ? new Date(profile.next_lesson_access_at) : null;
+    
+    if (nextLessonAt && nextLessonAt.getTime() > now.getTime()) {
+      console.log(`User ${chatId} lesson not yet available, showing wait message`);
+      // Format the time until next lesson
+      const timeUntil = formatTimeUntil(nextLessonAt);
+      message += `Your next lesson will be available in ${timeUntil}.`;
+      await sendMessageViaTelegram(chatId, message, env);
+      return;
+    }
+    
+    console.log(`User ${chatId} lesson available now, showing start lesson button`);
+    // Lesson is available now
+    message += 'Your next lesson is available now!';
+    await sendMessageViaTelegram(chatId, message, env, {
+      inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
+    });
+    
+    console.log(`handleLessonCommand completed successfully for user ${chatId}`);
+  } catch (error) {
+    console.error(`Error in handleLessonCommand for user ${chatId}:`, error);
+    // Try to send a fallback message
+    try {
+      await sendMessageViaTelegram(chatId, 
+        "Sorry, there was an error processing your command. Please try again later or contact support.", 
+        env);
+    } catch (sendError) {
+      console.error("Failed to send error message:", sendError);
+    }
   }
-  
-  // Active subscription - show next lesson access time
-  const nextLessonAt = profile.next_lesson_access_at ? new Date(profile.next_lesson_access_at) : null;
-  
-  if (nextLessonAt && nextLessonAt.getTime() > now.getTime()) {
-    // Format the time until next lesson
-    const timeUntil = formatTimeUntil(nextLessonAt);
-    message += `Your next lesson will be available in ${timeUntil}.`;
-    await sendMessageViaTelegram(chatId, message, env);
-    return;
-  }
-  
-  // Lesson is available now
-  message += 'Your next lesson is available now!';
-  await sendMessageViaTelegram(chatId, message, env, {
-    inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
-  });
 }
 
 /* ──── helper: format time until date in human-readable form ──── */
