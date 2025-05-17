@@ -267,7 +267,7 @@ async function handleUpdate(update, env, ctx) {
     if (!testState) {
       // Если состояние теста не найдено, начинаем новый тест
       await sendMessage(
-        "Sorry, I couldn't find your previous test session. Let's start a new test.",
+        "Sorry, I couldn't find your previous test session :( Let's start a new test.",
         [[{ text: "Start Test", callback_data: "start_test" }]]
       );
       return;
