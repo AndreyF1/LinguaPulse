@@ -1,3 +1,7 @@
+# wrangler.toml (wrangler v3.88.0^)
+[observability.logs]
+enabled = true
+
 name = "linguapulse-test-bot"
 main = "linguapulse-test-bot.js"
 compatibility_date = "2025-05-17"
