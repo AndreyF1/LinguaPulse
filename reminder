@@ -24,6 +24,7 @@ export default {
                  next_lesson_access_at, lessons_in_row, daily_lesson_pass_at
           FROM user_profiles
           WHERE eng_level IS NOT NULL
+          AND (is_active IS NULL OR is_active = 1)
           LIMIT ? ${cursor ? 'OFFSET ?' : ''}
         `;
         
@@ -45,13 +46,13 @@ export default {
           // Skip users who haven't completed the test (shouldn't happen with our query but just in case)
           if (!user.eng_level) return;
           
-          // Check if user has an active subscription
-          const hasActiveSubscription = user.subscription_expired_at && 
-                                      (new Date(user.subscription_expired_at) > now);
-          
           // Check streak maintenance - regardless of subscription status
           // This ensures we maintain accurate streaks for all users
           await checkAndUpdateStreak(user, now, env, streaksReset);
+          
+          // Check if user has an active subscription
+          const hasActiveSubscription = user.subscription_expired_at && 
+                                      (new Date(user.subscription_expired_at) > now);
           
           // Now process based on subscription status for reminders
           if (hasActiveSubscription) {
@@ -80,8 +81,9 @@ export default {
             // No active subscription - send motivation for daily practice
             const message = "Did you know that consistent practice is the key to breaking through your language barrier? 🗣️\n\nEven just 5-10 minutes of speaking practice each day in a safe environment can dramatically improve your English fluency.\n\nSubscribe now to access daily personalized lessons!";
             
+            // ИЗМЕНЕНО: Используем ссылку на канал Tribute из env
             await sendTelegramMessage(user.telegram_id, message, env, [
-              [{ text: "Subscribe for $1/week", callback_data: "sub:weekly" }]
+              [{ text: "Subscribe to Channel ($1/week)", url: env.TRIBUTE_CHANNEL_LINK }]
             ]);
             
             remindersSent++;
