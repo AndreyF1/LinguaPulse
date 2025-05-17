@@ -12,15 +12,12 @@ id = "ff3bf4d1633d45cd92e95d193b7d250f"
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
-# Для переименования файла в Cloudflare
 [build]
-command = ""
+upload.format = "modules"
+minify = false
 
-[build.upload]
-format = "service-worker"
-main = "./linguapulse-test-bot.js"
-dir = "."
-service_worker_name = "worker.js"  # Вот параметр для изменения имени файла
+[worker_output]
+filename = "worker.js" # Это заменило service_worker_name
 
 # Настройки логирования
 [observability.logs]
