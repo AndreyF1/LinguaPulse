@@ -826,7 +826,7 @@ async function openaiTTS(text, env) {
     },
     body: JSON.stringify({ 
       model: 'tts-1', 
-      voice: 'echo', 
+      voice: 'sage', 
       format: 'ogg_opus', 
       input: text 
     })
