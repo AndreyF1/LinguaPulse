@@ -1,5 +1,6 @@
 // linguapulse-test-bot worker.js
 // Telegram webhook + структурированный тест + D1 (USER_DB) для профиля + KV для состояния (TEST_KV)
+// нужно будет переделать структуру в Cloudflare
 
 export default {
   async fetch(request, env, ctx) {
