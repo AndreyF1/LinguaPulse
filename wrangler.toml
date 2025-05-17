@@ -6,7 +6,16 @@ name = "linguapulse-test-bot"
 main = "linguapulse-test-bot.js"
 compatibility_date = "2025-05-17"
 
-# Привязки KV и D1 - замените ID на реальные
+[build]
+command = ""
+
+[build.upload]
+format = "service-worker"
+dir = "."
+main = "./linguapulse-test-bot.js"
+service_worker_name = "worker.js"  # Это указывает, как файл будет называться в Cloudflare
+
+# Привязки KV и D1
 [kv_namespaces]
 TEST_KV = { binding = "TEST_KV", id = "ff3bf4d1633d45cd92e95d193b7d250f" }
 
