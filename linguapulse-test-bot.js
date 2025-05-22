@@ -441,7 +441,36 @@ async function handleUpdate(update, env, ctx) {
         const categories = ['vocabulary', 'grammar', 'reading'];
         if (currentCategoryIndex >= 0 && currentCategoryIndex < categories.length) {
           const nextCategory = categories[currentCategoryIndex];
-          const nextLevel = questions.length > 0 ? questions[questions.length - 1].level : 'A1';
+          
+          // Определяем следующий уровень сложности на основе предыдущих ответов
+          let nextLevel = 'A1'; // Уровень по умолчанию
+          
+          if (questions.length > 0) {
+            const lastQuestion = questions[questions.length - 1];
+            // Если уже были вопросы, используем тот же уровень сложности, что и для последнего вопроса
+            nextLevel = lastQuestion.level;
+            
+            // Если есть достаточно ответов, можно адаптировать сложность
+            if (answers.length >= 3) {
+              const correctRatio = answers.filter((a, i) => a === questions[i].answer).length / answers.length;
+              console.log('Correct ratio for next question level:', correctRatio);
+              
+              if (correctRatio >= 0.8) {
+                // При высокой точности увеличиваем сложность
+                if (nextLevel === 'A1') nextLevel = 'A2';
+                else if (nextLevel === 'A2') nextLevel = 'B1';
+                else if (nextLevel === 'B1') nextLevel = 'B2';
+                else if (nextLevel === 'B2') nextLevel = 'C1';
+              } else if (correctRatio <= 0.4) {
+                // При низкой точности снижаем сложность
+                if (nextLevel === 'C1') nextLevel = 'B2';
+                else if (nextLevel === 'B2') nextLevel = 'B1';
+                else if (nextLevel === 'B1') nextLevel = 'A2';
+                else if (nextLevel === 'A2') nextLevel = 'A1';
+              }
+            }
+          }
+          
           console.log('Continuing test, fetching next question:', nextCategory, nextLevel);
           
           const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
@@ -729,9 +758,10 @@ function formatQuestion(question, current, total) {
       formattedText += '📖 *Reading*\n\n';
     }
     
-    // Экранируем специальные символы Markdown в тексте вопроса
+    // Вместо экранирования всех символов, экранируем только специальные символы Markdown
+    // которые могут повлиять на форматирование
     const escapedQuestion = question.question
-      .replace(/([_*[\]()~`>#+=|{}.!-])/g, '\\$1');
+      .replace(/([_*[\]()~`>#+=|{}])/g, '\\$1');
     
     // Добавляем текст вопроса
     formattedText += escapedQuestion;
@@ -924,6 +954,15 @@ function getFallbackQuestion(category, level) {
 
 // Оценка результатов теста для определения уровня английского
 function evaluateTest(questions, answers) {
+  console.log('Evaluating test results...');
+  console.log('Questions:', JSON.stringify(questions.map(q => ({ id: q.id, category: q.category, level: q.level }))));
+  console.log('Answers:', JSON.stringify(answers));
+  
+  if (!questions || !answers || questions.length === 0) {
+    console.error('Invalid input for evaluateTest: empty questions or answers');
+    return { level: 'A1', report: 'Could not accurately evaluate your level due to insufficient data.' };
+  }
+  
   let correct = 0;
   const incorrectByCategory = {
     vocabulary: [],
@@ -933,9 +972,9 @@ function evaluateTest(questions, answers) {
 
   // Подсчитываем правильные ответы и отслеживаем ошибки по категориям
   questions.forEach((q, i) => {
-    if (answers[i] === q.answer) {
+    if (i < answers.length && answers[i] === q.answer) {
       correct++;
-    } else {
+    } else if (i < answers.length) {
       // Сохраняем ошибку в соответствующей категории
       if (q.category === 'vocabulary') {
         incorrectByCategory.vocabulary.push(q);
@@ -948,7 +987,8 @@ function evaluateTest(questions, answers) {
   });
 
   // Вычисляем процент правильных ответов
-  const accuracy = questions.length ? (correct / questions.length) : 0;
+  const accuracy = answers.length ? (correct / answers.length) : 0;
+  console.log('Correct answers:', correct, 'out of', answers.length, 'Accuracy:', accuracy);
   
   // Определяем уровень на основе точности и сложности вопросов
   let level;
@@ -960,8 +1000,10 @@ function evaluateTest(questions, answers) {
   
   // Также учитываем максимальную сложность правильно отвеченных вопросов
   const correctlyAnsweredLevels = questions
-    .filter((q, i) => answers[i] === q.answer)
+    .filter((q, i) => i < answers.length && answers[i] === q.answer)
     .map(q => q.level);
+  
+  console.log('Correctly answered levels:', correctlyAnsweredLevels);
   
   if (correctlyAnsweredLevels.includes('C1') && accuracy >= 0.8) {
     level = 'C1';
@@ -999,12 +1041,14 @@ function evaluateTest(questions, answers) {
     report += '• *Reading*: ';
     if (incorrectByCategory.reading.length === 1) {
       const q = incorrectByCategory.reading[0];
-      report += `"${q.question.split('\n\n')[0]}..." - Correct answer: "${q.answer}"\n`;
+      const questionStart = q.question.split('\n\n')[0] || q.question.substring(0, 30);
+      report += `"${questionStart}..." - Correct answer: "${q.answer}"\n`;
     } else {
       report += `You missed ${incorrectByCategory.reading.length} reading questions.\n`;
     }
   }
-
+  
+  console.log('Final level assessment:', level);
   return { level, report };
 }
 
