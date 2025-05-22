@@ -791,16 +791,28 @@ function formatQuestion(question, current, total) {
     let processedQuestion = question.question;
     
     // Логируем исходный текст для отладки
-    console.log('Original question text:', processedQuestion);
+    console.log('Original question text:', JSON.stringify(processedQuestion));
     
-    // Заменяем буквальные экранированные последовательности на реальные переносы строк
+    // Детальная обработка всех возможных представлений переносов строк
     processedQuestion = processedQuestion
-      .replace(/\\n/g, '\n')   // Заменяем \n на реальный перенос
-      .replace(/\/\/n/g, '\n') // Заменяем //n на реальный перенос
-      .replace(/\\\\n/g, '\n') // Заменяем \\n на реальный перенос
-      .replace(/\n\n/g, '\n\n'); // Делаем двойные переносы консистентными
+      // Обрабатываем различные комбинации слешей и 'n'
+      .replace(/\\\\n/g, '\n')  // \\n -> перенос строки
+      .replace(/\\\n/g, '\n')   // \n -> перенос строки
+      .replace(/\/\/n/g, '\n')  // //n -> перенос строки
+      .replace(/\/n/g, '\n')    // /n -> перенос строки
+      .replace(/\\n/g, '\n')    // представление \n как строки -> перенос строки
+      // Удаляем оставшиеся странные комбинации слешей
+      .replace(/\\\\/g, '')     // \\ -> пусто
+      .replace(/\//g, '')       // / -> пусто
+      .replace(/\\\//g, '')     // \/ -> пусто
+      .replace(/\/\\/g, '');    // /\ -> пусто
     
-    console.log('Processed question text after newline replacement:', processedQuestion);
+    // Проверяем, не осталось ли других экранированных последовательностей
+    processedQuestion = processedQuestion
+      .replace(/\\[trfv]/g, '') // Удаляем другие экранированные последовательности
+      .replace(/\bnn\b/g, '\n'); // 'nn' как отдельное слово -> перенос строки
+    
+    console.log('Processed question text after cleanup:', JSON.stringify(processedQuestion));
     
     // Вместо экранирования всех символов, экранируем только специальные символы Markdown
     // которые могут повлиять на форматирование
