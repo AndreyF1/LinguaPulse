@@ -58,6 +58,18 @@ async function handleUpdate(update, env, ctx) {
   };
 
   const sendMessage = async (text, keyboard) => {
+    // Убедимся, что текст - строка
+    if (typeof text !== 'string') {
+      console.error('Invalid text type:', typeof text);
+      text = String(text);
+    }
+    
+    // Проверяем наличие экранированных последовательностей, которые нужно конвертировать
+    if (text.includes('\\n')) {
+      console.log('Found escaped newlines in message text, replacing them');
+      text = text.replace(/\\n/g, '\n');
+    }
+    
     const opts = { text, parse_mode: 'Markdown' };
     if (keyboard) opts.reply_markup = { inline_keyboard: keyboard };
     console.log('Sending message:', text.slice(0, 50) + '...');
@@ -775,12 +787,20 @@ function formatQuestion(question, current, total) {
       formattedText += '📖 *Reading*\n\n';
     }
     
-    // Заменяем //n на реальные переносы строк
+    // Заменяем все варианты переносов строк на реальные переносы
     let processedQuestion = question.question;
-    if (processedQuestion.includes('//n')) {
-      console.log('Found //n in question text, replacing with newlines');
-      processedQuestion = processedQuestion.replace(/\/\/n/g, '\n');
-    }
+    
+    // Логируем исходный текст для отладки
+    console.log('Original question text:', processedQuestion);
+    
+    // Заменяем буквальные экранированные последовательности на реальные переносы строк
+    processedQuestion = processedQuestion
+      .replace(/\\n/g, '\n')   // Заменяем \n на реальный перенос
+      .replace(/\/\/n/g, '\n') // Заменяем //n на реальный перенос
+      .replace(/\\\\n/g, '\n') // Заменяем \\n на реальный перенос
+      .replace(/\n\n/g, '\n\n'); // Делаем двойные переносы консистентными
+    
+    console.log('Processed question text after newline replacement:', processedQuestion);
     
     // Вместо экранирования всех символов, экранируем только специальные символы Markdown
     // которые могут повлиять на форматирование
@@ -1053,7 +1073,7 @@ function getFallbackQuestion(category, level) {
     reading: {
       A1: [
         {
-          question: "Read and answer://n//nMy name is John. I am from England. I speak English.//n//nWhere is John from?",
+          question: "Read and answer:\\n\\nMy name is John. I am from England. I speak English.\\n\\nWhere is John from?",
           options: ["America", "England", "France", "Spain"],
           answer: "England",
           category: "reading",
@@ -1062,7 +1082,7 @@ function getFallbackQuestion(category, level) {
       ],
       A2: [
         {
-          question: "Read and answer://n//nMaria goes to work by bus. It takes her 30 minutes to get to work. She starts work at 9:00.//n//nHow does Maria go to work?",
+          question: "Read and answer:\\n\\nMaria goes to work by bus. It takes her 30 minutes to get to work. She starts work at 9:00.\\n\\nHow does Maria go to work?",
           options: ["By car", "By train", "By bus", "On foot"],
           answer: "By bus",
           category: "reading",
@@ -1208,9 +1228,18 @@ function evaluateTest(questions, answers) {
     report += '• *Reading*: ';
     if (incorrectByCategory.reading.length === 1) {
       const q = incorrectByCategory.reading[0];
-      // Заменяем //n на пробелы для отчета и берем только первое предложение или часть текста
-      let questionText = q.question.replace(/\/\/n/g, ' ');
-      const questionStart = questionText.split('\n\n')[0] || questionText.substring(0, 30);
+      
+      // Обрабатываем текст вопроса, заменяя все варианты переносов строк
+      let questionText = q.question
+        .replace(/\\n/g, ' ')   // Заменяем \n на пробел
+        .replace(/\/\/n/g, ' ') // Заменяем //n на пробел
+        .replace(/\\\\n/g, ' ') // Заменяем \\n на пробел
+        .replace(/\n/g, ' ');   // Заменяем реальные переносы на пробел
+      
+      // Берем только первую часть текста или первые 30 символов
+      const parts = questionText.split(/[.!?]/, 2);
+      const questionStart = parts.length > 1 ? parts[0] + parts[1].substring(0, 20) : questionText.substring(0, 50);
+      
       report += `"${questionStart}..." - Correct answer: "${q.answer}"\n`;
     } else {
       report += `You missed ${incorrectByCategory.reading.length} reading questions.\n`;
