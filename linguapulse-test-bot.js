@@ -33,25 +33,70 @@ async function handleUpdate(update, env, ctx) {
   }
 
   // Вспомогательные функции для Telegram API
-  const callT = (method, payload = {}) =>
-    fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, ...payload })
-    });
-
-  const sendMessage = (text, keyboard) => {
-    const opts = { text, parse_mode: 'Markdown' };
-    if (keyboard) opts.reply_markup = { inline_keyboard: keyboard };
-    return callT('sendMessage', opts);
+  const callT = async (method, payload = {}) => {
+    console.log(`Calling Telegram API: ${method}`, JSON.stringify(payload).slice(0, 200) + '...');
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, ...payload })
+      });
+      
+      const result = await response.json();
+      console.log(`Telegram API response for ${method}:`, JSON.stringify(result).slice(0, 200) + '...');
+      
+      if (!result.ok) {
+        console.error(`Telegram API error for ${method}:`, result.description);
+        throw new Error(`Telegram API error: ${result.description}`);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error(`Error calling Telegram API ${method}:`, error);
+      throw error;
+    }
   };
 
-  const ack = (callbackId) =>
-    callT('answerCallbackQuery', { callback_query_id: callbackId });
+  const sendMessage = async (text, keyboard) => {
+    const opts = { text, parse_mode: 'Markdown' };
+    if (keyboard) opts.reply_markup = { inline_keyboard: keyboard };
+    console.log('Sending message:', text.slice(0, 50) + '...');
+    
+    try {
+      const result = await callT('sendMessage', opts);
+      console.log('Message sent successfully, message_id:', result.result?.message_id);
+      return result;
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      // Попробуем отправить без Markdown форматирования, если это могло вызвать проблему
+      if (error.message?.includes('can\'t parse entities') || error.message?.includes('markdown')) {
+        console.log('Trying to send without markdown...');
+        const plainOpts = { ...opts, parse_mode: undefined, text: text.replace(/[*_`]/g, '') };
+        return await callT('sendMessage', plainOpts);
+      }
+      throw error;
+    }
+  };
 
-  const ask = (text, options) => {
-    const kb = options.map(o => [{ text: o, callback_data: `next:${o}` }]);
-    return sendMessage(text, kb);
+  const ack = async (callbackId) => {
+    try {
+      return await callT('answerCallbackQuery', { callback_query_id: callbackId });
+    } catch (error) {
+      console.error('Failed to acknowledge callback query:', error);
+      // Продолжаем выполнение даже при ошибке
+    }
+  };
+
+  const ask = async (text, options) => {
+    console.log('Creating keyboard for options:', JSON.stringify(options));
+    try {
+      const kb = options.map(o => [{ text: o, callback_data: `next:${o}` }]);
+      return await sendMessage(text, kb);
+    } catch (error) {
+      console.error('Error in ask function:', error);
+      // Попробуем отправить базовый вариант
+      return await sendMessage(`Question: ${text}\n\nChoose one of: ${options.join(', ')}`);
+    }
   };
 
   // KV хранилище для состояния
@@ -402,175 +447,219 @@ async function handleUpdate(update, env, ctx) {
   
   // Обработка ответов на вопросы
   if (update.callback_query?.data?.startsWith('next:')) {
-    await ack(update.callback_query.id);
-    const selectedAnswer = update.callback_query.data.slice(5);
-    console.log('Selected answer:', selectedAnswer);
-    
-    // Проверяем состояние теста
-    console.log('Current state:', {
-      'questions.length': questions.length,
-      'index': index,
-      'answers': answers
-    });
-    
-    if (index >= questions.length) {
-      console.error('Invalid state: index out of bounds');
-      await sendMessage(
-        "Sorry, something went wrong with your test session. Let's start again.",
-        [[{ text: "Start Test", callback_data: "start_test" }]]
-      );
-      return;
-    }
-    
-    answers[index] = selectedAnswer;
-    
-    // Проверяем правильность ответа
-    const currentQuestion = questions[index];
-    console.log('Current question:', JSON.stringify(currentQuestion));
-    const isCorrect = (selectedAnswer === currentQuestion.answer);
-    console.log('Answer:', selectedAnswer, 'Correct:', isCorrect);
-    
-    // Обновляем статус завершения для текущей категории
-    categoryCompletionStatus[currentQuestion.category]++;
-    console.log('Category completion status:', JSON.stringify(categoryCompletionStatus));
-    
-    // Определяем, какую категорию вопросов задавать следующей
-    const categories = ['vocabulary', 'grammar', 'reading'];
-    currentCategoryIndex = (currentCategoryIndex + 1) % 3;
-    console.log('New category index:', currentCategoryIndex);
-    
-    // Проверяем, не достигли ли лимитов для категорий
-    if (categoryCompletionStatus.vocabulary >= 5 && categories[currentCategoryIndex] === 'vocabulary') {
-      console.log('Vocabulary limit reached, skipping category');
-      currentCategoryIndex = (currentCategoryIndex + 1) % 3;
-    }
-    if (categoryCompletionStatus.grammar >= 5 && categories[currentCategoryIndex] === 'grammar') {
-      console.log('Grammar limit reached, skipping category');
-      currentCategoryIndex = (currentCategoryIndex + 1) % 3;
-    }
-    if (categoryCompletionStatus.reading >= 2 && categories[currentCategoryIndex] === 'reading') {
-      console.log('Reading limit reached, skipping category');
-      currentCategoryIndex = (currentCategoryIndex + 1) % 3;
-    }
-    console.log('Final category index after limits check:', currentCategoryIndex);
-    
-    // Определяем следующий уровень сложности
-    let nextLevel;
-    if (index < 3) {
-      // Первые несколько вопросов фиксированного уровня для калибровки
-      nextLevel = 'A1';
-    } else {
-      // Адаптируем сложность на основе ответов
-      const correctRatio = answers.filter((a, i) => a === questions[i].answer).length / answers.length;
-      console.log('Correct ratio:', correctRatio);
-      
-      if (correctRatio >= 0.8) {
-        // При высокой точности увеличиваем сложность
-        const currentLevel = currentQuestion.level;
-        console.log('Increasing difficulty from', currentLevel);
-        if (currentLevel === 'A1') nextLevel = 'A2';
-        else if (currentLevel === 'A2') nextLevel = 'B1';
-        else if (currentLevel === 'B1') nextLevel = 'B2';
-        else if (currentLevel === 'B2') nextLevel = 'C1';
-        else nextLevel = 'C1';
-      } else if (correctRatio <= 0.4) {
-        // При низкой точности снижаем сложность
-        const currentLevel = currentQuestion.level;
-        console.log('Decreasing difficulty from', currentLevel);
-        if (currentLevel === 'C1') nextLevel = 'B2';
-        else if (currentLevel === 'B2') nextLevel = 'B1';
-        else if (currentLevel === 'B1') nextLevel = 'A2';
-        else nextLevel = 'A1';
-      } else {
-        // Сохраняем текущий уровень
-        nextLevel = currentQuestion.level;
-      }
-    }
-    console.log('Next level:', nextLevel);
-    
-    // Переходим к следующему вопросу
-    index++;
-    
-    // Сохраняем обновленное состояние
     try {
-      const stateToSave = { 
-        questions, 
-        answers, 
-        index, 
-        currentCategoryIndex,
-        categoryCompletionStatus
-      };
-      console.log('Saving state to KV');
-      await kv.put(stateKey, JSON.stringify(stateToSave));
+      await ack(update.callback_query.id);
+      
+      // Проверяем структуру callback_data
+      console.log('Received callback_data:', update.callback_query.data);
+      const selectedAnswer = update.callback_query.data.slice(5);
+      console.log('Selected answer:', selectedAnswer);
+      
+      // Проверяем состояние теста
+      console.log('Current state:', {
+        'questions.length': questions.length,
+        'index': index,
+        'answers': answers
+      });
+      
+      if (index >= questions.length) {
+        console.error('Invalid state: index out of bounds');
+        await sendMessage(
+          "Sorry, something went wrong with your test session. Let's start again.",
+          [[{ text: "Start Test", callback_data: "start_test" }]]
+        );
+        return;
+      }
+      
+      answers[index] = selectedAnswer;
+      
+      // Проверяем правильность ответа
+      const currentQuestion = questions[index];
+      console.log('Current question:', JSON.stringify(currentQuestion));
+      
+      // Проверяем, что answer и selectedAnswer в одинаковом формате
+      console.log('Answer comparison:', {
+        'correct_answer': currentQuestion.answer,
+        'selected_answer': selectedAnswer,
+        'match': selectedAnswer === currentQuestion.answer
+      });
+      
+      const isCorrect = (selectedAnswer === currentQuestion.answer);
+      console.log('Answer:', selectedAnswer, 'Correct:', isCorrect);
+      
+      // Обновляем статус завершения для текущей категории
+      categoryCompletionStatus[currentQuestion.category]++;
+      console.log('Category completion status:', JSON.stringify(categoryCompletionStatus));
+      
+      // Определяем, какую категорию вопросов задавать следующей
+      const categories = ['vocabulary', 'grammar', 'reading'];
+      currentCategoryIndex = (currentCategoryIndex + 1) % 3;
+      console.log('New category index:', currentCategoryIndex);
+      
+      // Проверяем, не достигли ли лимитов для категорий
+      if (categoryCompletionStatus.vocabulary >= 5 && categories[currentCategoryIndex] === 'vocabulary') {
+        console.log('Vocabulary limit reached, skipping category');
+        currentCategoryIndex = (currentCategoryIndex + 1) % 3;
+      }
+      if (categoryCompletionStatus.grammar >= 5 && categories[currentCategoryIndex] === 'grammar') {
+        console.log('Grammar limit reached, skipping category');
+        currentCategoryIndex = (currentCategoryIndex + 1) % 3;
+      }
+      if (categoryCompletionStatus.reading >= 2 && categories[currentCategoryIndex] === 'reading') {
+        console.log('Reading limit reached, skipping category');
+        currentCategoryIndex = (currentCategoryIndex + 1) % 3;
+      }
+      console.log('Final category index after limits check:', currentCategoryIndex);
+      
+      // Определяем следующий уровень сложности
+      let nextLevel;
+      if (index < 3) {
+        // Первые несколько вопросов фиксированного уровня для калибровки
+        nextLevel = 'A1';
+      } else {
+        // Адаптируем сложность на основе ответов
+        const correctRatio = answers.filter((a, i) => a === questions[i].answer).length / answers.length;
+        console.log('Correct ratio:', correctRatio);
+        
+        if (correctRatio >= 0.8) {
+          // При высокой точности увеличиваем сложность
+          const currentLevel = currentQuestion.level;
+          console.log('Increasing difficulty from', currentLevel);
+          if (currentLevel === 'A1') nextLevel = 'A2';
+          else if (currentLevel === 'A2') nextLevel = 'B1';
+          else if (currentLevel === 'B1') nextLevel = 'B2';
+          else if (currentLevel === 'B2') nextLevel = 'C1';
+          else nextLevel = 'C1';
+        } else if (correctRatio <= 0.4) {
+          // При низкой точности снижаем сложность
+          const currentLevel = currentQuestion.level;
+          console.log('Decreasing difficulty from', currentLevel);
+          if (currentLevel === 'C1') nextLevel = 'B2';
+          else if (currentLevel === 'B2') nextLevel = 'B1';
+          else if (currentLevel === 'B1') nextLevel = 'A2';
+          else nextLevel = 'A1';
+        } else {
+          // Сохраняем текущий уровень
+          nextLevel = currentQuestion.level;
+        }
+      }
+      console.log('Next level:', nextLevel);
+      
+      // Переходим к следующему вопросу
+      index++;
+      
+      // Сохраняем обновленное состояние
+      try {
+        const stateToSave = { 
+          questions, 
+          answers, 
+          index, 
+          currentCategoryIndex,
+          categoryCompletionStatus
+        };
+        console.log('Saving state to KV');
+        await kv.put(stateKey, JSON.stringify(stateToSave));
+      } catch (error) {
+        console.error('Error saving state:', error);
+      }
     } catch (error) {
-      console.error('Error saving state:', error);
+      console.error('Error processing answer:', error);
     }
-
+    
     // Проверяем, завершен ли тест (12 вопросов или достигнуты все лимиты категорий)
     const testComplete = index >= 12 || 
                         (categoryCompletionStatus.vocabulary >= 5 && 
                          categoryCompletionStatus.grammar >= 5 && 
                          categoryCompletionStatus.reading >= 2);
+    
+    console.log('Test completion check:', {
+      index,
+      categoryCompletionStatus,
+      testComplete
+    });
 
     if (!testComplete) {
-      // Загружаем следующий вопрос из базы
-      const nextCategory = categories[currentCategoryIndex];
-      console.log('Fetching next question for category:', nextCategory, 'level:', nextLevel);
-      const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
-      questions.push(nextQuestion);
-      
-      await kv.put(stateKey, JSON.stringify({ 
-        questions, 
-        answers, 
-        index, 
-        currentCategoryIndex,
-        categoryCompletionStatus
-      }));
-      
-      // Показываем следующий вопрос
-      await ask(formatQuestion(nextQuestion, index + 1, 12), nextQuestion.options);
+      try {
+        // Загружаем следующий вопрос из базы
+        const nextCategory = categories[currentCategoryIndex];
+        console.log('Fetching next question for category:', nextCategory, 'level:', nextLevel);
+        const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
+        questions.push(nextQuestion);
+        
+        await kv.put(stateKey, JSON.stringify({ 
+          questions, 
+          answers, 
+          index, 
+          currentCategoryIndex,
+          categoryCompletionStatus
+        }));
+        
+        // Показываем следующий вопрос
+        console.log('Sending next question');
+        await ask(formatQuestion(nextQuestion, index + 1, 12), nextQuestion.options);
+        console.log('Next question sent successfully');
+      } catch (error) {
+        console.error('Error sending next question:', error);
+        await sendMessage(
+          "Sorry, there was a problem loading the next question. Let's try to continue.",
+          [[{ text: "Continue Test", callback_data: "continue_test" }]]
+        );
+      }
       return;
     }
 
-    // Завершаем тест: оцениваем уровень и обновляем eng_level и tested_at
-    const { level, report } = evaluateTest(questions, answers);
-    const testedAt = new Date().toISOString();
-    await env.USER_DB
-      .prepare(
-        `INSERT INTO user_profiles (telegram_id, eng_level, tested_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(telegram_id) DO UPDATE
-           SET eng_level = excluded.eng_level,
-               tested_at = excluded.tested_at`
-      )
-      .bind(parseInt(chatId, 10), level, testedAt)
-      .run();
+    try {
+      // Завершаем тест: оцениваем уровень и обновляем eng_level и tested_at
+      console.log('Completing test, evaluating results');
+      const { level, report } = evaluateTest(questions, answers);
+      const testedAt = new Date().toISOString();
+      
+      console.log('Test results:', { level, report });
+      
+      await env.USER_DB
+        .prepare(
+          `INSERT INTO user_profiles (telegram_id, eng_level, tested_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(telegram_id) DO UPDATE
+             SET eng_level = excluded.eng_level,
+                 tested_at = excluded.tested_at`
+        )
+        .bind(parseInt(chatId, 10), level, testedAt)
+        .run();
 
-    await kv.delete(stateKey);
-    
-    // Форматируем сообщение о результатах теста
-    const correctCount = answers.filter((answer, i) => answer === questions[i].answer).length;
-    const accuracy = Math.round((correctCount / questions.length) * 100);
-    
-    let resultMessage = `🎓 *Test completed!*\n\n` +
-                        `Your English level: *${level}*\n` +
-                        `Accuracy: ${accuracy}%\n\n`;
-    
-    // Добавляем описание уровня
-    resultMessage += getLevelDescription(level) + "\n\n";
-    
-    // Добавляем отчет об ошибках, если они были
-    if (report.length > 0) {
-      resultMessage += "*Areas for improvement:*\n";
-      resultMessage += report;
-    } else {
-      resultMessage += "🌟 *Excellent work!* You answered all questions correctly.";
+      await kv.delete(stateKey);
+      
+      // Форматируем сообщение о результатах теста
+      const correctCount = answers.filter((answer, i) => answer === questions[i].answer).length;
+      const accuracy = Math.round((correctCount / questions.length) * 100);
+      
+      let resultMessage = `🎓 *Test completed!*\n\n` +
+                          `Your English level: *${level}*\n` +
+                          `Accuracy: ${accuracy}%\n\n`;
+      
+      // Добавляем описание уровня
+      resultMessage += getLevelDescription(level) + "\n\n";
+      
+      // Добавляем отчет об ошибках, если они были
+      if (report.length > 0) {
+        resultMessage += "*Areas for improvement:*\n";
+        resultMessage += report;
+      } else {
+        resultMessage += "🌟 *Excellent work!* You answered all questions correctly.";
+      }
+      
+      await sendMessage(
+        resultMessage,
+        [[{ text: "Free Audio Lesson", callback_data: "lesson:free" }]]
+      );
+      console.log('Test completion message sent successfully');
+    } catch (error) {
+      console.error('Error completing test:', error);
+      await sendMessage(
+        "Sorry, there was a problem processing your test results. Please contact support.",
+        [[{ text: "Try Again", callback_data: "start_test" }]]
+      );
     }
-    
-    await sendMessage(
-      resultMessage,
-      [[{ text: "Free Audio Lesson", callback_data: "lesson:free" }]]
-    );
     return;
   }
 
@@ -596,21 +685,32 @@ async function handleUpdate(update, env, ctx) {
 
 // Форматирование вопроса с указанием номера
 function formatQuestion(question, current, total) {
-  let formattedText = `*Question ${current}/${total}*\n\n`;
-  
-  // Добавляем индикатор категории
-  if (question.category === 'vocabulary') {
-    formattedText += '📚 *Vocabulary*\n\n';
-  } else if (question.category === 'grammar') {
-    formattedText += '📝 *Grammar*\n\n';
-  } else if (question.category === 'reading') {
-    formattedText += '📖 *Reading*\n\n';
+  try {
+    let formattedText = `*Question ${current}/${total}*\n\n`;
+    
+    // Добавляем индикатор категории
+    if (question.category === 'vocabulary') {
+      formattedText += '📚 *Vocabulary*\n\n';
+    } else if (question.category === 'grammar') {
+      formattedText += '📝 *Grammar*\n\n';
+    } else if (question.category === 'reading') {
+      formattedText += '📖 *Reading*\n\n';
+    }
+    
+    // Экранируем специальные символы Markdown в тексте вопроса
+    const escapedQuestion = question.question
+      .replace(/([_*[\]()~`>#+=|{}.!-])/g, '\\$1');
+    
+    // Добавляем текст вопроса
+    formattedText += escapedQuestion;
+    
+    console.log('Formatted question with escaped markdown:', formattedText);
+    return formattedText;
+  } catch (error) {
+    console.error('Error formatting question:', error);
+    // В случае ошибки возвращаем текст без форматирования
+    return `Question ${current}/${total}: ${question.question}`;
   }
-  
-  // Добавляем текст вопроса
-  formattedText += question.question;
-  
-  return formattedText;
 }
 
 // Функция для получения вопроса из базы данных (или другого источника)
