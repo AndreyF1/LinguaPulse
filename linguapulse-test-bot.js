@@ -307,10 +307,13 @@ async function handleUpdate(update, env, ctx) {
     
     // Проверяем правильность ответа
     const currentQuestion = questions[index];
+    console.log('Current question:', JSON.stringify(currentQuestion));
     const isCorrect = (selectedAnswer === currentQuestion.answer);
+    console.log('Answer:', selectedAnswer, 'Correct:', isCorrect);
     
     // Обновляем статус завершения для текущей категории
     categoryCompletionStatus[currentQuestion.category]++;
+    console.log('Category completion status:', JSON.stringify(categoryCompletionStatus));
     
     // Определяем, какую категорию вопросов задавать следующей
     const categories = ['vocabulary', 'grammar', 'reading'];
@@ -335,6 +338,7 @@ async function handleUpdate(update, env, ctx) {
     } else {
       // Адаптируем сложность на основе ответов
       const correctRatio = answers.filter((a, i) => a === questions[i].answer).length / answers.length;
+      console.log('Correct ratio:', correctRatio);
       
       if (correctRatio >= 0.8) {
         // При высокой точности увеличиваем сложность
@@ -356,6 +360,7 @@ async function handleUpdate(update, env, ctx) {
         nextLevel = currentQuestion.level;
       }
     }
+    console.log('Next level:', nextLevel);
     
     // Переходим к следующему вопросу
     index++;
@@ -378,6 +383,7 @@ async function handleUpdate(update, env, ctx) {
     if (!testComplete) {
       // Загружаем следующий вопрос из базы
       const nextCategory = categories[currentCategoryIndex];
+      console.log('Fetching next question for category:', nextCategory, 'level:', nextLevel);
       const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
       questions.push(nextQuestion);
       
@@ -477,6 +483,8 @@ function formatQuestion(question, current, total) {
 
 // Функция для получения вопроса из базы данных (или другого источника)
 async function fetchNextQuestion(env, category, level) {
+  console.log(`Fetching question for category: ${category}, level: ${level}`);
+  
   // Здесь следует реализовать логику получения вопроса из хранилища
   // Это может быть запрос к KV, D1 или другой внешней базе данных
   
@@ -489,14 +497,18 @@ async function fetchNextQuestion(env, category, level) {
   `;
   
   try {
+    console.log('Executing query:', query, 'with params:', [category, level]);
+    
     const { results } = await env.USER_DB
       .prepare(query)
       .bind(category, level)
       .all();
     
+    console.log('Query results:', JSON.stringify(results));
+    
     if (results && results.length > 0) {
       // Форматируем вопрос из базы данных
-      return {
+      const question = {
         id: results[0].id,
         category: results[0].category,
         level: results[0].level,
@@ -504,12 +516,22 @@ async function fetchNextQuestion(env, category, level) {
         options: JSON.parse(results[0].options),
         answer: results[0].correct_answer
       };
+      console.log('Formatted question:', JSON.stringify(question));
+      return question;
+    } else {
+      console.log('No questions found in database, using fallback');
     }
   } catch (error) {
     console.error("Error fetching question:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
   }
   
   // Если не удалось получить вопрос из базы, используем резервные вопросы
+  console.log('Using fallback question');
   return getFallbackQuestion(category, level);
 }
 
