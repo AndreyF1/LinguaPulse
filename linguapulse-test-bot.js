@@ -347,7 +347,7 @@ async function handleUpdate(update, env, ctx) {
       
       // Загружаем первый вопрос из базы
       console.log(`Fetching first question (${firstCategory}, A1)`);
-      const firstQuestion = await fetchNextQuestion(env, firstCategory, 'A1');
+      const firstQuestion = await fetchNextQuestion(env, firstCategory, 'A1', []);
       
       if (!firstQuestion) {
         console.error('Failed to fetch first question');
@@ -485,7 +485,13 @@ async function handleUpdate(update, env, ctx) {
           
           console.log('Continuing test, fetching next question:', nextCategory, nextLevel);
           
-          const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
+          // Получаем ID всех предыдущих вопросов для исключения повторов
+          const askedQuestionIds = questions
+            .filter(q => q.id) // Фильтруем только вопросы с ID (из базы данных)
+            .map(q => q.id);
+          console.log('Previously asked question IDs:', askedQuestionIds);
+          
+          const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel, askedQuestionIds);
           questions.push(nextQuestion);
           
           await kv.put(stateKey, JSON.stringify({ 
@@ -656,10 +662,16 @@ async function handleUpdate(update, env, ctx) {
             currentCategoryIndex: currentCategoryIndex
           });
           
+          // Получаем ID всех предыдущих вопросов для исключения повторов
+          const askedQuestionIds = questions
+            .filter(q => q.id) // Фильтруем только вопросы с ID (из базы данных)
+            .map(q => q.id);
+          console.log('Previously asked question IDs:', askedQuestionIds);
+          
           // Загружаем следующий вопрос из базы
           const nextCategory = categories[currentCategoryIndex];
           console.log('Fetching next question for category:', nextCategory, 'level:', nextLevel);
-          const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
+          const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel, askedQuestionIds);
           console.log('Next question loaded:', JSON.stringify(nextQuestion));
           
           // Проверка, что вопрос был успешно загружен
@@ -832,13 +844,13 @@ function formatQuestion(question, current, total) {
 }
 
 // Функция для получения вопроса из базы данных (или другого источника)
-async function fetchNextQuestion(env, category, level) {
+async function fetchNextQuestion(env, category, level, askedQuestionIds = []) {
   if (!category || !level) {
     console.error('Missing required parameters:', { category, level });
     return getFallbackQuestion('vocabulary', 'A1');
   }
   
-  console.log(`Fetching question for category: ${category}, level: ${level}`);
+  console.log(`Fetching question for category: ${category}, level: ${level}, excluding IDs:`, askedQuestionIds);
   
   try {
     // Сначала проверим, есть ли вообще данные в таблице
@@ -871,6 +883,7 @@ async function fetchNextQuestion(env, category, level) {
     const exactMatchQuery = `
       SELECT COUNT(*) as count FROM test_questions 
       WHERE LOWER(category) = LOWER(?) AND LOWER(level) = LOWER(?)
+      ${askedQuestionIds.length > 0 ? 'AND id NOT IN (' + askedQuestionIds.join(',') + ')' : ''}
     `;
     
     const exactMatch = await env.USER_DB
@@ -878,21 +891,24 @@ async function fetchNextQuestion(env, category, level) {
       .bind(category, level)
       .all();
     
-    console.log('Exact match count:', JSON.stringify(exactMatch));
+    console.log('Exact match count (excluding asked questions):', JSON.stringify(exactMatch));
     
     let queryCategory = category;
     let queryLevel = level;
     
     if (!exactMatch.results || exactMatch.results[0].count === 0) {
-      console.log('No exact match found, looking for alternatives');
+      console.log('No exact match found or all questions asked, looking for alternatives');
       
       // Проверяем, есть ли вопросы нужной категории любого уровня
       const categoryMatch = await env.USER_DB
-        .prepare('SELECT DISTINCT level FROM test_questions WHERE LOWER(category) = LOWER(?) ORDER BY level ASC')
+        .prepare(`SELECT DISTINCT level FROM test_questions 
+                 WHERE LOWER(category) = LOWER(?)
+                 ${askedQuestionIds.length > 0 ? 'AND id NOT IN (' + askedQuestionIds.join(',') + ')' : ''}
+                 ORDER BY level ASC`)
         .bind(category)
         .all();
       
-      console.log('Available levels for this category:', JSON.stringify(categoryMatch));
+      console.log('Available levels for this category (excluding asked questions):', JSON.stringify(categoryMatch));
       
       if (categoryMatch.results && categoryMatch.results.length > 0) {
         // Используем первый доступный уровень для данной категории
@@ -902,7 +918,9 @@ async function fetchNextQuestion(env, category, level) {
       } else {
         // Если нет вопросов нужной категории, ищем любую доступную категорию
         const anyCategory = await env.USER_DB
-          .prepare('SELECT DISTINCT category FROM test_questions LIMIT 1')
+          .prepare(`SELECT DISTINCT category FROM test_questions 
+                   ${askedQuestionIds.length > 0 ? 'WHERE id NOT IN (' + askedQuestionIds.join(',') + ')' : ''}
+                   LIMIT 1`)
           .all();
         
         if (anyCategory.results && anyCategory.results.length > 0) {
@@ -911,7 +929,10 @@ async function fetchNextQuestion(env, category, level) {
           
           // Ищем любой уровень для новой категории
           const anyLevel = await env.USER_DB
-            .prepare('SELECT DISTINCT level FROM test_questions WHERE LOWER(category) = LOWER(?) LIMIT 1')
+            .prepare(`SELECT DISTINCT level FROM test_questions 
+                     WHERE LOWER(category) = LOWER(?)
+                     ${askedQuestionIds.length > 0 ? 'AND id NOT IN (' + askedQuestionIds.join(',') + ')' : ''}
+                     LIMIT 1`)
             .bind(queryCategory)
             .all();
           
@@ -919,11 +940,23 @@ async function fetchNextQuestion(env, category, level) {
             queryLevel = anyLevel.results[0].level;
             console.log(`Using level ${queryLevel} for category ${queryCategory}`);
           } else {
+            // Если все вопросы из базы уже были заданы, сбрасываем фильтр по ID
+            if (askedQuestionIds.length > 0) {
+              console.log('All questions have been asked, resetting exclusion filter');
+              return fetchNextQuestion(env, category, level, []);
+            }
+            
             // Если что-то пошло совсем не так, используем запасной вопрос
             console.log('Could not find any suitable questions, using fallback');
             return getFallbackQuestion(category, level);
           }
         } else {
+          // Если все вопросы из базы уже были заданы, сбрасываем фильтр по ID
+          if (askedQuestionIds.length > 0) {
+            console.log('All questions have been asked, resetting exclusion filter');
+            return fetchNextQuestion(env, category, level, []);
+          }
+          
           // Если не найдено ни одной категории, используем запасной вопрос
           console.log('Could not find any questions at all, using fallback');
           return getFallbackQuestion(category, level);
@@ -934,7 +967,8 @@ async function fetchNextQuestion(env, category, level) {
     // Основной запрос с учетом регистра и возможно измененных category и level
     const query = `
       SELECT * FROM test_questions 
-      WHERE LOWER(category) = LOWER(?) AND LOWER(level) = LOWER(?) 
+      WHERE LOWER(category) = LOWER(?) AND LOWER(level) = LOWER(?)
+      ${askedQuestionIds.length > 0 ? 'AND id NOT IN (' + askedQuestionIds.join(',') + ')' : ''} 
       ORDER BY RANDOM() 
       LIMIT 1
     `;
@@ -986,6 +1020,12 @@ async function fetchNextQuestion(env, category, level) {
         return getFallbackQuestion(category, level);
       }
     } else {
+      // Если после применения всех фильтров не осталось вопросов, пробуем сбросить список исключений
+      if (askedQuestionIds.length > 0) {
+        console.log('No questions found with current exclusions, trying without excluding asked questions');
+        return fetchNextQuestion(env, category, level, []);
+      }
+      
       console.log('No questions found in database with adjusted parameters, using fallback');
       return getFallbackQuestion(category, level);
     }
