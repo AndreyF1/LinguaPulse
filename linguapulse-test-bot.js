@@ -18,8 +18,19 @@ const STATE_PREFIX = 'state:';
 
 // Основной обработчик запросов
 async function handleUpdate(update, env, ctx) {
+  console.log('Received update:', JSON.stringify(update));
+  
   const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
-  if (!chatId) return;
+  if (!chatId) {
+    console.log('No chatId found in update');
+    return;
+  }
+  console.log('Processing update for chatId:', chatId);
+  
+  // Если есть callback_query, логируем его отдельно для отладки
+  if (update.callback_query) {
+    console.log('Received callback_query:', JSON.stringify(update.callback_query));
+  }
 
   // Вспомогательные функции для Telegram API
   const callT = (method, payload = {}) =>
@@ -217,6 +228,7 @@ async function handleUpdate(update, env, ctx) {
   // Обработка кнопки начала теста - универсальный обработчик для первичного запуска и перезапуска
   if (update.callback_query?.data === 'start_test') {
     await ack(update.callback_query.id);
+    console.log('Starting test for user', chatId);
     
     // Сбрасываем состояние теста
     questions = [];
@@ -231,30 +243,119 @@ async function handleUpdate(update, env, ctx) {
     
     // Записываем время начала теста
     const startAt = new Date().toISOString();
-    await env.USER_DB
-      .prepare(
-        `INSERT INTO user_profiles (telegram_id, start_test_at)
-         VALUES (?, ?)
-         ON CONFLICT(telegram_id) DO UPDATE
-           SET start_test_at = excluded.start_test_at`
-      )
-      .bind(parseInt(chatId, 10), startAt)
-      .run();
+    try {
+      console.log('Updating user profile with start_test_at:', startAt);
+      await env.USER_DB
+        .prepare(
+          `INSERT INTO user_profiles (telegram_id, start_test_at)
+           VALUES (?, ?)
+           ON CONFLICT(telegram_id) DO UPDATE
+             SET start_test_at = excluded.start_test_at`
+        )
+        .bind(parseInt(chatId, 10), startAt)
+        .run();
+      
+      console.log('User profile updated successfully');
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+    }
     
-    // Загружаем первый вопрос из базы
-    const firstQuestion = await fetchNextQuestion(env, 'vocabulary', 'A1');
-    questions.push(firstQuestion);
+    // Проверяем доступные категории в базе данных
+    try {
+      const categoriesQuery = `
+        SELECT DISTINCT category FROM test_questions
+      `;
+      
+      const categoriesResult = await env.USER_DB
+        .prepare(categoriesQuery)
+        .all();
+      
+      console.log('Available categories:', JSON.stringify(categoriesResult));
+      
+      // Определяем первую категорию для вопроса
+      let firstCategory = 'vocabulary';
+      
+      if (categoriesResult.results && categoriesResult.results.length > 0) {
+        // Проверяем, есть ли категория vocabulary
+        const hasVocabulary = categoriesResult.results.some(
+          cat => cat.category.toLowerCase() === 'vocabulary'
+        );
+        
+        if (!hasVocabulary) {
+          // Если нет vocabulary, берем первую доступную категорию
+          firstCategory = categoriesResult.results[0].category;
+          console.log(`No vocabulary category found, using ${firstCategory} instead`);
+        }
+      }
+      
+      // Загружаем первый вопрос из базы
+      console.log(`Fetching first question (${firstCategory}, A1)`);
+      const firstQuestion = await fetchNextQuestion(env, firstCategory, 'A1');
+      
+      if (!firstQuestion) {
+        console.error('Failed to fetch first question');
+        await sendMessage(
+          "Sorry, there was a problem loading the test. Please try again later.",
+          [[{ text: "Try Again", callback_data: "start_test" }]]
+        );
+        return;
+      }
+      
+      // Обновляем индекс категории для следующего вопроса
+      const categories = ['vocabulary', 'grammar', 'reading'];
+      currentCategoryIndex = categories.indexOf(firstQuestion.category);
+      if (currentCategoryIndex === -1) currentCategoryIndex = 0;
+      
+      console.log('First question:', JSON.stringify(firstQuestion));
+      console.log('Current category index:', currentCategoryIndex);
+      questions.push(firstQuestion);
+      
+      // Обновляем счетчик категории
+      categoryCompletionStatus[firstQuestion.category]++;
+      
+      try {
+        console.log('Saving initial state to KV');
+        await kv.put(stateKey, JSON.stringify({ 
+          questions, 
+          answers, 
+          index, 
+          currentCategoryIndex,
+          categoryCompletionStatus
+        }));
+        console.log('Initial state saved successfully');
+      } catch (error) {
+        console.error('Error saving initial state:', error);
+      }
+      
+      // Показываем первый вопрос
+      try {
+        console.log('Sending first question to user');
+        const formattedQuestion = formatQuestion(firstQuestion, 1, 12);
+        console.log('Formatted question:', formattedQuestion);
+        console.log('Options:', firstQuestion.options);
+        await ask(formattedQuestion, firstQuestion.options);
+        console.log('First question sent successfully');
+      } catch (error) {
+        console.error('Error sending first question:', error);
+      }
+    } catch (error) {
+      console.error('Error checking available categories:', error);
+      
+      // В случае ошибки используем запасной вопрос
+      const fallbackQuestion = getFallbackQuestion('vocabulary', 'A1');
+      questions.push(fallbackQuestion);
+      
+      await kv.put(stateKey, JSON.stringify({ 
+        questions, 
+        answers, 
+        index, 
+        currentCategoryIndex,
+        categoryCompletionStatus
+      }));
+      
+      await ask(formatQuestion(fallbackQuestion, 1, 12), fallbackQuestion.options);
+    }
     
-    await kv.put(stateKey, JSON.stringify({ 
-      questions, 
-      answers, 
-      index, 
-      currentCategoryIndex,
-      categoryCompletionStatus
-    }));
-    
-    // Показываем первый вопрос
-    await ask(formatQuestion(firstQuestion, 1, 12), firstQuestion.options);
     return;
   }
   
@@ -303,6 +404,24 @@ async function handleUpdate(update, env, ctx) {
   if (update.callback_query?.data?.startsWith('next:')) {
     await ack(update.callback_query.id);
     const selectedAnswer = update.callback_query.data.slice(5);
+    console.log('Selected answer:', selectedAnswer);
+    
+    // Проверяем состояние теста
+    console.log('Current state:', {
+      'questions.length': questions.length,
+      'index': index,
+      'answers': answers
+    });
+    
+    if (index >= questions.length) {
+      console.error('Invalid state: index out of bounds');
+      await sendMessage(
+        "Sorry, something went wrong with your test session. Let's start again.",
+        [[{ text: "Start Test", callback_data: "start_test" }]]
+      );
+      return;
+    }
+    
     answers[index] = selectedAnswer;
     
     // Проверяем правильность ответа
@@ -318,17 +437,22 @@ async function handleUpdate(update, env, ctx) {
     // Определяем, какую категорию вопросов задавать следующей
     const categories = ['vocabulary', 'grammar', 'reading'];
     currentCategoryIndex = (currentCategoryIndex + 1) % 3;
+    console.log('New category index:', currentCategoryIndex);
     
     // Проверяем, не достигли ли лимитов для категорий
     if (categoryCompletionStatus.vocabulary >= 5 && categories[currentCategoryIndex] === 'vocabulary') {
+      console.log('Vocabulary limit reached, skipping category');
       currentCategoryIndex = (currentCategoryIndex + 1) % 3;
     }
     if (categoryCompletionStatus.grammar >= 5 && categories[currentCategoryIndex] === 'grammar') {
+      console.log('Grammar limit reached, skipping category');
       currentCategoryIndex = (currentCategoryIndex + 1) % 3;
     }
     if (categoryCompletionStatus.reading >= 2 && categories[currentCategoryIndex] === 'reading') {
+      console.log('Reading limit reached, skipping category');
       currentCategoryIndex = (currentCategoryIndex + 1) % 3;
     }
+    console.log('Final category index after limits check:', currentCategoryIndex);
     
     // Определяем следующий уровень сложности
     let nextLevel;
@@ -343,6 +467,7 @@ async function handleUpdate(update, env, ctx) {
       if (correctRatio >= 0.8) {
         // При высокой точности увеличиваем сложность
         const currentLevel = currentQuestion.level;
+        console.log('Increasing difficulty from', currentLevel);
         if (currentLevel === 'A1') nextLevel = 'A2';
         else if (currentLevel === 'A2') nextLevel = 'B1';
         else if (currentLevel === 'B1') nextLevel = 'B2';
@@ -351,6 +476,7 @@ async function handleUpdate(update, env, ctx) {
       } else if (correctRatio <= 0.4) {
         // При низкой точности снижаем сложность
         const currentLevel = currentQuestion.level;
+        console.log('Decreasing difficulty from', currentLevel);
         if (currentLevel === 'C1') nextLevel = 'B2';
         else if (currentLevel === 'B2') nextLevel = 'B1';
         else if (currentLevel === 'B1') nextLevel = 'A2';
@@ -366,13 +492,19 @@ async function handleUpdate(update, env, ctx) {
     index++;
     
     // Сохраняем обновленное состояние
-    await kv.put(stateKey, JSON.stringify({ 
-      questions, 
-      answers, 
-      index, 
-      currentCategoryIndex,
-      categoryCompletionStatus
-    }));
+    try {
+      const stateToSave = { 
+        questions, 
+        answers, 
+        index, 
+        currentCategoryIndex,
+        categoryCompletionStatus
+      };
+      console.log('Saving state to KV');
+      await kv.put(stateKey, JSON.stringify(stateToSave));
+    } catch (error) {
+      console.error('Error saving state:', error);
+    }
 
     // Проверяем, завершен ли тест (12 вопросов или достигнуты все лимиты категорий)
     const testComplete = index >= 12 || 
@@ -485,18 +617,101 @@ function formatQuestion(question, current, total) {
 async function fetchNextQuestion(env, category, level) {
   console.log(`Fetching question for category: ${category}, level: ${level}`);
   
-  // Здесь следует реализовать логику получения вопроса из хранилища
-  // Это может быть запрос к KV, D1 или другой внешней базе данных
-  
-  // Пример: Получаем вопрос из таблицы вопросов в D1
-  const query = `
-    SELECT * FROM test_questions 
-    WHERE category = ? AND level = ? 
-    ORDER BY RANDOM() 
-    LIMIT 1
-  `;
-  
   try {
+    // Сначала проверим, есть ли вообще данные в таблице
+    const checkQuery = `
+      SELECT COUNT(*) as total FROM test_questions
+    `;
+    
+    const checkResult = await env.USER_DB
+      .prepare(checkQuery)
+      .all();
+    
+    console.log('Total questions in database:', JSON.stringify(checkResult));
+    if (!checkResult.results || checkResult.results[0].total === 0) {
+      console.log('Database is empty, using fallback');
+      return getFallbackQuestion(category, level);
+    }
+    
+    // Проверим, какие категории и уровни есть в базе
+    const categoriesQuery = `
+      SELECT DISTINCT category, level FROM test_questions
+    `;
+    
+    const categoriesResult = await env.USER_DB
+      .prepare(categoriesQuery)
+      .all();
+    
+    console.log('Available categories and levels:', JSON.stringify(categoriesResult));
+    
+    // Проверяем, есть ли точное совпадение по категории и уровню
+    const exactMatchQuery = `
+      SELECT COUNT(*) as count FROM test_questions 
+      WHERE LOWER(category) = LOWER(?) AND LOWER(level) = LOWER(?)
+    `;
+    
+    const exactMatch = await env.USER_DB
+      .prepare(exactMatchQuery)
+      .bind(category, level)
+      .all();
+    
+    console.log('Exact match count:', JSON.stringify(exactMatch));
+    
+    if (!exactMatch.results || exactMatch.results[0].count === 0) {
+      console.log('No exact match found, looking for alternatives');
+      
+      // Проверяем, есть ли вопросы нужной категории любого уровня
+      const categoryMatch = await env.USER_DB
+        .prepare('SELECT DISTINCT level FROM test_questions WHERE LOWER(category) = LOWER(?) ORDER BY level ASC')
+        .bind(category)
+        .all();
+      
+      console.log('Available levels for this category:', JSON.stringify(categoryMatch));
+      
+      if (categoryMatch.results && categoryMatch.results.length > 0) {
+        // Используем первый доступный уровень для данной категории
+        const availableLevel = categoryMatch.results[0].level;
+        console.log(`Using available level ${availableLevel} for category ${category}`);
+        level = availableLevel;
+      } else {
+        // Если нет вопросов нужной категории, ищем любую доступную категорию
+        const anyCategory = await env.USER_DB
+          .prepare('SELECT DISTINCT category FROM test_questions LIMIT 1')
+          .all();
+        
+        if (anyCategory.results && anyCategory.results.length > 0) {
+          category = anyCategory.results[0].category;
+          console.log(`No questions for requested category, using ${category} instead`);
+          
+          // Ищем любой уровень для новой категории
+          const anyLevel = await env.USER_DB
+            .prepare('SELECT DISTINCT level FROM test_questions WHERE LOWER(category) = LOWER(?) LIMIT 1')
+            .bind(category)
+            .all();
+          
+          if (anyLevel.results && anyLevel.results.length > 0) {
+            level = anyLevel.results[0].level;
+          } else {
+            // Если что-то пошло совсем не так, используем запасной вопрос
+            console.log('Could not find any suitable questions, using fallback');
+            return getFallbackQuestion(category, level);
+          }
+        } else {
+          // Если не найдено ни одной категории, используем запасной вопрос
+          console.log('Could not find any questions at all, using fallback');
+          return getFallbackQuestion(category, level);
+        }
+      }
+    }
+    
+    // Основной запрос с учетом регистра и возможно измененных category и level
+    const query = `
+      SELECT * FROM test_questions 
+      WHERE LOWER(category) = LOWER(?) AND LOWER(level) = LOWER(?) 
+      ORDER BY RANDOM() 
+      LIMIT 1
+    `;
+    
     console.log('Executing query:', query, 'with params:', [category, level]);
     
     const { results } = await env.USER_DB
