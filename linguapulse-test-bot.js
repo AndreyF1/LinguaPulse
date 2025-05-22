@@ -775,9 +775,16 @@ function formatQuestion(question, current, total) {
       formattedText += '📖 *Reading*\n\n';
     }
     
+    // Заменяем //n на реальные переносы строк
+    let processedQuestion = question.question;
+    if (processedQuestion.includes('//n')) {
+      console.log('Found //n in question text, replacing with newlines');
+      processedQuestion = processedQuestion.replace(/\/\/n/g, '\n');
+    }
+    
     // Вместо экранирования всех символов, экранируем только специальные символы Markdown
     // которые могут повлиять на форматирование
-    const escapedQuestion = question.question
+    const escapedQuestion = processedQuestion
       .replace(/([_*[\]()~`>#+=|{}])/g, '\\$1');
     
     // Добавляем текст вопроса
@@ -1046,7 +1053,7 @@ function getFallbackQuestion(category, level) {
     reading: {
       A1: [
         {
-          question: "Read and answer:\n\nMy name is John. I am from England. I speak English.\n\nWhere is John from?",
+          question: "Read and answer://n//nMy name is John. I am from England. I speak English.//n//nWhere is John from?",
           options: ["America", "England", "France", "Spain"],
           answer: "England",
           category: "reading",
@@ -1055,7 +1062,7 @@ function getFallbackQuestion(category, level) {
       ],
       A2: [
         {
-          question: "Read and answer:\n\nMaria goes to work by bus. It takes her 30 minutes to get to work. She starts work at 9:00.\n\nHow does Maria go to work?",
+          question: "Read and answer://n//nMaria goes to work by bus. It takes her 30 minutes to get to work. She starts work at 9:00.//n//nHow does Maria go to work?",
           options: ["By car", "By train", "By bus", "On foot"],
           answer: "By bus",
           category: "reading",
@@ -1201,7 +1208,9 @@ function evaluateTest(questions, answers) {
     report += '• *Reading*: ';
     if (incorrectByCategory.reading.length === 1) {
       const q = incorrectByCategory.reading[0];
-      const questionStart = q.question.split('\n\n')[0] || q.question.substring(0, 30);
+      // Заменяем //n на пробелы для отчета и берем только первое предложение или часть текста
+      let questionText = q.question.replace(/\/\/n/g, ' ');
+      const questionStart = questionText.split('\n\n')[0] || questionText.substring(0, 30);
       report += `"${questionStart}..." - Correct answer: "${q.answer}"\n`;
     } else {
       report += `You missed ${incorrectByCategory.reading.length} reading questions.\n`;
