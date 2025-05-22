@@ -622,103 +622,120 @@ async function handleUpdate(update, env, ctx) {
       } catch (error) {
         console.error('Error saving state:', error);
       }
-    } catch (error) {
-      console.error('Error processing answer:', error);
-    }
     
-    // Проверяем, завершен ли тест (12 вопросов или достигнуты все лимиты категорий)
-    const testComplete = index >= 12 || 
-                        (categoryCompletionStatus.vocabulary >= 5 && 
-                         categoryCompletionStatus.grammar >= 5 && 
-                         categoryCompletionStatus.reading >= 2);
-    
-    console.log('Test completion check:', {
-      index,
-      categoryCompletionStatus,
-      testComplete
-    });
-
-    if (!testComplete) {
+      // Проверяем, завершен ли тест (12 вопросов или достигнуты все лимиты категорий)
+      const testComplete = index >= 12 || 
+                          (categoryCompletionStatus.vocabulary >= 5 && 
+                           categoryCompletionStatus.grammar >= 5 && 
+                           categoryCompletionStatus.reading >= 2);
+      
+      console.log('Test completion check:', {
+        index,
+        categoryCompletionStatus,
+        testComplete
+      });
+  
+      if (!testComplete) {
+        try {
+          // Сохраняем nextLevel и currentCategoryIndex для диагностики
+          console.log('Loading next question with params:', {
+            nextCategory: categories[currentCategoryIndex],
+            nextLevel: nextLevel,
+            currentCategoryIndex: currentCategoryIndex
+          });
+          
+          // Загружаем следующий вопрос из базы
+          const nextCategory = categories[currentCategoryIndex];
+          console.log('Fetching next question for category:', nextCategory, 'level:', nextLevel);
+          const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
+          console.log('Next question loaded:', JSON.stringify(nextQuestion));
+          
+          // Проверка, что вопрос был успешно загружен
+          if (!nextQuestion) {
+            throw new Error('Failed to load next question');
+          }
+          
+          questions.push(nextQuestion);
+          
+          await kv.put(stateKey, JSON.stringify({ 
+            questions, 
+            answers, 
+            index, 
+            currentCategoryIndex,
+            categoryCompletionStatus
+          }));
+          
+          // Показываем следующий вопрос
+          console.log('Sending next question');
+          await ask(formatQuestion(nextQuestion, index + 1, 12), nextQuestion.options);
+          console.log('Next question sent successfully');
+        } catch (error) {
+          console.error('Error sending next question:', error, error.stack);
+          await sendMessage(
+            "Sorry, there was a problem loading the next question. Let's try to continue.",
+            [[{ text: "Continue Test", callback_data: "continue_test" }]]
+          );
+        }
+        return;
+      }
+  
       try {
-        // Загружаем следующий вопрос из базы
-        const categories = ['vocabulary', 'grammar', 'reading'];
-        const nextCategory = categories[currentCategoryIndex];
-        console.log('Fetching next question for category:', nextCategory, 'level:', nextLevel);
-        const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
-        questions.push(nextQuestion);
+        // Завершаем тест: оцениваем уровень и обновляем eng_level и tested_at
+        console.log('Completing test, evaluating results');
+        const { level, report } = evaluateTest(questions, answers);
+        const testedAt = new Date().toISOString();
         
-        await kv.put(stateKey, JSON.stringify({ 
-          questions, 
-          answers, 
-          index, 
-          currentCategoryIndex,
-          categoryCompletionStatus
-        }));
+        console.log('Test results:', { level, report });
         
-        // Показываем следующий вопрос
-        console.log('Sending next question');
-        await ask(formatQuestion(nextQuestion, index + 1, 12), nextQuestion.options);
-        console.log('Next question sent successfully');
-      } catch (error) {
-        console.error('Error sending next question:', error);
+        await env.USER_DB
+          .prepare(
+            `INSERT INTO user_profiles (telegram_id, eng_level, tested_at)
+             VALUES (?, ?, ?)
+             ON CONFLICT(telegram_id) DO UPDATE
+               SET eng_level = excluded.eng_level,
+                   tested_at = excluded.tested_at`
+          )
+          .bind(parseInt(chatId, 10), level, testedAt)
+          .run();
+  
+        await kv.delete(stateKey);
+        
+        // Форматируем сообщение о результатах теста
+        const correctCount = answers.filter((answer, i) => answer === questions[i].answer).length;
+        const accuracy = Math.round((correctCount / questions.length) * 100);
+        
+        let resultMessage = `🎓 *Test completed!*\n\n` +
+                            `Your English level: *${level}*\n` +
+                            `Accuracy: ${accuracy}%\n\n`;
+        
+        // Добавляем описание уровня
+        resultMessage += getLevelDescription(level) + "\n\n";
+        
+        // Добавляем отчет об ошибках, если они были
+        if (report.length > 0) {
+          resultMessage += "*Areas for improvement:*\n";
+          resultMessage += report;
+        } else {
+          resultMessage += "🌟 *Excellent work!* You answered all questions correctly.";
+        }
+        
         await sendMessage(
-          "Sorry, there was a problem loading the next question. Let's try to continue.",
-          [[{ text: "Continue Test", callback_data: "continue_test" }]]
+          resultMessage,
+          [[{ text: "Free Audio Lesson", callback_data: "lesson:free" }]]
+        );
+        console.log('Test completion message sent successfully');
+      } catch (error) {
+        console.error('Error completing test:', error);
+        await sendMessage(
+          "Sorry, there was a problem processing your test results. Please contact support.",
+          [[{ text: "Try Again", callback_data: "start_test" }]]
         );
       }
-      return;
-    }
-
-    try {
-      // Завершаем тест: оцениваем уровень и обновляем eng_level и tested_at
-      console.log('Completing test, evaluating results');
-      const { level, report } = evaluateTest(questions, answers);
-      const testedAt = new Date().toISOString();
-      
-      console.log('Test results:', { level, report });
-      
-      await env.USER_DB
-        .prepare(
-          `INSERT INTO user_profiles (telegram_id, eng_level, tested_at)
-           VALUES (?, ?, ?)
-           ON CONFLICT(telegram_id) DO UPDATE
-             SET eng_level = excluded.eng_level,
-                 tested_at = excluded.tested_at`
-        )
-        .bind(parseInt(chatId, 10), level, testedAt)
-        .run();
-
-      await kv.delete(stateKey);
-      
-      // Форматируем сообщение о результатах теста
-      const correctCount = answers.filter((answer, i) => answer === questions[i].answer).length;
-      const accuracy = Math.round((correctCount / questions.length) * 100);
-      
-      let resultMessage = `🎓 *Test completed!*\n\n` +
-                          `Your English level: *${level}*\n` +
-                          `Accuracy: ${accuracy}%\n\n`;
-      
-      // Добавляем описание уровня
-      resultMessage += getLevelDescription(level) + "\n\n";
-      
-      // Добавляем отчет об ошибках, если они были
-      if (report.length > 0) {
-        resultMessage += "*Areas for improvement:*\n";
-        resultMessage += report;
-      } else {
-        resultMessage += "🌟 *Excellent work!* You answered all questions correctly.";
-      }
-      
+    } catch (e) {
+      console.error('Unexpected error in answer processing:', e, e.stack);
       await sendMessage(
-        resultMessage,
-        [[{ text: "Free Audio Lesson", callback_data: "lesson:free" }]]
-      );
-      console.log('Test completion message sent successfully');
-    } catch (error) {
-      console.error('Error completing test:', error);
-      await sendMessage(
-        "Sorry, there was a problem processing your test results. Please contact support.",
-        [[{ text: "Try Again", callback_data: "start_test" }]]
+        "Sorry, something went wrong. Let's try to continue the test.",
+        [[{ text: "Continue Test", callback_data: "continue_test" }]]
       );
     }
     return;
@@ -777,6 +794,11 @@ function formatQuestion(question, current, total) {
 
 // Функция для получения вопроса из базы данных (или другого источника)
 async function fetchNextQuestion(env, category, level) {
+  if (!category || !level) {
+    console.error('Missing required parameters:', { category, level });
+    return getFallbackQuestion('vocabulary', 'A1');
+  }
+  
   console.log(`Fetching question for category: ${category}, level: ${level}`);
   
   try {
@@ -819,6 +841,9 @@ async function fetchNextQuestion(env, category, level) {
     
     console.log('Exact match count:', JSON.stringify(exactMatch));
     
+    let queryCategory = category;
+    let queryLevel = level;
+    
     if (!exactMatch.results || exactMatch.results[0].count === 0) {
       console.log('No exact match found, looking for alternatives');
       
@@ -834,7 +859,7 @@ async function fetchNextQuestion(env, category, level) {
         // Используем первый доступный уровень для данной категории
         const availableLevel = categoryMatch.results[0].level;
         console.log(`Using available level ${availableLevel} for category ${category}`);
-        level = availableLevel;
+        queryLevel = availableLevel;
       } else {
         // Если нет вопросов нужной категории, ищем любую доступную категорию
         const anyCategory = await env.USER_DB
@@ -842,17 +867,18 @@ async function fetchNextQuestion(env, category, level) {
           .all();
         
         if (anyCategory.results && anyCategory.results.length > 0) {
-          category = anyCategory.results[0].category;
-          console.log(`No questions for requested category, using ${category} instead`);
+          queryCategory = anyCategory.results[0].category;
+          console.log(`No questions for requested category, using ${queryCategory} instead`);
           
           // Ищем любой уровень для новой категории
           const anyLevel = await env.USER_DB
             .prepare('SELECT DISTINCT level FROM test_questions WHERE LOWER(category) = LOWER(?) LIMIT 1')
-            .bind(category)
+            .bind(queryCategory)
             .all();
           
           if (anyLevel.results && anyLevel.results.length > 0) {
-            level = anyLevel.results[0].level;
+            queryLevel = anyLevel.results[0].level;
+            console.log(`Using level ${queryLevel} for category ${queryCategory}`);
           } else {
             // Если что-то пошло совсем не так, используем запасной вопрос
             console.log('Could not find any suitable questions, using fallback');
@@ -874,29 +900,55 @@ async function fetchNextQuestion(env, category, level) {
       LIMIT 1
     `;
     
-    console.log('Executing query:', query, 'with params:', [category, level]);
+    console.log('Executing query:', query, 'with params:', [queryCategory, queryLevel]);
     
     const { results } = await env.USER_DB
       .prepare(query)
-      .bind(category, level)
+      .bind(queryCategory, queryLevel)
       .all();
     
     console.log('Query results:', JSON.stringify(results));
     
     if (results && results.length > 0) {
-      // Форматируем вопрос из базы данных
-      const question = {
-        id: results[0].id,
-        category: results[0].category,
-        level: results[0].level,
-        question: results[0].question_text,
-        options: JSON.parse(results[0].options),
-        answer: results[0].correct_answer
-      };
-      console.log('Formatted question:', JSON.stringify(question));
-      return question;
+      try {
+        // Проверяем структуру результата
+        if (!results[0].question_text || !results[0].options || !results[0].correct_answer) {
+          console.error('Invalid question data structure:', results[0]);
+          return getFallbackQuestion(category, level);
+        }
+        
+        // Проверяем, что options можно распарсить
+        let options;
+        try {
+          options = JSON.parse(results[0].options);
+          if (!Array.isArray(options)) {
+            throw new Error('Options is not an array');
+          }
+        } catch (parseError) {
+          console.error('Error parsing options:', parseError);
+          console.error('Options string:', results[0].options);
+          return getFallbackQuestion(category, level);
+        }
+        
+        // Форматируем вопрос из базы данных
+        const question = {
+          id: results[0].id,
+          category: results[0].category,
+          level: results[0].level,
+          question: results[0].question_text,
+          options: options,
+          answer: results[0].correct_answer
+        };
+        
+        console.log('Formatted question:', JSON.stringify(question));
+        return question;
+      } catch (formatError) {
+        console.error('Error formatting question:', formatError);
+        return getFallbackQuestion(category, level);
+      }
     } else {
-      console.log('No questions found in database, using fallback');
+      console.log('No questions found in database with adjusted parameters, using fallback');
+      return getFallbackQuestion(category, level);
     }
   } catch (error) {
     console.error("Error fetching question:", error);
@@ -905,51 +957,159 @@ async function fetchNextQuestion(env, category, level) {
       stack: error.stack,
       name: error.name
     });
+    return getFallbackQuestion(category, level);
   }
-  
-  // Если не удалось получить вопрос из базы, используем резервные вопросы
-  console.log('Using fallback question');
-  return getFallbackQuestion(category, level);
 }
 
 // Резервные вопросы на случай, если база данных недоступна
 function getFallbackQuestion(category, level) {
+  console.log(`Getting fallback question for category: ${category}, level: ${level}`);
+  
+  // Проверяем, что переданы корректные параметры
+  if (!category) {
+    console.warn('No category provided for fallback question, defaulting to vocabulary');
+    category = 'vocabulary';
+  }
+  
+  if (!level) {
+    console.warn('No level provided for fallback question, defaulting to A1');
+    level = 'A1';
+  }
+  
+  // Нормализуем категорию и уровень
+  category = category.toLowerCase();
+  level = level.toUpperCase();
+  
   // Здесь можно реализовать небольшой набор резервных вопросов для каждой категории и уровня
   const fallbackQuestions = {
     vocabulary: {
-      A1: {
-        question: "What is the meaning of 'begin'?",
-        options: ["End", "Start", "Stop", "Continue"],
-        answer: "Start",
-        category: "vocabulary",
-        level: "A1"
-      },
-      // Другие уровни...
+      A1: [
+        {
+          question: "What is the meaning of 'begin'?",
+          options: ["End", "Start", "Stop", "Continue"],
+          answer: "Start",
+          category: "vocabulary",
+          level: "A1"
+        },
+        {
+          question: "It's cold today. Wear your ___!",
+          options: ["jacket", "shirt", "shoes", "tea"],
+          answer: "jacket",
+          category: "vocabulary",
+          level: "A1"
+        },
+        {
+          question: "Can you ___ me with my homework?",
+          options: ["help", "make", "give", "take"],
+          answer: "help",
+          category: "vocabulary",
+          level: "A1"
+        }
+      ],
+      A2: [
+        {
+          question: "They live in a small ___ near the mountains.",
+          options: ["village", "city", "place", "house"],
+          answer: "village",
+          category: "vocabulary",
+          level: "A2"
+        }
+      ]
     },
     grammar: {
-      A1: {
-        question: "Complete the sentence: She ___ a student.",
-        options: ["am", "is", "are", "be"],
-        answer: "is",
-        category: "grammar",
-        level: "A1"
-      },
-      // Другие уровни...
+      A1: [
+        {
+          question: "Complete the sentence: She ___ a student.",
+          options: ["am", "is", "are", "be"],
+          answer: "is",
+          category: "grammar",
+          level: "A1"
+        },
+        {
+          question: "Complete the sentence: I ___ coffee every morning.",
+          options: ["drink", "drinks", "drinking", "am drink"],
+          answer: "drink",
+          category: "grammar",
+          level: "A1"
+        }
+      ],
+      A2: [
+        {
+          question: "Complete the sentence: She ___ to the gym every morning.",
+          options: ["go", "goes", "gone", "going"],
+          answer: "goes",
+          category: "grammar",
+          level: "A2"
+        }
+      ]
     },
     reading: {
-      A1: {
-        question: "Read and answer:\n\nMy name is John. I am from England. I speak English.\n\nWhere is John from?",
-        options: ["America", "England", "France", "Spain"],
-        answer: "England",
-        category: "reading",
-        level: "A1"
-      },
-      // Другие уровни...
+      A1: [
+        {
+          question: "Read and answer:\n\nMy name is John. I am from England. I speak English.\n\nWhere is John from?",
+          options: ["America", "England", "France", "Spain"],
+          answer: "England",
+          category: "reading",
+          level: "A1"
+        }
+      ],
+      A2: [
+        {
+          question: "Read and answer:\n\nMaria goes to work by bus. It takes her 30 minutes to get to work. She starts work at 9:00.\n\nHow does Maria go to work?",
+          options: ["By car", "By train", "By bus", "On foot"],
+          answer: "By bus",
+          category: "reading",
+          level: "A2"
+        }
+      ]
     }
   };
   
-  // Возвращаем базовый вопрос для запрошенной категории и уровня
-  return fallbackQuestions[category][level] || fallbackQuestions.vocabulary.A1;
+  // Проверяем наличие вопросов для указанной категории и уровня
+  if (fallbackQuestions[category] && fallbackQuestions[category][level] && fallbackQuestions[category][level].length > 0) {
+    // Берем случайный вопрос из доступных
+    const randomIndex = Math.floor(Math.random() * fallbackQuestions[category][level].length);
+    console.log(`Using fallback question for ${category} ${level}, index ${randomIndex}`);
+    return fallbackQuestions[category][level][randomIndex];
+  }
+  
+  // Если нет вопросов для указанной категории и уровня, берем вопрос из наиболее близкой категории и уровня
+  const categories = ['vocabulary', 'grammar', 'reading'];
+  const levels = ['A1', 'A2', 'B1', 'B2', 'C1'];
+  
+  // Сначала пробуем найти другой уровень в той же категории
+  if (fallbackQuestions[category]) {
+    for (const possibleLevel of levels) {
+      if (fallbackQuestions[category][possibleLevel] && fallbackQuestions[category][possibleLevel].length > 0) {
+        const randomIndex = Math.floor(Math.random() * fallbackQuestions[category][possibleLevel].length);
+        console.log(`No exact match found, using fallback from same category but level ${possibleLevel}`);
+        return fallbackQuestions[category][possibleLevel][randomIndex];
+      }
+    }
+  }
+  
+  // Если не нашли в той же категории, ищем в любой категории
+  for (const possibleCategory of categories) {
+    if (fallbackQuestions[possibleCategory]) {
+      for (const possibleLevel of levels) {
+        if (fallbackQuestions[possibleCategory][possibleLevel] && fallbackQuestions[possibleCategory][possibleLevel].length > 0) {
+          const randomIndex = Math.floor(Math.random() * fallbackQuestions[possibleCategory][possibleLevel].length);
+          console.log(`Using fallback from category ${possibleCategory}, level ${possibleLevel}`);
+          return fallbackQuestions[possibleCategory][possibleLevel][randomIndex];
+        }
+      }
+    }
+  }
+  
+  // Если совсем ничего не нашли, возвращаем самый базовый вопрос
+  console.log('No suitable fallback questions found, using default question');
+  return {
+    question: "What is the English word for 'hello'?",
+    options: ["Hello", "Goodbye", "Thank you", "Sorry"],
+    answer: "Hello",
+    category: "vocabulary",
+    level: "A1"
+  };
 }
 
 // Оценка результатов теста для определения уровня английского
