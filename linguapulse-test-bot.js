@@ -419,26 +419,57 @@ async function handleUpdate(update, env, ctx) {
       return;
     }
     
-    const state = JSON.parse(testState);
-    questions = state.questions || [];
-    answers = state.answers || [];
-    index = state.index || 0;
-    currentCategoryIndex = state.currentCategoryIndex || 0;
-    categoryCompletionStatus = state.categoryCompletionStatus || {
-      vocabulary: 0,
-      grammar: 0,
-      reading: 0
-    };
-    
-    // Проверяем, есть ли текущий вопрос
-    if (questions.length > index) {
-      // Показываем текущий вопрос
-      await ask(formatQuestion(questions[index], index + 1, 12), questions[index].options);
-      return;
-    } else {
-      // Что-то пошло не так, начинаем новый тест
+    try {
+      const state = JSON.parse(testState);
+      questions = state.questions || [];
+      answers = state.answers || [];
+      index = state.index || 0;
+      currentCategoryIndex = state.currentCategoryIndex || 0;
+      categoryCompletionStatus = state.categoryCompletionStatus || {
+        vocabulary: 0,
+        grammar: 0,
+        reading: 0
+      };
+      
+      // Проверяем, есть ли текущий вопрос
+      if (questions.length > index) {
+        // Показываем текущий вопрос
+        await ask(formatQuestion(questions[index], index + 1, 12), questions[index].options);
+        return;
+      } else {
+        // Если нужно загрузить следующий вопрос
+        const categories = ['vocabulary', 'grammar', 'reading'];
+        if (currentCategoryIndex >= 0 && currentCategoryIndex < categories.length) {
+          const nextCategory = categories[currentCategoryIndex];
+          const nextLevel = questions.length > 0 ? questions[questions.length - 1].level : 'A1';
+          console.log('Continuing test, fetching next question:', nextCategory, nextLevel);
+          
+          const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
+          questions.push(nextQuestion);
+          
+          await kv.put(stateKey, JSON.stringify({ 
+            questions, 
+            answers, 
+            index, 
+            currentCategoryIndex,
+            categoryCompletionStatus
+          }));
+          
+          await ask(formatQuestion(nextQuestion, index + 1, 12), nextQuestion.options);
+          return;
+        } else {
+          // Что-то пошло не так, начинаем новый тест
+          await sendMessage(
+            "Sorry, I couldn't properly restore your test. Let's start a new one.",
+            [[{ text: "Start Test", callback_data: "start_test" }]]
+          );
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Error continuing test:', error);
       await sendMessage(
-        "Sorry, I couldn't properly restore your test. Let's start a new one.",
+        "Sorry, there was an error restoring your test. Let's start a new one.",
         [[{ text: "Start Test", callback_data: "start_test" }]]
       );
       return;
@@ -581,6 +612,7 @@ async function handleUpdate(update, env, ctx) {
     if (!testComplete) {
       try {
         // Загружаем следующий вопрос из базы
+        const categories = ['vocabulary', 'grammar', 'reading'];
         const nextCategory = categories[currentCategoryIndex];
         console.log('Fetching next question for category:', nextCategory, 'level:', nextLevel);
         const nextQuestion = await fetchNextQuestion(env, nextCategory, nextLevel);
