@@ -455,9 +455,8 @@ return new Response('OK');
         
         // If this is the free lesson, handle it as before
         if (update.callback_query?.data === 'lesson:free') {
-          // send the "Starting…" text back immediately - без кнопки подписки
-          await sendMessageViaTelegram(chatId,
-            'Starting audio lesson…', env);
+          // Убираем отправку дублирующего сообщения
+          // await sendMessageViaTelegram(chatId, 'Starting audio lesson…', env);
 
           // mark lesson in progress - проверяем наличие USER_PROFILE или используем TEST_KV
           if (env.USER_PROFILE) {
