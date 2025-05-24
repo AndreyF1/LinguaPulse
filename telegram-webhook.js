@@ -455,12 +455,19 @@ return new Response('OK');
         
         // If this is the free lesson, handle it as before
         if (update.callback_query?.data === 'lesson:free') {
-          // send the "Starting…" text back immediately
-          await sendMessageWithSubscriptionCheck(chatId,
+          // send the "Starting…" text back immediately - без кнопки подписки
+          await sendMessageViaTelegram(chatId,
             'Starting audio lesson…', env);
 
-          // mark lesson in progress
-          await env.USER_PROFILE.put(`lesson:${chatId}`, 'in_progress');
+          // mark lesson in progress - проверяем наличие USER_PROFILE или используем TEST_KV
+          if (env.USER_PROFILE) {
+            await env.USER_PROFILE.put(`lesson:${chatId}`, 'in_progress');
+          } else if (env.TEST_KV) {
+            console.log("USER_PROFILE not found, using TEST_KV as fallback for lesson state");
+            await env.TEST_KV.put(`lesson:${chatId}`, 'in_progress');
+          } else {
+            console.warn("No KV storage available for lesson state");
+          }
 
           // forward the start payload to lesson0-bot
           console.log("Forwarding lesson:free action to LESSON0");
@@ -555,7 +562,15 @@ return new Response('OK');
 
       // 4. receive end-of-lesson notification (if you choose to send it)
       if (update.lesson_done) {
-        await env.USER_PROFILE.put(`lesson:${chatId}`, 'finished', { expirationTtl: 86400 });
+        // проверяем наличие USER_PROFILE или используем TEST_KV
+        if (env.USER_PROFILE) {
+          await env.USER_PROFILE.put(`lesson:${chatId}`, 'finished', { expirationTtl: 86400 });
+        } else if (env.TEST_KV) {
+          console.log("USER_PROFILE not found, using TEST_KV as fallback for lesson state");
+          await env.TEST_KV.put(`lesson:${chatId}`, 'finished', { expirationTtl: 86400 });
+        } else {
+          console.warn("No KV storage available for lesson state");
+        }
         return new Response('OK');
       }
 
