@@ -3,10 +3,7 @@
 
 export default {
   async fetch(request, env) {
-    // Добавляем глобальную переменную для доступа к env в других функциях
-    global.env = env;
-    
-    // Логируем доступные сервисы
+    // Удаляем глобальную переменную и просто логируем сервисы
     console.log(`[DEBUG] Available services in env:`, 
                 Object.keys(env || {})
                 .filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON', 'PAYMENT'].includes(key))
@@ -1266,8 +1263,7 @@ function forward(service, payload) {
   // Добавляем подробное логирование
   console.log(`[DEBUG] Attempting to forward request to service:`, service ? 'Service exists' : 'Service is undefined');
   if (!service) {
-    console.error(`[DEBUG] Service binding is undefined. Available env properties:`, 
-                 Object.keys(global.env || {}).join(', '));
+    console.error(`[DEBUG] Service binding is undefined`);
     throw new Error('Service binding is undefined');
   }
   
