@@ -79,32 +79,89 @@ if (update.message?.text) {
         } else {
           // Format human-readable profile info
           const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
-          const subscriptionEnd = profile.subscription_expired_at
-  ? (() => {
-      const d = new Date(profile.subscription_expired_at);
-
-      const day   = d.getDate();  
-      const month = d.toLocaleString('en-US', { month: 'long' }); 
-      const year  = d.getFullYear();
-
-      // часы и минуты с ведущими нулями
-      const hours   = String(d.getHours()).padStart(2, '0');
-      const minutes = String(d.getMinutes()).padStart(2, '0');
-
-      return `${day} ${month}, ${year} ${hours}:${minutes}`;  
-      // => "5 May, 2025 08:05"
-    })()
-  : 'No active subscription';
-
-          const lessonsTotal = profile.number_of_lessons || 0;
-          const lessonsStreak = profile.lessons_in_row || 0;
           
-          await sendMessageViaTelegram(chatId, 
-            `Your language profile:\n\n` +
+          // Check if subscription is active
+          const now = new Date();
+          const subscriptionDate = profile.subscription_expired_at ? new Date(profile.subscription_expired_at) : null;
+          const hasActiveSubscription = subscriptionDate && subscriptionDate > now;
+          
+          // Format subscription display
+          const subscriptionDisplay = hasActiveSubscription 
+            ? (() => {
+                const d = new Date(profile.subscription_expired_at);
+                const day = d.getDate();  
+                const month = d.toLocaleString('en-US', { month: 'long' }); 
+                const year = d.getFullYear();
+                const hours = String(d.getHours()).padStart(2, '0');
+                const minutes = String(d.getMinutes()).padStart(2, '0');
+                return `Active until ${day} ${month}, ${year}`;
+              })()
+            : 'Inactive - Subscribe to continue learning';
+
+          // Check streak validity - if last lesson wasn't yesterday or today, streak should be 0
+          let lessonsStreak = profile.lessons_in_row || 0;
+          
+          if (profile.daily_lesson_pass_at) {
+            const lastLessonDate = new Date(profile.daily_lesson_pass_at);
+            
+            // Calculate yesterday and today for comparison
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            yesterday.setHours(0, 0, 0, 0);
+            
+            const todayStart = new Date(now);
+            todayStart.setHours(0, 0, 0, 0);
+            
+            const tomorrowStart = new Date(now);
+            tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+            tomorrowStart.setHours(0, 0, 0, 0);
+            
+            // Check if last lesson was yesterday or today
+            const isRecentLesson = 
+              (lastLessonDate >= yesterday && lastLessonDate < todayStart) || // Yesterday
+              (lastLessonDate >= todayStart && lastLessonDate < tomorrowStart); // Today
+            
+            // If streak is broken and not updated yet, display it as 0 and update the DB
+            if (!isRecentLesson && lessonsStreak > 0) {
+              console.log(`Displaying reset streak for user ${chatId}. Last lesson: ${lastLessonDate.toISOString()}, Current streak: ${lessonsStreak}`);
+              
+              // Update streak in database
+              try {
+                await env.USER_DB
+                  .prepare('UPDATE user_profiles SET lessons_in_row = 0 WHERE telegram_id = ?')
+                  .bind(parseInt(chatId, 10))
+                  .run();
+                
+                // Set display value to 0
+                lessonsStreak = 0;
+              } catch (error) {
+                console.error(`Failed to reset streak for user ${chatId}:`, error);
+              }
+            }
+          }
+          
+          const lessonsTotal = profile.number_of_lessons || 0;
+          
+          // Create message text
+          const profileMessage = `Your language profile:\n\n` +
             `Language level: ${profile.eng_level}\n` +
-            `Subscription valid until: ${subscriptionEnd}\n` +
+            `Subscription: ${subscriptionDisplay}\n` +
             `Total lessons completed: ${lessonsTotal}\n` +
-            `Current lesson streak: ${lessonsStreak}`, env);
+            `Current lesson streak: ${lessonsStreak}`;
+          
+          // Add subscription button for users with expired subscriptions
+          if (!hasActiveSubscription) {
+            // Get channel link from environment variable
+            const channelLink = env.TRIBUTE_CHANNEL_LINK;
+            
+            await sendMessageViaTelegram(chatId, profileMessage, env, {
+              inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
+            });
+          } else {
+            await sendMessageViaTelegram(chatId, profileMessage, env);
+          }
+          
+          return new Response('OK');
         }
         
         return new Response('OK');
