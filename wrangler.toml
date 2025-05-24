@@ -5,6 +5,13 @@ compatibility_date = "2025-05-17"
 [observability.logs]
 enabled = true
 
+# Environment Variables Notes:
+# The following environment variables should be set for proper functionality:
+# - TRIBUTE_APP_LINK: Primary link for Tribute app subscription (https://t.me/tribute/app?startapp=stO5)
+# - TRIBUTE_CHANNEL_LINK: Backup link for Tribute channel subscription
+# - BOT_TOKEN: Telegram bot token
+# These can be set via the Cloudflare dashboard or using wrangler secret commands
+
 # Test Bot Environment
 [env.test-bot]
 name = "linguapulse-test-bot"

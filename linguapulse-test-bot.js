@@ -762,21 +762,28 @@ async function handleUpdate(update, env, ctx) {
         
         // Если нет активной подписки, добавляем кнопку подписки
         if (!hasActiveSubscription) {
-          // Получаем ссылку на канал из переменной окружения или используем запасную
-          let channelLink = env.TRIBUTE_CHANNEL_LINK;
+          // Сначала проверяем специальную ссылку на приложение Tribute
+          let tributeAppLink = env.TRIBUTE_APP_LINK;
           
-          if (!channelLink || channelLink.trim() === '') {
-            console.warn(`Missing TRIBUTE_CHANNEL_LINK environment variable, using fallback link`);
-            channelLink = "https://t.me/+vQ8lD3NDHjg3MzJi"; // Updated to a valid channel link
+          // Если нет специальной ссылки, проверяем обычную ссылку на канал
+          if (!tributeAppLink || tributeAppLink.trim() === '') {
+            console.log(`TRIBUTE_APP_LINK not found, checking TRIBUTE_CHANNEL_LINK`);
+            tributeAppLink = env.TRIBUTE_CHANNEL_LINK;
+          }
+          
+          // Если обе переменные отсутствуют, используем запасную ссылку
+          if (!tributeAppLink || tributeAppLink.trim() === '') {
+            console.warn(`No Tribute links found in environment, using fallback link`);
+            tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Правильная ссылка на Tribute
           }
           
           // Проверяем формат ссылки
-          if (!channelLink.match(/^https?:\/\//)) {
-            channelLink = "https://" + channelLink.replace(/^[\/\\]+/, '');
+          if (!tributeAppLink.match(/^https?:\/\//)) {
+            tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
           }
           
           // Добавляем кнопку подписки под кнопкой бесплатного урока
-          buttons.push([{ text: "Subscribe for $1/week", url: channelLink }]);
+          buttons.push([{ text: "Subscribe for $1/week", url: tributeAppLink }]);
         }
         
         await sendMessage(

@@ -1021,26 +1021,32 @@ async function verifyStripeSignature(payload, signature, secret) {
 async function sendTributeChannelLink(chatId, env) {
   console.log(`[DEBUG] sendTributeChannelLink called for user ${chatId}`);
   
-  // Get channel link from environment variable
-  let channelLink = env.TRIBUTE_CHANNEL_LINK;
+  // Сначала проверяем специальную ссылку на приложение Tribute
+  let tributeAppLink = env.TRIBUTE_APP_LINK;
   
-  // Если переменная окружения недоступна, используем тестовую ссылку
-  if (!channelLink || channelLink.trim() === '') {
-    console.warn(`[DEBUG] TRIBUTE_CHANNEL_LINK not found in environment, using fallback link`);
-    channelLink = "https://t.me/+vQ8lD3NDHjg3MzJi"; // Updated to a valid channel link
+  // Если нет специальной ссылки, проверяем обычную ссылку на канал
+  if (!tributeAppLink || tributeAppLink.trim() === '') {
+    console.log(`[DEBUG] TRIBUTE_APP_LINK not found, checking TRIBUTE_CHANNEL_LINK`);
+    tributeAppLink = env.TRIBUTE_CHANNEL_LINK;
+  }
+  
+  // Если обе переменные отсутствуют, используем запасную ссылку
+  if (!tributeAppLink || tributeAppLink.trim() === '') {
+    console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
+    tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Правильная ссылка на Tribute
   }
 
-  const message = "🔑 To unlock premium lessons, please subscribe to our channel:\n\n" +
-                 "1. Click the button below to open our channel\n" +
-                 "2. Press the 'Subscribe' button in the channel ($1/week)\n" +
+  const message = "🔑 To unlock premium lessons, please subscribe:\n\n" +
+                 "1. Click the button below to open the subscription page\n" +
+                 "2. Complete the payment process ($1/week)\n" +
                  "3. After payment, you'll receive a confirmation message from the bot\n\n" +
                  "Your subscription will give you access to daily personalized English lessons!";
   
   // Использовать inline_keyboard с кнопкой подписки
-  if (channelLink) {
+  if (tributeAppLink) {
     await sendMessageViaTelegram(chatId, message, env, {
       reply_markup: {
-        inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]]
+        inline_keyboard: [[{ text: "Subscribe for $1/week", url: tributeAppLink }]]
       }
     });
   } else {
@@ -1111,25 +1117,31 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
     const isSubscribed = await hasActiveSubscription(chatId, env);
     console.log(`[DEBUG] User ${chatId} is subscribed: ${isSubscribed}`);
     
-    // Всегда проверяем наличие channelLink
-    let channelLink = env.TRIBUTE_CHANNEL_LINK;
+    // Сначала проверяем специальную ссылку на приложение Tribute
+    let tributeAppLink = env.TRIBUTE_APP_LINK;
     
-    // Если переменная окружения недоступна, используем тестовую ссылку
-    if (!channelLink || channelLink.trim() === '') {
-      console.warn(`[DEBUG] TRIBUTE_CHANNEL_LINK not found in environment, using fallback link`);
-      channelLink = "https://t.me/+vQ8lD3NDHjg3MzJi"; // Updated to a valid channel link
+    // Если нет специальной ссылки, проверяем обычную ссылку на канал
+    if (!tributeAppLink || tributeAppLink.trim() === '') {
+      console.log(`[DEBUG] TRIBUTE_APP_LINK not found, checking TRIBUTE_CHANNEL_LINK`);
+      tributeAppLink = env.TRIBUTE_CHANNEL_LINK;
+    }
+    
+    // Если обе переменные отсутствуют, используем запасную ссылку
+    if (!tributeAppLink || tributeAppLink.trim() === '') {
+      console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
+      tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Правильная ссылка на Tribute
     }
     
     // Проверяем, что ссылка имеет корректный формат и начинается с https:// или http://
-    if (channelLink && !channelLink.match(/^https?:\/\//)) {
-      console.warn(`[DEBUG] Channel link doesn't start with http:// or https://, fixing: ${channelLink}`);
-      channelLink = "https://" + channelLink.replace(/^[\/\\]+/, '');
+    if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+      console.warn(`[DEBUG] Tribute link doesn't start with http:// or https://, fixing: ${tributeAppLink}`);
+      tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
     }
     
-    console.log(`[DEBUG] Using channel link: ${channelLink}`);
+    console.log(`[DEBUG] Using tribute link: ${tributeAppLink}`);
     
-    // Если нет активной подписки и есть ссылка на канал - добавляем кнопку
-    if (!isSubscribed && channelLink) {
+    // Если нет активной подписки и есть ссылка - добавляем кнопку
+    if (!isSubscribed && tributeAppLink) {
       // Создаем безопасную копию опций или инициализируем, если их нет
       let messageOptions;
       
@@ -1173,16 +1185,16 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
       if (!messageOptions.reply_markup) {
         // Нет кнопок - создаем новую клавиатуру
         messageOptions.reply_markup = {
-          inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]]
+          inline_keyboard: [[{ text: "Subscribe for $1/week", url: tributeAppLink }]]
         };
       } else {
         // Уже есть кнопки
         if (!messageOptions.reply_markup.inline_keyboard) {
           // Нет именно inline_keyboard, создаем ее
-          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for $1/week", url: channelLink }]];
+          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for $1/week", url: tributeAppLink }]];
         } else {
           // Есть inline_keyboard, добавляем новую строку с кнопкой
-          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for $1/week", url: channelLink }]);
+          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for $1/week", url: tributeAppLink }]);
         }
       }
       
