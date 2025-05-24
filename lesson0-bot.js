@@ -36,6 +36,9 @@ export default {
           return new Response('OK');
         }
         
+        // Отправляем сообщение о начале урока, чтобы заполнить паузу пока генерируется аудио
+        await sendText(chatId, "Starting free audio lesson…", env);
+        
         // Record lesson start in database
         const now = new Date().toISOString();
         await db.prepare(
@@ -119,7 +122,7 @@ export default {
           const botTurns = hist.filter(h => h.role === 'assistant').length;
           
           // If we've already had 3 bot responses after greeting, end the lesson
-          if (botTurns >= 4) { // 1 greeting + 3 responses = 4 total
+          if (botTurns >= 6) { // Увеличиваем до 6 вместо 4 (будет примерно 5-6 ответов пользователя)
             // Farewell message
             const bye = "Thanks for practicing with me today! You did great. We'll continue tomorrow with new exercises. Have a wonderful day!";
             hist.push({ role: 'assistant', content: bye });
