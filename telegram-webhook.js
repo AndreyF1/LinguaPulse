@@ -39,7 +39,7 @@ const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help'];
 if (update.message?.text) {
   if (update.message.text === '/help' || 
       !supportedCommands.some(cmd => update.message.text.startsWith(cmd))) {
-    await sendMessageViaTelegram(chatId, 
+    await sendMessageWithSubscriptionCheck(chatId, 
       '🤖 *LinguaPulse Bot Commands:*\n\n' +
       '*/start* - Begin the language placement test or see your profile\n' +
       '*/profile* - View your language level and progress\n' +
@@ -78,26 +78,16 @@ if (update.message?.text) {
             
             if (hasActiveSubscription) {
               // If they have an active subscription but worker is unavailable
-              await sendMessageViaTelegram(chatId, 
+              await sendMessageWithSubscriptionCheck(chatId, 
                 "Sorry, the lesson service is temporarily unavailable. Please try again later.", env);
             } else {
               // If they don't have an active subscription, show subscription option
-              const channelLink = env.TRIBUTE_CHANNEL_LINK;
-              const message = "You need an active subscription to access lessons. Subscribe to continue learning!";
-              
-              if (channelLink) {
-                await sendMessageViaTelegram(chatId, message, env, {
-                  reply_markup: {
-                    inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
-                  }
-                });
-              } else {
-                await sendMessageViaTelegram(chatId, message, env);
-              }
+              await sendMessageWithSubscriptionCheck(chatId, 
+                "You need an active subscription to access lessons. Subscribe to continue learning!", env);
             }
           } else {
             // If they haven't completed the test
-            await sendMessageViaTelegram(chatId, 
+            await sendMessageWithSubscriptionCheck(chatId, 
               "You need to complete the placement test first. Use /start to begin.", env);
           }
           return new Response('OK');
@@ -118,7 +108,7 @@ if (update.message?.text) {
         const profile = results[0] || {};
         
         if (!profile.eng_level) {
-          await sendMessageViaTelegram(chatId, 
+          await sendMessageWithSubscriptionCheck(chatId, 
             'You haven\'t taken the placement test yet. Use /start to begin.', env);
         } else {
           // Format human-readable profile info
@@ -193,28 +183,8 @@ if (update.message?.text) {
             `Total lessons completed: ${lessonsTotal}\n` +
             `Current lesson streak: ${lessonsStreak}`;
           
-          // Add subscription button for users with expired subscriptions
-          if (!hasActiveSubscription) {
-            // Get channel link from environment variable
-            const channelLink = env.TRIBUTE_CHANNEL_LINK;
-            
-            // Make sure channelLink exists before creating the button
-            if (channelLink) {
-              await sendMessageViaTelegram(chatId, profileMessage, env, {
-                reply_markup: {
-                  inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
-                }
-              });
-            } else {
-              // Fallback if no channel link is available
-              console.error(`Missing TRIBUTE_CHANNEL_LINK environment variable for user ${chatId}`);
-              await sendMessageViaTelegram(chatId, profileMessage, env);
-            }
-          } else {
-            await sendMessageViaTelegram(chatId, profileMessage, env);
-          }
-          
-          return new Response('OK');
+          // Show profile with appropriate options based on subscription status
+          await sendMessageWithSubscriptionCheck(chatId, profileMessage, env);
         }
         
         return new Response('OK');
@@ -230,7 +200,7 @@ await handleLessonCommand(chatId, env);
 console.error(`Error handling /lesson command for user ${chatId}:`, error);
 // Fallback response in case of error
 try {
-  await sendMessageViaTelegram(chatId, 
+  await sendMessageWithSubscriptionCheck(chatId, 
     "Sorry, there was an error processing your command. Please try again later or contact support.", 
     env);
 } catch (sendError) {
@@ -264,7 +234,7 @@ return new Response('OK');
               // Subscription is active, check if lesson is available
               if (profile.next_lesson_access_at && (new Date(profile.next_lesson_access_at) <= now)) {
                 // Lesson is available, offer to start it
-                await sendMessageViaTelegram(chatId,
+                await sendMessageWithSubscriptionCheck(chatId,
                   "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
                   env,
                   { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
@@ -274,7 +244,7 @@ return new Response('OK');
               // Subscription inactive or expired, offer to subscribe
               const channelLink = env.TRIBUTE_CHANNEL_LINK;
               if (channelLink) {
-                await sendMessageViaTelegram(chatId,
+                await sendMessageWithSubscriptionCheck(chatId,
                   "Welcome back! Your subscription has expired. Subscribe again to continue learning.",
                   env,
                   { reply_markup: { inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]] }});
@@ -366,13 +336,13 @@ return new Response('OK');
                 if (nextLessonAt > now) {
                   // Next lesson in the future - tell user when it will be available
                   const timeUntil = formatTimeUntil(nextLessonAt);
-                  await sendMessageViaTelegram(chatId,
+                  await sendMessageWithSubscriptionCheck(chatId,
                     `Your next lesson will be available in ${timeUntil}. I look forward to our next conversation!`,
                     env);
                   return new Response('OK');
                 } else {
                   // Lesson is available now - suggest starting it
-                  await sendMessageViaTelegram(chatId,
+                  await sendMessageWithSubscriptionCheck(chatId,
                     "Your next lesson is available now! Would you like to start?",
                     env,
                     { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
@@ -380,27 +350,16 @@ return new Response('OK');
                 }
               }
             } else {
-              // No active subscription - offer to subscribe to channel via Tribute
-              const channelLink = env.TRIBUTE_CHANNEL_LINK;
-              const message = "To continue with your English lessons, you need an active subscription. Subscribe now for daily speaking practice!";
-              
-              if (channelLink) {
-                await sendMessageViaTelegram(chatId, message, env, {
-                  reply_markup: {
-                    inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
-                  }
-                });
-              } else {
-                await sendMessageViaTelegram(chatId, 
-                  "To continue with your English lessons, you need an active subscription. Please contact support for subscription options.", 
-                  env);
-              }
+              // No active subscription - send message with subscription button
+              await sendMessageWithSubscriptionCheck(chatId,
+                "To continue with your English lessons, you need an active subscription. Subscribe now for daily speaking practice!",
+                env);
               return new Response('OK');
             }
           }
           
           // Generic fallback if no user profile found or other conditions not met
-          await sendMessageViaTelegram(chatId, 
+          await sendMessageWithSubscriptionCheck(chatId, 
             "You don't have an active lesson. Please use /start to begin the placement test or /talk to start a lesson if you've already completed it.", 
             env);
           return new Response('OK');
@@ -434,7 +393,7 @@ return new Response('OK');
           
           // If user hasn't taken the test yet
           if (!results.length || !results[0].eng_level) {
-            await sendMessageViaTelegram(chatId, 
+            await sendMessageWithSubscriptionCheck(chatId, 
               "Please use /start to begin the placement test so I can determine your English level.", 
               env);
             return new Response('OK');
@@ -455,13 +414,13 @@ return new Response('OK');
               if (nextLessonAt > now) {
                 // Next lesson in the future - tell user when it will be available
                 const timeUntil = formatTimeUntil(nextLessonAt);
-                await sendMessageViaTelegram(chatId,
+                await sendMessageWithSubscriptionCheck(chatId,
                   `Your next lesson will be available in ${timeUntil}. You can use /profile to see your progress.`,
                   env);
                 return new Response('OK');
               } else {
                 // Lesson is available now - suggest starting it
-                await sendMessageViaTelegram(chatId,
+                await sendMessageWithSubscriptionCheck(chatId,
                   "Your next lesson is available now! Would you like to start?",
                   env,
                   { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
@@ -469,22 +428,10 @@ return new Response('OK');
               }
             }
           } else {
-            // No active subscription - offer to subscribe through Tribute
-            // Get channel link from environment variable
-            const channelLink = env.TRIBUTE_CHANNEL_LINK;
-            const message = "To continue with your English lessons, you need an active subscription. Subscribe now for daily speaking practice!";
-            
-            if (channelLink) {
-              await sendMessageViaTelegram(chatId, message, env, {
-                reply_markup: {
-                  inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
-                }
-              });
-            } else {
-              await sendMessageViaTelegram(chatId, 
-                "To continue with your English lessons, you need an active subscription. Please contact support for subscription options.", 
-                env);
-            }
+            // No active subscription - send message with subscription button
+            await sendMessageWithSubscriptionCheck(chatId,
+              "To continue with your English lessons, you need an active subscription. Subscribe now for daily speaking practice!",
+              env);
             return new Response('OK');
           }
         }
@@ -501,7 +448,7 @@ return new Response('OK');
         // If this is the free lesson, handle it as before
         if (update.callback_query?.data === 'lesson:free') {
           // send the "Starting…" text back immediately
-          await sendMessageViaTelegram(chatId,
+          await sendMessageWithSubscriptionCheck(chatId,
             'Starting audio lesson…', env);
 
           // mark lesson in progress
@@ -539,7 +486,7 @@ return new Response('OK');
           .all();
         
         if (!results.length) {
-          await sendMessageViaTelegram(chatId, 
+          await sendMessageWithSubscriptionCheck(chatId, 
             'You need to take the placement test first. Use /start to begin.', env);
           return new Response('OK');
         }
@@ -566,7 +513,7 @@ return new Response('OK');
               
               if (nextLessonAt.getTime() <= now.getTime()) {
                 // Next lesson is already available
-                await sendMessageViaTelegram(chatId,
+                await sendMessageWithSubscriptionCheck(chatId,
                   `You already have an active subscription until ${expiryDate}. Your next lesson is available now!`, 
                   env, 
                   { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
@@ -574,7 +521,7 @@ return new Response('OK');
               } else {
                 // Next lesson will be available later
                 const timeUntil = formatTimeUntil(nextLessonAt);
-                await sendMessageViaTelegram(chatId,
+                await sendMessageWithSubscriptionCheck(chatId,
                   `You already have an active subscription until ${expiryDate}. Your next lesson will be available in ${timeUntil}.`,
                   env
                 );
@@ -582,7 +529,7 @@ return new Response('OK');
               return new Response('OK');
             } else {
               // Something went wrong - subscription exists but next_lesson_access_at is missing
-              await sendMessageViaTelegram(chatId,
+              await sendMessageWithSubscriptionCheck(chatId,
                 `You already have an active subscription until ${expiryDate}.`,
                 env,
                 { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
@@ -796,7 +743,7 @@ async function handleTributeWebhook(request, env) {
         // Notify user about successful subscription
         try {
           console.log(`Sending notification to user ${userId}`);
-          await sendMessageViaTelegram(userId,
+          await sendMessageWithSubscriptionCheck(userId,
             "🎉 Your subscription has been activated! You now have access to daily personalized English lessons.",
             env,
             { reply_markup: { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] } }
@@ -998,7 +945,7 @@ async function handleStripeWebhook(request, env) {
         
         // Отправляем пользователю сообщение о успешной оплате
         try {
-          await sendMessageViaTelegram(
+          await sendMessageWithSubscriptionCheck(
             telegramId,
             "🎉 Your payment has been processed successfully! Your subscription is now active.",
             env,
@@ -1083,7 +1030,7 @@ async function sendTributeChannelLink(chatId, env) {
   
   // Make sure channelLink exists before creating the button
   if (channelLink) {
-    await sendMessageViaTelegram(chatId, message, env, {
+    await sendMessageWithSubscriptionCheck(chatId, message, env, {
       reply_markup: {
         inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
       }
@@ -1091,7 +1038,7 @@ async function sendTributeChannelLink(chatId, env) {
   } else {
     // Fallback if no channel link is available
     console.error(`Missing TRIBUTE_CHANNEL_LINK environment variable for user ${chatId}`);
-    await sendMessageViaTelegram(chatId, message, env);
+    await sendMessageWithSubscriptionCheck(chatId, message, env);
   }
 }
 
@@ -1146,6 +1093,42 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
   } catch (error) {
     console.error(`Error sending message to ${chatId}:`, error);
     throw error; // Re-throw to handle at the caller level
+  }
+}
+
+/* ──── helper: add subscription button to message if user has no active subscription ──── */
+async function sendMessageWithSubscriptionCheck(chatId, text, env, options = null) {
+  try {
+    const isSubscribed = await hasActiveSubscription(chatId, env);
+    
+    if (!isSubscribed) {
+      // User doesn't have an active subscription, add subscribe button
+      const channelLink = env.TRIBUTE_CHANNEL_LINK;
+      
+      if (channelLink) {
+        // Prepare options with subscription button
+        let messageOptions = { ...options } || {};
+        
+        // Add or merge reply_markup with subscription button
+        if (!messageOptions.reply_markup) {
+          messageOptions.reply_markup = {
+            inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]]
+          };
+        } else if (messageOptions.reply_markup && messageOptions.reply_markup.inline_keyboard) {
+          // Add subscription button as the last row of the keyboard
+          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for $1/week", url: channelLink }]);
+        }
+        
+        return await sendMessageViaTelegram(chatId, text, env, messageOptions);
+      }
+    }
+    
+    // User has subscription or no channel link available, send normal message
+    return await sendMessageViaTelegram(chatId, text, env, options);
+  } catch (error) {
+    console.error(`Error in sendMessageWithSubscriptionCheck for user ${chatId}:`, error);
+    // Fallback to regular send
+    return await sendMessageViaTelegram(chatId, text, env, options);
   }
 }
 
@@ -1219,7 +1202,7 @@ async function handleLessonCommand(chatId, env) {
     
     if (!results.length) {
       console.log(`User ${chatId} not found, sending test message`);
-      await sendMessageViaTelegram(chatId, 
+      await sendMessageWithSubscriptionCheck(chatId, 
         'You need to take the placement test first. Use /start to begin.', env);
       return;
     }
@@ -1247,7 +1230,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} hasn't taken free lesson, showing free lesson button`);
       // Free lesson not taken yet - show button
       message += 'You haven\'t taken your free introductory lesson yet.';
-      await sendMessageViaTelegram(chatId, message, env, {
+      await sendMessageWithSubscriptionCheck(chatId, message, env, {
         reply_markup: {
           inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
         }
@@ -1263,21 +1246,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
       // No active subscription or it's expired - show subscribe button to Tribute channel
       message += 'Your subscription has expired or you haven\'t subscribed yet.';
-      
-      // Get channel link from environment variable
-      const channelLink = env.TRIBUTE_CHANNEL_LINK;
-      
-      if (channelLink) {
-        await sendMessageViaTelegram(chatId, message, env, {
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Subscribe ($1/week)', url: channelLink }]]
-          }
-        });
-      } else {
-        // Fallback if channel link is missing
-        console.error(`Missing TRIBUTE_CHANNEL_LINK environment variable for user ${chatId}`);
-        await sendMessageViaTelegram(chatId, message, env);
-      }
+      await sendMessageWithSubscriptionCheck(chatId, message, env);
       return;
     }
     
@@ -1289,14 +1258,14 @@ async function handleLessonCommand(chatId, env) {
       // Format the time until next lesson
       const timeUntil = formatTimeUntil(nextLessonAt);
       message += `Your next lesson will be available in ${timeUntil}.`;
-      await sendMessageViaTelegram(chatId, message, env);
+      await sendMessageWithSubscriptionCheck(chatId, message, env);
       return;
     }
     
     console.log(`User ${chatId} lesson available now, showing start lesson button`);
     // Lesson is available now
     message += 'Your next lesson is available now!';
-    await sendMessageViaTelegram(chatId, message, env, {
+    await sendMessageWithSubscriptionCheck(chatId, message, env, {
       reply_markup: {
         inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
       }
@@ -1307,7 +1276,7 @@ async function handleLessonCommand(chatId, env) {
     console.error(`Error in handleLessonCommand for user ${chatId}:`, error);
     // Try to send a fallback message
     try {
-      await sendMessageViaTelegram(chatId, 
+      await sendMessageWithSubscriptionCheck(chatId, 
         "Sorry, there was an error processing your command. Please try again later or contact support.", 
         env);
     } catch (sendError) {
@@ -1336,4 +1305,24 @@ function formatTimeUntil(date) {
   // less than 1 hour
   if (diffMin > 0) return `${diffMin}m`;
   return `${diffSec}s`;
+}
+
+/* ──── helper: check if user has active subscription ──── */
+async function hasActiveSubscription(chatId, env) {
+  try {
+    const { results } = await env.USER_DB
+      .prepare('SELECT subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+      .bind(parseInt(chatId, 10))
+      .all();
+    
+    if (results.length === 0) return false;
+    
+    const now = new Date();
+    const subExpiredAt = results[0].subscription_expired_at ? new Date(results[0].subscription_expired_at) : null;
+    
+    return subExpiredAt && subExpiredAt > now;
+  } catch (error) {
+    console.error(`Error checking subscription status for user ${chatId}:`, error);
+    return false; // If we can't verify, assume no subscription
+  }
 }
