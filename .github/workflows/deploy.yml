@@ -34,12 +34,6 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: test-bot
           
-      - name: Deploy lesson0-bot
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          environment: lesson0
-          
       - name: Deploy main-lesson
         uses: cloudflare/wrangler-action@v3
         with:
@@ -57,6 +51,50 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: reminder
+
+      # Специальный шаг для установки переменных и деплоя lesson0-bot
+      - name: Setup and deploy lesson0-bot
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          echo "Настройка и деплой lesson0-bot..."
+          
+          # Проверка настройки переменных
+          echo "Проверка текущих переменных..."
+          npx wrangler secret list --env lesson0
+          
+          # Создаем временный файл wrangler-temp.toml с переменными
+          cat > wrangler-temp.toml << EOF
+          name = "linguapulse-lesson0-bot"
+          main = "lesson0-bot.js"
+          compatibility_date = "2025-05-17"
+          
+          [vars]
+          SYSTEM_PROMPT = "${{ secrets.SYSTEM_PROMPT }}"
+          TRANSLOADIT_TPL = "${{ secrets.TRANSLOADIT_TPL }}"
+          
+          [[kv_namespaces]]
+          binding = "CHAT_KV"
+          id = "ff3bf4d1633d45cd92e95d193b7d250f"
+          
+          [[d1_databases]]
+          binding = "USER_DB"
+          database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
+          EOF
+          
+          # Деплой с временным файлом конфигурации
+          echo "Деплой lesson0-bot с явными переменными..."
+          npx wrangler deploy --config wrangler-temp.toml
+          
+          # Устанавливаем секреты после деплоя
+          echo "Установка секретов..."
+          echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN
+          echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY
+          echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY
+          
+          # Проверка настройки после деплоя
+          echo "Проверка переменных после настройки..."
+          npx wrangler secret list
 
       # Отдельный шаг для настройки переменных через API напрямую
       - name: Set environment variables for all services
