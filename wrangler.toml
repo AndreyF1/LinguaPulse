@@ -41,6 +41,23 @@ id = "ff3bf4d1633d45cd92e95d193b7d250f"
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
+# Сервисные привязки для окружения webhook
+[[env.webhook.services]]
+binding = "TEST"
+service = "linguapulse-test-bot"
+
+[[env.webhook.services]]
+binding = "LESSON0"
+service = "linguapulse-lesson0-bot"
+
+[[env.webhook.services]]
+binding = "MAIN_LESSON"
+service = "main-lesson"
+
+[[env.webhook.services]]
+binding = "PAYMENT"
+service = "payment"
+
 # Lesson0 Environment
 [env.lesson0]
 name = "linguapulse-lesson0-bot"
