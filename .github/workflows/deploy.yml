@@ -26,36 +26,31 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          environment: webhook
-          keepVars: true
+          command: deploy --env webhook --keep-vars
           
       - name: Deploy test-bot
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          environment: test-bot
-          keepVars: true
+          command: deploy --env test-bot --keep-vars
           
       - name: Deploy main-lesson
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          environment: main-lesson
-          keepVars: true
+          command: deploy --env main-lesson --keep-vars
           
       - name: Deploy payment
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          environment: payment
-          keepVars: true
+          command: deploy --env payment --keep-vars
           
       - name: Deploy reminder
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          environment: reminder
-          keepVars: true
+          command: deploy --env reminder --keep-vars
 
       # Специальный шаг для установки переменных и деплоя lesson0-bot
       - name: Setup and deploy lesson0-bot
@@ -90,7 +85,7 @@ jobs:
           
           # Деплой с временным файлом конфигурации
           echo "Деплой lesson0-bot с явными переменными..."
-          npx wrangler deploy --config wrangler-temp.toml
+          npx wrangler deploy --config wrangler-temp.toml --keep-vars
           
           # Устанавливаем секреты после деплоя
           echo "Установка секретов..."
