@@ -1,4 +1,4 @@
-name = "linguapulse-test-bot"
+name = "telegram-webhook"
 main = "linguapulse-test-bot.js"
 compatibility_date = "2025-05-17"
 
