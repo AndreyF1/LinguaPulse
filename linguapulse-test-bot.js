@@ -743,9 +743,45 @@ async function handleUpdate(update, env, ctx) {
           resultMessage += "🌟 *Excellent work!* You answered all questions correctly.";
         }
         
+        // Проверяем, есть ли у пользователя активная подписка
+        const { results: subResults } = await env.USER_DB
+          .prepare('SELECT subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+          .bind(parseInt(chatId, 10))
+          .all();
+        
+        const now = new Date();
+        const hasActiveSubscription = subResults.length > 0 && 
+                                   subResults[0].subscription_expired_at && 
+                                   (new Date(subResults[0].subscription_expired_at) > now);
+        
+        // Кнопки для результатов теста
+        let buttons = [];
+        
+        // Добавляем кнопку бесплатного урока
+        buttons.push([{ text: "Free Audio Lesson", callback_data: "lesson:free" }]);
+        
+        // Если нет активной подписки, добавляем кнопку подписки
+        if (!hasActiveSubscription) {
+          // Получаем ссылку на канал из переменной окружения или используем запасную
+          let channelLink = env.TRIBUTE_CHANNEL_LINK;
+          
+          if (!channelLink || channelLink.trim() === '') {
+            console.warn(`Missing TRIBUTE_CHANNEL_LINK environment variable, using fallback link`);
+            channelLink = "https://t.me/LinguaPulseSubscribe"; // Замените на актуальную ссылку
+          }
+          
+          // Проверяем формат ссылки
+          if (!channelLink.match(/^https?:\/\//)) {
+            channelLink = "https://" + channelLink.replace(/^[\/\\]+/, '');
+          }
+          
+          // Добавляем кнопку подписки под кнопкой бесплатного урока
+          buttons.push([{ text: "Subscribe for $1/week", url: channelLink }]);
+        }
+        
         await sendMessage(
           resultMessage,
-          [[{ text: "Free Audio Lesson", callback_data: "lesson:free" }]]
+          buttons
         );
         console.log('Test completion message sent successfully');
       } catch (error) {

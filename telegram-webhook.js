@@ -247,7 +247,7 @@ return new Response('OK');
                 await sendMessageWithSubscriptionCheck(chatId,
                   "Welcome back! Your subscription has expired. Subscribe again to continue learning.",
                   env,
-                  { reply_markup: { inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]] }});
+                  { reply_markup: { inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]] }});
                 return new Response('OK');
               }
             }
@@ -1019,8 +1019,16 @@ async function verifyStripeSignature(payload, signature, secret) {
 
 // UPDATED: Function to send Tribute channel link for subscription
 async function sendTributeChannelLink(chatId, env) {
+  console.log(`[DEBUG] sendTributeChannelLink called for user ${chatId}`);
+  
   // Get channel link from environment variable
-  const channelLink = env.TRIBUTE_CHANNEL_LINK;
+  let channelLink = env.TRIBUTE_CHANNEL_LINK;
+  
+  // Если переменная окружения недоступна, используем тестовую ссылку
+  if (!channelLink || channelLink.trim() === '') {
+    console.warn(`[DEBUG] TRIBUTE_CHANNEL_LINK not found in environment, using fallback link`);
+    channelLink = "https://t.me/LinguaPulseSubscribe"; // Замените на актуальную ссылку
+  }
 
   const message = "🔑 To unlock premium lessons, please subscribe to our channel:\n\n" +
                  "1. Click the button below to open our channel\n" +
@@ -1028,17 +1036,15 @@ async function sendTributeChannelLink(chatId, env) {
                  "3. After payment, you'll receive a confirmation message from the bot\n\n" +
                  "Your subscription will give you access to daily personalized English lessons!";
   
-  // Make sure channelLink exists before creating the button
+  // Использовать inline_keyboard с кнопкой подписки
   if (channelLink) {
-    await sendMessageWithSubscriptionCheck(chatId, message, env, {
+    await sendMessageViaTelegram(chatId, message, env, {
       reply_markup: {
-        inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
+        inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]]
       }
     });
   } else {
-    // Fallback if no channel link is available
-    console.error(`Missing TRIBUTE_CHANNEL_LINK environment variable for user ${chatId}`);
-    await sendMessageWithSubscriptionCheck(chatId, message, env);
+    await sendMessageViaTelegram(chatId, message, env);
   }
 }
 
@@ -1048,28 +1054,28 @@ const STATE_PREFIX = 'state:';
 /* ──── helper: send a text via Telegram Bot API ──── */
 async function sendMessageViaTelegram(chatId, text, env, options = null) {
   try {
-    console.log(`Sending message to ${chatId}:`, text.substring(0, 50) + (text.length > 50 ? "..." : ""));
+    console.log(`[DEBUG] sendMessageViaTelegram for user ${chatId}:`, text.substring(0, 50) + (text.length > 50 ? "..." : ""));
     
     const payload = { chat_id: chatId, text };
     
     if (options) {
-      console.log(`Message options type:`, typeof options);
+      console.log(`[DEBUG] Message options type:`, typeof options);
       
       // If options already has a reply_markup
       if (options.reply_markup) {
-        console.log(`reply_markup found:`, JSON.stringify(options.reply_markup).substring(0, 100));
+        console.log(`[DEBUG] reply_markup found:`, JSON.stringify(options.reply_markup).substring(0, 200));
         payload.reply_markup = options.reply_markup;
       }
       // DEPRECATED: If options is directly a keyboard (for backward compatibility)
       else if (options.inline_keyboard) {
-        console.log(`Direct inline_keyboard found - DEPRECATED FORMAT:`, JSON.stringify(options).substring(0, 100));
+        console.log(`[DEBUG] Direct inline_keyboard found - DEPRECATED FORMAT:`, JSON.stringify(options).substring(0, 200));
         console.warn(`DEPRECATED: Passing inline_keyboard directly is deprecated. Use reply_markup.inline_keyboard instead.`);
         // Convert to correct format
         payload.reply_markup = { inline_keyboard: options.inline_keyboard };
       }
       // If options is an object with other properties
       else {
-        console.log(`Other options found:`, JSON.stringify(options).substring(0, 100));
+        console.log(`[DEBUG] Other options found:`, JSON.stringify(options).substring(0, 200));
         
         // Handle parse_mode option
         if (options.parse_mode) {
@@ -1078,20 +1084,20 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
       }
     }
     
-    console.log(`Final payload:`, JSON.stringify(payload).substring(0, 200));
+    console.log(`[DEBUG] Final payload for Telegram API:`, JSON.stringify(payload).substring(0, 400));
     
     const response = await callTelegram('sendMessage', payload, env);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Telegram API error:`, errorText);
+      console.error(`[DEBUG] Telegram API error:`, errorText);
       throw new Error(`Telegram API error: ${errorText}`);
     }
     
-    console.log(`Message sent successfully to ${chatId}`);
+    console.log(`[DEBUG] Message sent successfully to ${chatId}`);
     return response;
   } catch (error) {
-    console.error(`Error sending message to ${chatId}:`, error);
+    console.error(`[DEBUG] Error sending message to ${chatId}:`, error);
     throw error; // Re-throw to handle at the caller level
   }
 }
@@ -1099,35 +1105,97 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
 /* ──── helper: add subscription button to message if user has no active subscription ──── */
 async function sendMessageWithSubscriptionCheck(chatId, text, env, options = null) {
   try {
-    const isSubscribed = await hasActiveSubscription(chatId, env);
+    console.log(`[DEBUG] sendMessageWithSubscriptionCheck for user ${chatId}, text: ${text.substring(0, 30)}...`);
     
-    if (!isSubscribed) {
-      // User doesn't have an active subscription, add subscribe button
-      const channelLink = env.TRIBUTE_CHANNEL_LINK;
-      
-      if (channelLink) {
-        // Prepare options with subscription button
-        let messageOptions = { ...options } || {};
-        
-        // Add or merge reply_markup with subscription button
-        if (!messageOptions.reply_markup) {
-          messageOptions.reply_markup = {
-            inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]]
-          };
-        } else if (messageOptions.reply_markup && messageOptions.reply_markup.inline_keyboard) {
-          // Add subscription button as the last row of the keyboard
-          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for $1/week", url: channelLink }]);
-        }
-        
-        return await sendMessageViaTelegram(chatId, text, env, messageOptions);
-      }
+    // Всегда проверяем активную подписку
+    const isSubscribed = await hasActiveSubscription(chatId, env);
+    console.log(`[DEBUG] User ${chatId} is subscribed: ${isSubscribed}`);
+    
+    // Всегда проверяем наличие channelLink
+    let channelLink = env.TRIBUTE_CHANNEL_LINK;
+    
+    // Если переменная окружения недоступна, используем тестовую ссылку
+    if (!channelLink || channelLink.trim() === '') {
+      console.warn(`[DEBUG] TRIBUTE_CHANNEL_LINK not found in environment, using fallback link`);
+      channelLink = "https://t.me/LinguaPulseSubscribe"; // Замените на актуальную ссылку
     }
     
-    // User has subscription or no channel link available, send normal message
+    // Проверяем, что ссылка имеет корректный формат и начинается с https:// или http://
+    if (channelLink && !channelLink.match(/^https?:\/\//)) {
+      console.warn(`[DEBUG] Channel link doesn't start with http:// or https://, fixing: ${channelLink}`);
+      channelLink = "https://" + channelLink.replace(/^[\/\\]+/, '');
+    }
+    
+    console.log(`[DEBUG] Using channel link: ${channelLink}`);
+    
+    // Если нет активной подписки и есть ссылка на канал - добавляем кнопку
+    if (!isSubscribed && channelLink) {
+      // Создаем безопасную копию опций или инициализируем, если их нет
+      let messageOptions;
+      
+      try {
+        if (options) {
+          messageOptions = JSON.parse(JSON.stringify(options));
+        } else {
+          messageOptions = {};
+        }
+      } catch (error) {
+        console.error(`[DEBUG] Error cloning options, creating new object:`, error);
+        messageOptions = {};
+        
+        // Переносим базовые свойства вручную, если клонирование не удалось
+        if (options) {
+          if (options.parse_mode) messageOptions.parse_mode = options.parse_mode;
+          
+          // Безопасно скопировать reply_markup, если он есть
+          if (options.reply_markup) {
+            messageOptions.reply_markup = { inline_keyboard: [] };
+            
+            // Копируем существующую клавиатуру, если она есть
+            if (options.reply_markup.inline_keyboard && Array.isArray(options.reply_markup.inline_keyboard)) {
+              options.reply_markup.inline_keyboard.forEach(row => {
+                if (Array.isArray(row)) {
+                  const newRow = [];
+                  row.forEach(button => {
+                    newRow.push({...button});
+                  });
+                  messageOptions.reply_markup.inline_keyboard.push(newRow);
+                }
+              });
+            }
+          }
+        }
+      }
+      
+      console.log(`[DEBUG] Original message options:`, JSON.stringify(messageOptions));
+      
+      // Добавляем или объединяем reply_markup с кнопкой подписки
+      if (!messageOptions.reply_markup) {
+        // Нет кнопок - создаем новую клавиатуру
+        messageOptions.reply_markup = {
+          inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]]
+        };
+      } else {
+        // Уже есть кнопки
+        if (!messageOptions.reply_markup.inline_keyboard) {
+          // Нет именно inline_keyboard, создаем ее
+          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for $1/week", url: channelLink }]];
+        } else {
+          // Есть inline_keyboard, добавляем новую строку с кнопкой
+          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for $1/week", url: channelLink }]);
+        }
+      }
+      
+      console.log(`[DEBUG] Final message options with subscription button:`, JSON.stringify(messageOptions));
+      return await sendMessageViaTelegram(chatId, text, env, messageOptions);
+    }
+    
+    // Пользователь подписан или нет ссылки на канал - отправляем обычное сообщение
+    console.log(`[DEBUG] Sending regular message without subscription button`);
     return await sendMessageViaTelegram(chatId, text, env, options);
   } catch (error) {
     console.error(`Error in sendMessageWithSubscriptionCheck for user ${chatId}:`, error);
-    // Fallback to regular send
+    // Обработка ошибок и возврат к обычной отправке сообщения
     return await sendMessageViaTelegram(chatId, text, env, options);
   }
 }
@@ -1135,15 +1203,15 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
 /* ──── helper: call any Telegram API method ──── */
 async function callTelegram(method, payload, env) {
   try {
-    console.log(`Calling Telegram API ${method} with payload:`, JSON.stringify(payload).substring(0, 200));
+    console.log(`[DEBUG] Calling Telegram API ${method} with payload:`, JSON.stringify(payload).substring(0, 300));
     
     if (!env.BOT_TOKEN) {
-      console.error(`Missing BOT_TOKEN in environment`);
+      console.error(`[DEBUG] Missing BOT_TOKEN in environment`);
       throw new Error("Missing BOT_TOKEN");
     }
     
     const apiUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`;
-    console.log(`API URL:`, apiUrl);
+    console.log(`[DEBUG] API URL:`, apiUrl);
     
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -1151,18 +1219,24 @@ async function callTelegram(method, payload, env) {
       body: JSON.stringify(payload)
     });
     
-    console.log(`Telegram API ${method} response status:`, response.status);
+    console.log(`[DEBUG] Telegram API ${method} response status:`, response.status);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Telegram API ${method} error:`, errorText);
+      console.error(`[DEBUG] Telegram API ${method} error:`, errorText);
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error(`[DEBUG] Telegram API error details:`, JSON.stringify(errorJson));
+      } catch (e) {
+        // Ignore if not JSON
+      }
     } else {
-      console.log(`Telegram API ${method} call successful`);
+      console.log(`[DEBUG] Telegram API ${method} call successful`);
     }
     
     return response;
   } catch (error) {
-    console.error(`Error calling Telegram API ${method}:`, error);
+    console.error(`[DEBUG] Error calling Telegram API ${method}:`, error);
     throw error;
   }
 }
@@ -1310,17 +1384,27 @@ function formatTimeUntil(date) {
 /* ──── helper: check if user has active subscription ──── */
 async function hasActiveSubscription(chatId, env) {
   try {
+    console.log(`[DEBUG] Checking subscription status for user ${chatId}`);
+    
     const { results } = await env.USER_DB
       .prepare('SELECT subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
       .bind(parseInt(chatId, 10))
       .all();
     
-    if (results.length === 0) return false;
+    console.log(`[DEBUG] Database query results for subscription check:`, JSON.stringify(results));
+    
+    if (results.length === 0) {
+      console.log(`[DEBUG] User ${chatId} not found in database, subscription status: false`);
+      return false;
+    }
     
     const now = new Date();
     const subExpiredAt = results[0].subscription_expired_at ? new Date(results[0].subscription_expired_at) : null;
     
-    return subExpiredAt && subExpiredAt > now;
+    const isActive = subExpiredAt && subExpiredAt > now;
+    console.log(`[DEBUG] User ${chatId} subscription status: ${isActive}, expiry date: ${subExpiredAt ? subExpiredAt.toISOString() : 'none'}`);
+    
+    return isActive;
   } catch (error) {
     console.error(`Error checking subscription status for user ${chatId}:`, error);
     return false; // If we can't verify, assume no subscription
