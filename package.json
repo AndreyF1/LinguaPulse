@@ -17,9 +17,9 @@
     "@cloudflare/workers-types": "^4.20240508.0"
   },
   "devDependencies": {
-    "wrangler": "^3.28.0"
+    "wrangler": "^4.16.1"
   },
   "author": "",
   "license": "UNLICENSED",
   "private": true
-} 
+}
