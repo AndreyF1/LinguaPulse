@@ -3,6 +3,14 @@
 
 export default {
   async fetch(request, env) {
+    // Добавляем глобальную переменную для доступа к env в других функциях
+    global.env = env;
+    
+    // Логируем доступные сервисы
+    console.log(`[DEBUG] Available services in env:`, 
+                Object.keys(env || {})
+                .filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON', 'PAYMENT'].includes(key))
+                .join(', '));
     
     try {
       const { pathname } = new URL(request.url);
@@ -1255,11 +1263,24 @@ async function callTelegram(method, payload, env) {
 
 /* ──── helper: proxy payload to another Worker ──── */
 function forward(service, payload) {
-  return service.fetch('https://internal/', {
-    method : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body   : JSON.stringify(payload)
-  });
+  // Добавляем подробное логирование
+  console.log(`[DEBUG] Attempting to forward request to service:`, service ? 'Service exists' : 'Service is undefined');
+  if (!service) {
+    console.error(`[DEBUG] Service binding is undefined. Available env properties:`, 
+                 Object.keys(global.env || {}).join(', '));
+    throw new Error('Service binding is undefined');
+  }
+  
+  try {
+    return service.fetch('https://internal/', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify(payload)
+    });
+  } catch (error) {
+    console.error(`[DEBUG] Error forwarding request:`, error);
+    throw error;
+  }
 }
 
 /* ──── helper: check if user has completed test ──── */
