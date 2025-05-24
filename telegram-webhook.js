@@ -3,6 +3,9 @@
 
 export default {
   async fetch(request, env) {
+    // Просто логируем все доступные ключи в env для диагностики
+    console.log(`[DEBUG] All available env keys:`, Object.keys(env || {}).join(', '));
+    
     // Удаляем глобальную переменную и просто логируем сервисы
     console.log(`[DEBUG] Available services in env:`, 
                 Object.keys(env || {})
