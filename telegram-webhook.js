@@ -154,9 +154,18 @@ if (update.message?.text) {
             // Get channel link from environment variable
             const channelLink = env.TRIBUTE_CHANNEL_LINK;
             
-            await sendMessageViaTelegram(chatId, profileMessage, env, {
-              inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
-            });
+            // Make sure channelLink exists before creating the button
+            if (channelLink) {
+              await sendMessageViaTelegram(chatId, profileMessage, env, {
+                reply_markup: {
+                  inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
+                }
+              });
+            } else {
+              // Fallback if no channel link is available
+              console.error(`Missing TRIBUTE_CHANNEL_LINK environment variable for user ${chatId}`);
+              await sendMessageViaTelegram(chatId, profileMessage, env);
+            }
           } else {
             await sendMessageViaTelegram(chatId, profileMessage, env);
           }
@@ -214,7 +223,7 @@ return new Response('OK');
                 await sendMessageViaTelegram(chatId,
                   "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
                   env,
-                  { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] });
+                  { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
                 return new Response('OK');
               }
             }
@@ -312,7 +321,7 @@ return new Response('OK');
                   await sendMessageViaTelegram(chatId,
                     "Your next lesson is available now! Would you like to start?",
                     env,
-                    { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] });
+                    { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
                   return new Response('OK');
                 }
               }
@@ -388,7 +397,7 @@ return new Response('OK');
                 await sendMessageViaTelegram(chatId,
                   "Your next lesson is available now! Would you like to start?",
                   env,
-                  { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] });
+                  { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
                 return new Response('OK');
               }
             }
@@ -479,7 +488,7 @@ return new Response('OK');
                 await sendMessageViaTelegram(chatId,
                   `You already have an active subscription until ${expiryDate}. Your next lesson is available now!`, 
                   env, 
-                  { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }
+                  { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
                 );
               } else {
                 // Next lesson will be available later
@@ -495,7 +504,7 @@ return new Response('OK');
               await sendMessageViaTelegram(chatId,
                 `You already have an active subscription until ${expiryDate}.`,
                 env,
-                { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }
+                { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
               );
               return new Response('OK');
             }
@@ -709,7 +718,7 @@ async function handleTributeWebhook(request, env) {
           await sendMessageViaTelegram(userId,
             "🎉 Your subscription has been activated! You now have access to daily personalized English lessons.",
             env,
-            { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] }
+            { reply_markup: { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] } }
           );
           console.log(`Notification sent to user ${userId}`);
         } catch (msgError) {
@@ -912,7 +921,7 @@ async function handleStripeWebhook(request, env) {
             telegramId,
             "🎉 Your payment has been processed successfully! Your subscription is now active.",
             env,
-            { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] }
+            { reply_markup: { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] } }
           );
         } catch (msgError) {
           console.error('Error sending confirmation message:', msgError);
@@ -991,13 +1000,18 @@ async function sendTributeChannelLink(chatId, env) {
                  "3. After payment, you'll receive a confirmation message from the bot\n\n" +
                  "Your subscription will give you access to daily personalized English lessons!";
   
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: "Subscribe ($1/week)", url: channelLink }]
-    ]
-  };
-  
-  await sendMessageViaTelegram(chatId, message, env, keyboard);
+  // Make sure channelLink exists before creating the button
+  if (channelLink) {
+    await sendMessageViaTelegram(chatId, message, env, {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
+      }
+    });
+  } else {
+    // Fallback if no channel link is available
+    console.error(`Missing TRIBUTE_CHANNEL_LINK environment variable for user ${chatId}`);
+    await sendMessageViaTelegram(chatId, message, env);
+  }
 }
 
 // KV prefix for transient test state
@@ -1013,15 +1027,17 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
     if (options) {
       console.log(`Message options type:`, typeof options);
       
-      // If options is directly a keyboard
-      if (options.inline_keyboard) {
-        console.log(`Direct inline_keyboard found:`, JSON.stringify(options).substring(0, 100));
-        payload.reply_markup = options;
-      }
-      // If options has reply_markup
-      else if (options.reply_markup) {
+      // If options already has a reply_markup
+      if (options.reply_markup) {
         console.log(`reply_markup found:`, JSON.stringify(options.reply_markup).substring(0, 100));
         payload.reply_markup = options.reply_markup;
+      }
+      // DEPRECATED: If options is directly a keyboard (for backward compatibility)
+      else if (options.inline_keyboard) {
+        console.log(`Direct inline_keyboard found - DEPRECATED FORMAT:`, JSON.stringify(options).substring(0, 100));
+        console.warn(`DEPRECATED: Passing inline_keyboard directly is deprecated. Use reply_markup.inline_keyboard instead.`);
+        // Convert to correct format
+        payload.reply_markup = { inline_keyboard: options.inline_keyboard };
       }
       // If options is an object with other properties
       else {
@@ -1151,7 +1167,9 @@ async function handleLessonCommand(chatId, env) {
       // Free lesson not taken yet - show button
       message += 'You haven\'t taken your free introductory lesson yet.';
       await sendMessageViaTelegram(chatId, message, env, {
-        inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
+        }
       });
       return;
     }
@@ -1168,9 +1186,17 @@ async function handleLessonCommand(chatId, env) {
       // Get channel link from environment variable
       const channelLink = env.TRIBUTE_CHANNEL_LINK;
       
-      await sendMessageViaTelegram(chatId, message, env, {
-        inline_keyboard: [[{ text: 'Subscribe ($1/week)', url: channelLink }]]
-      });
+      if (channelLink) {
+        await sendMessageViaTelegram(chatId, message, env, {
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Subscribe ($1/week)', url: channelLink }]]
+          }
+        });
+      } else {
+        // Fallback if channel link is missing
+        console.error(`Missing TRIBUTE_CHANNEL_LINK environment variable for user ${chatId}`);
+        await sendMessageViaTelegram(chatId, message, env);
+      }
       return;
     }
     
@@ -1190,7 +1216,9 @@ async function handleLessonCommand(chatId, env) {
     // Lesson is available now
     message += 'Your next lesson is available now!';
     await sendMessageViaTelegram(chatId, message, env, {
-      inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
+      reply_markup: {
+        inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
+      }
     });
     
     console.log(`handleLessonCommand completed successfully for user ${chatId}`);
