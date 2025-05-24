@@ -1,5 +1,6 @@
 name = "linguapulse"
 compatibility_date = "2025-05-17"
+keep_vars = true
 
 # Global observability settings
 [observability.logs]
