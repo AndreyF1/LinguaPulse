@@ -1,0 +1,17 @@
+name = "telegram-webhook"
+main = "telegram-webhook.js"
+compatibility_date = "2025-05-17"
+
+# KV namespaces должны быть в формате массива
+[[kv_namespaces]]
+binding = "TEST_KV"
+id = "ff3bf4d1633d45cd92e95d193b7d250f"
+
+# D1 databases также должны быть в формате массива
+[[d1_databases]]
+binding = "USER_DB"
+database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
+
+# Настройки логирования
+[observability.logs]
+enabled = true
