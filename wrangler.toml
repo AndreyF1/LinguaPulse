@@ -10,7 +10,10 @@ enabled = true
 # These should be set using 'wrangler secret put' or Cloudflare Dashboard:
 # - TRIBUTE_APP_LINK: Primary link for Tribute app subscription (https://t.me/tribute/app?startapp=stO5)
 # - TRIBUTE_CHANNEL_LINK: Backup link for Tribute channel subscription
+# - TRIBUTE_API_KEY: API key for verifying Tribute webhooks
 # - BOT_TOKEN: Telegram bot token
+# - OPENAI_KEY: OpenAI API key
+# - TRANSLOADIT_KEY: Transloadit API key 
 #
 # Example: npx wrangler secret put TRIBUTE_APP_LINK --env webhook
 # Example: npx wrangler secret put BOT_TOKEN --env webhook
@@ -19,6 +22,10 @@ enabled = true
 [env.test-bot]
 name = "linguapulse-test-bot"
 main = "linguapulse-test-bot.js"
+
+# Определения переменных окружения для test-bot (без значений)
+[env.test-bot.vars]
+SYSTEM_PROMPT = ""    # Оставляем пустым, значение будет установлено через Dashboard
 
 [[env.test-bot.kv_namespaces]]
 binding = "TEST_KV" 
@@ -32,6 +39,12 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 [env.webhook]
 name = "telegram-webhook"
 main = "telegram-webhook.js"
+
+# Определения переменных окружения для webhook (без значений)
+[env.webhook.vars]
+TRIBUTE_CHANNEL_LINK = ""  # Оставляем пустым, значение будет установлено через Dashboard
+TRIBUTE_APP_LINK = ""      # Оставляем пустым, значение будет установлено через Dashboard
+TRIBUTE_API_KEY = ""       # Оставляем пустым, значение будет установлено через Dashboard
 
 [[env.webhook.kv_namespaces]]
 binding = "TEST_KV"
@@ -63,6 +76,12 @@ service = "payment"
 name = "linguapulse-lesson0-bot"
 main = "lesson0-bot.js"
 
+# Определения переменных окружения для lesson0-bot (без значений)
+# Значения должны быть установлены через Dashboard или wrangler secret
+[env.lesson0.vars]
+TRANSLOADIT_TPL = ""  # Оставляем пустым, значение будет установлено через Dashboard
+SYSTEM_PROMPT = ""    # Оставляем пустым, значение будет установлено через Dashboard
+
 [[env.lesson0.kv_namespaces]]
 binding = "CHAT_KV"
 id = "ff3bf4d1633d45cd92e95d193b7d250f"
@@ -76,6 +95,10 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 name = "main-lesson"
 main = "main-lesson.js"
 
+# Определения переменных окружения для main-lesson (без значений)
+[env.main-lesson.vars]
+SYSTEM_PROMPT = ""    # Оставляем пустым, значение будет установлено через Dashboard
+
 [[env.main-lesson.kv_namespaces]]
 binding = "CHAT_KV"
 id = "ff3bf4d1633d45cd92e95d193b7d250f"
@@ -88,6 +111,9 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 [env.payment]
 name = "payment"
 main = "payment.js"
+
+# Определения переменных окружения для payment (без значений)
+[env.payment.vars]
 
 [[env.payment.d1_databases]]
 binding = "USER_DB"

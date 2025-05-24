@@ -63,7 +63,8 @@ jobs:
               "variables": [
                 {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
                 {"name": "TRIBUTE_APP_LINK", "text": "${{ secrets.TRIBUTE_APP_LINK }}"},
-                {"name": "TRIBUTE_CHANNEL_LINK", "text": "${{ secrets.TRIBUTE_CHANNEL_LINK }}"}
+                {"name": "TRIBUTE_CHANNEL_LINK", "text": "${{ secrets.TRIBUTE_CHANNEL_LINK }}"},
+                {"name": "TRIBUTE_API_KEY", "text": "${{ secrets.TRIBUTE_API_KEY }}"}
               ]
             }'
 
@@ -102,16 +103,5 @@ jobs:
                 {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
                 {"name": "OPENAI_KEY", "text": "${{ secrets.OPENAI_KEY }}"},
                 {"name": "SYSTEM_PROMPT", "text": "${{ secrets.SYSTEM_PROMPT }}"}
-              ]
-            }'
-
-          # Установка переменных для payment
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/payment/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            --data '{
-              "variables": [
-                {"name": "STRIPE_SECRET_KEY", "text": "${{ secrets.STRIPE_SECRET_KEY }}"},
-                {"name": "STRIPE_WEBHOOK_SECRET", "text": "${{ secrets.STRIPE_WEBHOOK_SECRET }}"}
               ]
             }' 

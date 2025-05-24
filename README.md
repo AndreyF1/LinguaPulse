@@ -21,8 +21,8 @@ Telegram-бот для обучения языкам с использовани
 - `SYSTEM_PROMPT`: Системный промпт для GPT (опционально)
 - `TRIBUTE_APP_LINK`: Ссылка на приложение Tribute
 - `TRIBUTE_CHANNEL_LINK`: Резервная ссылка на канал Tribute
-- `STRIPE_SECRET_KEY`: Секретный ключ Stripe
-- `STRIPE_WEBHOOK_SECRET`: Секрет для Stripe вебхука
+- `TRIBUTE_API_KEY`: API ключ Tribute для проверки вебхуков
+
 
 ## Процесс деплоя
 
