@@ -19,7 +19,7 @@ jobs:
           node-version: '18'
           
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         
       # Деплой каждого воркера отдельно
       - name: Deploy telegram-webhook
