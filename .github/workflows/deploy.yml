@@ -20,8 +20,8 @@ jobs:
           
       - name: Install dependencies
         run: npm install
-        
-      # Деплой каждого воркера отдельно
+
+      # Деплой всех воркеров
       - name: Deploy telegram-webhook
         uses: cloudflare/wrangler-action@v3
         with:
@@ -33,12 +33,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: test-bot
-          
-      - name: Deploy lesson0-bot
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          environment: lesson0
           
       - name: Deploy main-lesson
         uses: cloudflare/wrangler-action@v3
@@ -52,56 +46,42 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: payment
           
-      # Установка переменных окружения через Cloudflare API
-      - name: Set environment variables
+      - name: Deploy reminder
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          environment: reminder
+
+      # Отдельный деплой для lesson0-bot с корректной установкой Transloadit
+      - name: Deploy lesson0-bot with secrets
         run: |
-          # Установка переменных для webhook
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/telegram-webhook/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            --data '{
-              "variables": [
-                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "TRIBUTE_APP_LINK", "text": "${{ secrets.TRIBUTE_APP_LINK }}"},
-                {"name": "TRIBUTE_CHANNEL_LINK", "text": "${{ secrets.TRIBUTE_CHANNEL_LINK }}"},
-                {"name": "TRIBUTE_API_KEY", "text": "${{ secrets.TRIBUTE_API_KEY }}"}
-              ]
-            }'
-
-          # Установка переменных для lesson0-bot
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/linguapulse-lesson0-bot/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            --data '{
-              "variables": [
-                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "OPENAI_KEY", "text": "${{ secrets.OPENAI_KEY }}"},
-                {"name": "TRANSLOADIT_KEY", "text": "${{ secrets.TRANSLOADIT_KEY }}"},
-                {"name": "TRANSLOADIT_TPL", "text": "${{ secrets.TRANSLOADIT_TPL }}"},
-                {"name": "SYSTEM_PROMPT", "text": "${{ secrets.SYSTEM_PROMPT }}"}
-              ]
-            }'
-
-          # Установка переменных для test-bot
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/linguapulse-test-bot/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            --data '{
-              "variables": [
-                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "OPENAI_KEY", "text": "${{ secrets.OPENAI_KEY }}"},
-                {"name": "SYSTEM_PROMPT", "text": "${{ secrets.SYSTEM_PROMPT }}"}
-              ]
-            }'
-
-          # Установка переменных для main-lesson
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/main-lesson/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            --data '{
-              "variables": [
-                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "OPENAI_KEY", "text": "${{ secrets.OPENAI_KEY }}"},
-                {"name": "SYSTEM_PROMPT", "text": "${{ secrets.SYSTEM_PROMPT }}"}
-              ]
-            }' 
+          # Проверка конфигурации
+          echo "Проверка конфигурации wrangler.toml для lesson0-bot..."
+          if ! grep -q "TRANSLOADIT_KEY" wrangler.toml; then
+            echo "ОШИБКА: TRANSLOADIT_KEY не определен в wrangler.toml"
+            exit 1
+          fi
+          
+          # Создание файла с переменными окружения
+          echo "Создание файла с переменными окружения..."
+          cat > .dev.vars <<EOF
+          TRANSLOADIT_KEY="${{ secrets.TRANSLOADIT_KEY }}"
+          TRANSLOADIT_TPL="${{ secrets.TRANSLOADIT_TPL }}"
+          OPENAI_KEY="${{ secrets.OPENAI_KEY }}"
+          BOT_TOKEN="${{ secrets.BOT_TOKEN }}"
+          SYSTEM_PROMPT="${{ secrets.SYSTEM_PROMPT }}"
+          EOF
+          
+          # Деплой с использованием файла переменных
+          echo "Деплой lesson0-bot с переменными из файла..."
+          npx wrangler deploy lesson0-bot.js --env lesson0 --var-file=.dev.vars
+          
+          # Установка секретов через wrangler для гарантии
+          echo "Установка секретов через wrangler CLI..."
+          echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY --env lesson0
+          echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env lesson0
+          echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY --env lesson0
+          echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env lesson0
+          
+          # Проверка переменных
+          echo "Деплой завершен, переменные должны быть установлены" 

@@ -488,6 +488,14 @@ async function safeSendTTS(chatId, text, env) {
 async function encodeVoipWithTransloadit(buf, env) {
   console.log("Starting Transloadit encoding, input buffer size:", buf.byteLength);
   
+  // Расширенное логирование для диагностики
+  console.log("Checking Transloadit credentials:");
+  console.log("TRANSLOADIT_KEY exists:", !!env.TRANSLOADIT_KEY);
+  console.log("TRANSLOADIT_KEY length:", env.TRANSLOADIT_KEY ? env.TRANSLOADIT_KEY.length : 0);
+  console.log("TRANSLOADIT_TPL exists:", !!env.TRANSLOADIT_TPL);
+  console.log("TRANSLOADIT_TPL length:", env.TRANSLOADIT_TPL ? env.TRANSLOADIT_TPL.length : 0);
+  console.log("TRANSLOADIT_TPL value:", env.TRANSLOADIT_TPL ? env.TRANSLOADIT_TPL.substring(0, 5) + "..." : "null");
+  
   // Проверка необходимых переменных окружения
   if (!env.TRANSLOADIT_KEY || !env.TRANSLOADIT_TPL) {
     console.error("Missing Transloadit credentials. TRANSLOADIT_KEY or TRANSLOADIT_TPL not set.");
