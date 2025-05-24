@@ -1027,7 +1027,7 @@ async function sendTributeChannelLink(chatId, env) {
   // Если переменная окружения недоступна, используем тестовую ссылку
   if (!channelLink || channelLink.trim() === '') {
     console.warn(`[DEBUG] TRIBUTE_CHANNEL_LINK not found in environment, using fallback link`);
-    channelLink = "https://t.me/LinguaPulseSubscribe"; // Замените на актуальную ссылку
+    channelLink = "https://t.me/+vQ8lD3NDHjg3MzJi"; // Updated to a valid channel link
   }
 
   const message = "🔑 To unlock premium lessons, please subscribe to our channel:\n\n" +
@@ -1117,7 +1117,7 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
     // Если переменная окружения недоступна, используем тестовую ссылку
     if (!channelLink || channelLink.trim() === '') {
       console.warn(`[DEBUG] TRIBUTE_CHANNEL_LINK not found in environment, using fallback link`);
-      channelLink = "https://t.me/LinguaPulseSubscribe"; // Замените на актуальную ссылку
+      channelLink = "https://t.me/+vQ8lD3NDHjg3MzJi"; // Updated to a valid channel link
     }
     
     // Проверяем, что ссылка имеет корректный формат и начинается с https:// или http://

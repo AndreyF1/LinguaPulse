@@ -767,7 +767,7 @@ async function handleUpdate(update, env, ctx) {
           
           if (!channelLink || channelLink.trim() === '') {
             console.warn(`Missing TRIBUTE_CHANNEL_LINK environment variable, using fallback link`);
-            channelLink = "https://t.me/LinguaPulseSubscribe"; // Замените на актуальную ссылку
+            channelLink = "https://t.me/+vQ8lD3NDHjg3MzJi"; // Updated to a valid channel link
           }
           
           // Проверяем формат ссылки
