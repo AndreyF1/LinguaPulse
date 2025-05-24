@@ -267,7 +267,7 @@ async function safeKvDelete(kv, key) {
 // Generate first greeting using GPT
 async function sendFirstGreeting(chatId, history, env, kv) {
   try {
-    const prompt = "Generate a friendly, conversational opening greeting for an English language practice session. Ask the student an engaging question about their day, interests, or preferences to start the conversation. Keep it natural and casual.";
+    const prompt = "Generate a friendly, conversational opening greeting for an English language practice session. Ask the student an engaging question about their day, interests, or preferences to start the conversation. Keep it natural and casual. Make sure your greeting is unique and different each time this function is called. Vary your greeting style, structure, and topic.";
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -280,7 +280,7 @@ async function sendFirstGreeting(chatId, history, env, kv) {
         messages: [
           { role: 'system', content: prompt }
         ], 
-        temperature: 0.7 
+        temperature: 0.9 // Increased temperature for more variety
       })
     });
     
@@ -312,13 +312,16 @@ async function sendFirstGreeting(chatId, history, env, kv) {
 // Chat with GPT based on conversation history
 async function chatGPT(history, env) {
   try {
-    // Get system prompt from environment
+    // Get system prompt from environment with added instruction for varied responses
     const systemPrompt = env.SYSTEM_PROMPT || 
       "You are a friendly English language tutor having a casual conversation with a student. " +
       "Keep your responses conversational, supportive, and engaging. " +
       "Ask follow-up questions to encourage the student to speak more. " +
       "Your goal is to help the student practice their English in a natural way. " +
-      "Keep responses fairly short (1-3 sentences) to maintain a flowing conversation.";
+      "Keep responses fairly short (1-3 sentences) to maintain a flowing conversation. " +
+      "IMPORTANT: Ensure each of your responses has a different structure and wording style. " +
+      "Vary your greeting patterns, question types, and expressions to provide a natural conversation experience. " +
+      "Avoid repetitive phrasing patterns across multiple interactions.";
     
     // Format messages for OpenAI API
     const messages = [
@@ -337,7 +340,7 @@ async function chatGPT(history, env) {
       body: JSON.stringify({ 
         model: 'gpt-4o-mini', 
         messages, 
-        temperature: 0.7,
+        temperature: 0.9, // Increased temperature for more variety
         max_tokens: 200 // Limit response length to prevent overly long messages
       })
     });
@@ -426,17 +429,55 @@ async function safeSendTTS(chatId, text, env) {
   
   try {
     console.log(`Generating TTS for: ${t}`);
-    const rawBuf = await openaiTTS(t, env);
-    const voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
+    // Add more detailed logging to trace the problem
+    let rawBuf;
+    try {
+      rawBuf = await openaiTTS(t, env);
+      console.log("Successfully generated OpenAI TTS, buffer size:", rawBuf.byteLength);
+    } catch (openaiError) {
+      console.error("OpenAI TTS generation failed:", openaiError);
+      throw new Error(`OpenAI TTS failed: ${openaiError.message}`);
+    }
+    
+    let voipBuf;
+    try {
+      voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
+      console.log("Successfully encoded audio with Transloadit, buffer size:", voipBuf.byteLength);
+    } catch (transloaditError) {
+      console.error("Transloadit encoding failed:", transloaditError);
+      throw new Error(`Transloadit encoding failed: ${transloaditError.message}`);
+    }
+    
     const dur = calculateDuration(voipBuf);
-    await telegramSendVoice(chatId, voipBuf, dur, env);
+    
+    try {
+      await telegramSendVoice(chatId, voipBuf, dur, env);
+      console.log("Successfully sent voice message to Telegram");
+    } catch (telegramError) {
+      console.error("Telegram voice sending failed:", telegramError);
+      throw new Error(`Telegram sendVoice failed: ${telegramError.message}`);
+    }
     
     // Add a small delay after sending audio to prevent flooding
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     return true;
   } catch (e) {
-    console.error("TTS failed:", e);
+    console.error("TTS process failed with error:", e);
+    // Attempt direct fallback for testing - should be removed in production
+    try {
+      // For debugging purposes, try to send the raw OpenAI audio if Transloadit fails
+      if (e.message && e.message.includes('Transloadit') && rawBuf) {
+        console.log("Attempting direct send of OpenAI audio without Transloadit encoding");
+        const directDur = calculateDuration(rawBuf);
+        await telegramSendVoice(chatId, rawBuf, directDur, env);
+        console.log("Direct audio send successful");
+        return true;
+      }
+    } catch (directError) {
+      console.error("Direct audio send failed:", directError);
+    }
+    
     // Fallback to text if TTS fails
     await sendText(chatId, "📝 " + t, env);
     return false;
@@ -585,19 +626,36 @@ async function openaiTTS(text, env) {
 
 // Send voice message via Telegram
 async function telegramSendVoice(chatId, buf, dur, env) {
+  console.log(`Preparing to send voice message to chat ${chatId}, buffer size: ${buf.byteLength}, duration: ${dur}`);
+  
+  if (!buf || buf.byteLength === 0) {
+    throw new Error("Cannot send empty audio buffer");
+  }
+  
   const fd = new FormData();
   fd.append('chat_id', String(chatId));
   fd.append('duration', dur);
   fd.append('voice', new File([buf], 'voice.ogg', { type: 'audio/ogg; codecs=opus' }));
   
-  const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
-    { method: 'POST', body: fd }
-  );
-  
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Telegram sendVoice error: ${errorText}`);
+  try {
+    console.log(`Sending voice message to Telegram API, token length: ${env.BOT_TOKEN ? env.BOT_TOKEN.length : 0}`);
+    const res = await fetch(
+      `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
+      { method: 'POST', body: fd }
+    );
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`Telegram API error: ${res.status}, ${errorText}`);
+      throw new Error(`Telegram sendVoice error: ${res.status} ${errorText}`);
+    }
+    
+    const result = await res.json();
+    console.log("Telegram voice message sent successfully:", JSON.stringify(result.ok));
+    return result;
+  } catch (error) {
+    console.error("Failed to send voice message:", error);
+    throw error;
   }
 }
 
