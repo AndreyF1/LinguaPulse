@@ -59,7 +59,51 @@ if (update.message?.text) {
 
       // Handle /talk command - route to main-lesson
       if (update.message?.text === '/talk') {
-        // Forward directly to main-lesson worker
+        // Check if the MAIN_LESSON worker is available
+        if (!env.MAIN_LESSON) {
+          console.error("MAIN_LESSON worker is undefined, cannot forward /talk command");
+          
+          // Check if user has completed the test
+          if (await hasCompletedTest(chatId, env)) {
+            // Get user subscription status
+            const { results } = await env.USER_DB
+              .prepare('SELECT subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+              .bind(parseInt(chatId, 10))
+              .all();
+            
+            const now = new Date();
+            const hasActiveSubscription = results.length > 0 && 
+                                         results[0].subscription_expired_at && 
+                                         (new Date(results[0].subscription_expired_at) > now);
+            
+            if (hasActiveSubscription) {
+              // If they have an active subscription but worker is unavailable
+              await sendMessageViaTelegram(chatId, 
+                "Sorry, the lesson service is temporarily unavailable. Please try again later.", env);
+            } else {
+              // If they don't have an active subscription, show subscription option
+              const channelLink = env.TRIBUTE_CHANNEL_LINK;
+              const message = "You need an active subscription to access lessons. Subscribe to continue learning!";
+              
+              if (channelLink) {
+                await sendMessageViaTelegram(chatId, message, env, {
+                  reply_markup: {
+                    inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
+                  }
+                });
+              } else {
+                await sendMessageViaTelegram(chatId, message, env);
+              }
+            }
+          } else {
+            // If they haven't completed the test
+            await sendMessageViaTelegram(chatId, 
+              "You need to complete the placement test first. Use /start to begin.", env);
+          }
+          return new Response('OK');
+        }
+        
+        // Forward directly to main-lesson worker if available
         console.log("Forwarding /talk command to MAIN_LESSON");
         return forward(env.MAIN_LESSON, update);
       }
@@ -226,6 +270,16 @@ return new Response('OK');
                   { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
                 return new Response('OK');
               }
+            } else {
+              // Subscription inactive or expired, offer to subscribe
+              const channelLink = env.TRIBUTE_CHANNEL_LINK;
+              if (channelLink) {
+                await sendMessageViaTelegram(chatId,
+                  "Welcome back! Your subscription has expired. Subscribe again to continue learning.",
+                  env,
+                  { reply_markup: { inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]] }});
+                return new Response('OK');
+              }
             }
           }
         }
@@ -327,7 +381,20 @@ return new Response('OK');
               }
             } else {
               // No active subscription - offer to subscribe to channel via Tribute
-              await sendTributeChannelLink(chatId, env);
+              const channelLink = env.TRIBUTE_CHANNEL_LINK;
+              const message = "To continue with your English lessons, you need an active subscription. Subscribe now for daily speaking practice!";
+              
+              if (channelLink) {
+                await sendMessageViaTelegram(chatId, message, env, {
+                  reply_markup: {
+                    inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
+                  }
+                });
+              } else {
+                await sendMessageViaTelegram(chatId, 
+                  "To continue with your English lessons, you need an active subscription. Please contact support for subscription options.", 
+                  env);
+              }
               return new Response('OK');
             }
           }
@@ -403,7 +470,21 @@ return new Response('OK');
             }
           } else {
             // No active subscription - offer to subscribe through Tribute
-            await sendTributeChannelLink(chatId, env);
+            // Get channel link from environment variable
+            const channelLink = env.TRIBUTE_CHANNEL_LINK;
+            const message = "To continue with your English lessons, you need an active subscription. Subscribe now for daily speaking practice!";
+            
+            if (channelLink) {
+              await sendMessageViaTelegram(chatId, message, env, {
+                reply_markup: {
+                  inline_keyboard: [[{ text: "Subscribe ($1/week)", url: channelLink }]]
+                }
+              });
+            } else {
+              await sendMessageViaTelegram(chatId, 
+                "To continue with your English lessons, you need an active subscription. Please contact support for subscription options.", 
+                env);
+            }
             return new Response('OK');
           }
         }
