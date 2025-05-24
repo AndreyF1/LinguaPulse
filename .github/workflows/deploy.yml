@@ -1,0 +1,117 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main  # или master, в зависимости от вашей основной ветки
+  workflow_dispatch:  # позволяет запускать workflow вручную
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      # Деплой каждого воркера отдельно
+      - name: Deploy telegram-webhook
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          environment: webhook
+          
+      - name: Deploy test-bot
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          environment: test-bot
+          
+      - name: Deploy lesson0-bot
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          environment: lesson0
+          
+      - name: Deploy main-lesson
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          environment: main-lesson
+          
+      - name: Deploy payment
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          environment: payment
+          
+      # Установка переменных окружения через Cloudflare API
+      - name: Set environment variables
+        run: |
+          # Установка переменных для webhook
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/telegram-webhook/settings/variables" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "variables": [
+                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
+                {"name": "TRIBUTE_APP_LINK", "text": "${{ secrets.TRIBUTE_APP_LINK }}"},
+                {"name": "TRIBUTE_CHANNEL_LINK", "text": "${{ secrets.TRIBUTE_CHANNEL_LINK }}"}
+              ]
+            }'
+
+          # Установка переменных для lesson0-bot
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/linguapulse-lesson0-bot/settings/variables" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "variables": [
+                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
+                {"name": "OPENAI_KEY", "text": "${{ secrets.OPENAI_KEY }}"},
+                {"name": "TRANSLOADIT_KEY", "text": "${{ secrets.TRANSLOADIT_KEY }}"},
+                {"name": "TRANSLOADIT_TPL", "text": "${{ secrets.TRANSLOADIT_TPL }}"},
+                {"name": "SYSTEM_PROMPT", "text": "${{ secrets.SYSTEM_PROMPT }}"}
+              ]
+            }'
+
+          # Установка переменных для test-bot
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/linguapulse-test-bot/settings/variables" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "variables": [
+                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
+                {"name": "OPENAI_KEY", "text": "${{ secrets.OPENAI_KEY }}"},
+                {"name": "SYSTEM_PROMPT", "text": "${{ secrets.SYSTEM_PROMPT }}"}
+              ]
+            }'
+
+          # Установка переменных для main-lesson
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/main-lesson/settings/variables" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "variables": [
+                {"name": "BOT_TOKEN", "text": "${{ secrets.BOT_TOKEN }}"},
+                {"name": "OPENAI_KEY", "text": "${{ secrets.OPENAI_KEY }}"},
+                {"name": "SYSTEM_PROMPT", "text": "${{ secrets.SYSTEM_PROMPT }}"}
+              ]
+            }'
+
+          # Установка переменных для payment
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/payment/settings/variables" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "variables": [
+                {"name": "STRIPE_SECRET_KEY", "text": "${{ secrets.STRIPE_SECRET_KEY }}"},
+                {"name": "STRIPE_WEBHOOK_SECRET", "text": "${{ secrets.STRIPE_WEBHOOK_SECRET }}"}
+              ]
+            }' 
