@@ -21,41 +21,46 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Деплой всех воркеров через стандартные действия
+      # Деплой всех воркеров через стандартные действия с сохранением переменных
       - name: Deploy telegram-webhook
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: webhook
+          keepVars: true
           
       - name: Deploy test-bot
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: test-bot
+          keepVars: true
           
       - name: Deploy main-lesson
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: main-lesson
+          keepVars: true
           
       - name: Deploy payment
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: payment
+          keepVars: true
           
       - name: Deploy reminder
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           environment: reminder
+          keepVars: true
 
       # Специальный шаг для установки переменных и деплоя lesson0-bot
       - name: Setup and deploy lesson0-bot
         env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: |
           echo "Настройка и деплой lesson0-bot..."
           
@@ -68,6 +73,7 @@ jobs:
           name = "linguapulse-lesson0-bot"
           main = "lesson0-bot.js"
           compatibility_date = "2025-05-17"
+          keep_vars = true
           
           [vars]
           SYSTEM_PROMPT = "${{ secrets.SYSTEM_PROMPT }}"
@@ -96,94 +102,16 @@ jobs:
           echo "Проверка переменных после настройки..."
           npx wrangler secret list
 
-      # Отдельный шаг для настройки переменных через API напрямую
-      - name: Set environment variables for all services
+      # Информация о переменных для других воркеров
+      - name: Note about other workers variables
         run: |
-          echo "Настройка переменных для всех сервисов через API..."
+          echo "⚠️ ВАЖНО: Переменные для других воркеров должны быть настроены через Cloudflare Dashboard."
+          echo "Для настройки переменных вручную используйте раздел Settings > Variables and Secrets в Dashboard."
+          echo "API-метод для настройки переменных не работает с текущим токеном."
 
-          # Установка для telegram-webhook
-          echo "Установка переменных для telegram-webhook..."
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/telegram-webhook/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "variables": [
-                {"name": "BOT_TOKEN", "type": "secret", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "TRIBUTE_APP_LINK", "type": "plaintext", "text": "${{ secrets.TRIBUTE_APP_LINK }}"},
-                {"name": "TRIBUTE_CHANNEL_LINK", "type": "plaintext", "text": "${{ secrets.TRIBUTE_CHANNEL_LINK }}"},
-                {"name": "TRIBUTE_API_KEY", "type": "plaintext", "text": "${{ secrets.TRIBUTE_API_KEY }}"}
-              ]
-            }'
-          
-          echo "Результат настройки telegram-webhook"
-          
-          # Установка для lesson0-bot
-          echo "Установка переменных для lesson0-bot..."
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/linguapulse-lesson0-bot/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "variables": [
-                {"name": "BOT_TOKEN", "type": "secret", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "OPENAI_KEY", "type": "secret", "text": "${{ secrets.OPENAI_KEY }}"},
-                {"name": "TRANSLOADIT_KEY", "type": "secret", "text": "${{ secrets.TRANSLOADIT_KEY }}"},
-                {"name": "TRANSLOADIT_TPL", "type": "secret", "text": "${{ secrets.TRANSLOADIT_TPL }}"},
-                {"name": "SYSTEM_PROMPT", "type": "plaintext", "text": "${{ secrets.SYSTEM_PROMPT }}"}
-              ]
-            }'
-          
-          echo "Результат настройки lesson0-bot"
-          
-          # Проверка настройки переменных для lesson0-bot
-          echo "Проверка настройки переменных для lesson0-bot..."
-          VARS_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/linguapulse-lesson0-bot/settings/variables")
-          
-          echo "Список переменных (без значений): $VARS_RESPONSE"
-          
-          # Установка для test-bot
-          echo "Установка переменных для test-bot..."
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/linguapulse-test-bot/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "variables": [
-                {"name": "BOT_TOKEN", "type": "secret", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "OPENAI_KEY", "type": "secret", "text": "${{ secrets.OPENAI_KEY }}"},
-                {"name": "SYSTEM_PROMPT", "type": "plaintext", "text": "${{ secrets.SYSTEM_PROMPT }}"}
-              ]
-            }'
-          
-          echo "Результат настройки test-bot"
-          
-          # Установка для main-lesson
-          echo "Установка переменных для main-lesson..."
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/main-lesson/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "variables": [
-                {"name": "BOT_TOKEN", "type": "secret", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "OPENAI_KEY", "type": "secret", "text": "${{ secrets.OPENAI_KEY }}"},
-                {"name": "SYSTEM_PROMPT", "type": "plaintext", "text": "${{ secrets.SYSTEM_PROMPT }}"}
-              ]
-            }'
-          
-          echo "Результат настройки main-lesson"
-          
-          # Установка для reminder
-          echo "Установка переменных для reminder..."
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/workers/scripts/reminder/settings/variables" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "variables": [
-                {"name": "BOT_TOKEN", "type": "secret", "text": "${{ secrets.BOT_TOKEN }}"},
-                {"name": "TRIBUTE_CHANNEL_LINK", "type": "plaintext", "text": "${{ secrets.TRIBUTE_CHANNEL_LINK }}"}
-              ]
-            }'
-          
-          echo "Результат настройки reminder"
-          
-          # Информация о результатах
-          echo "Настройка переменных окружения завершена" 
+      # Информация о переменных
+      - name: Note about variables
+        run: |
+          echo "✅ Все воркеры теперь деплоятся с флагом --keep-vars"
+          echo "✅ Это сохраняет существующие переменные при деплое"
+          echo "✅ Вам нужно настроить переменные только один раз через Dashboard" 
