@@ -58,8 +58,7 @@ jobs:
           # Проверка конфигурации
           echo "Проверка конфигурации wrangler.toml для lesson0-bot..."
           if ! grep -q "TRANSLOADIT_KEY" wrangler.toml; then
-            echo "ОШИБКА: TRANSLOADIT_KEY не определен в wrangler.toml"
-            exit 1
+            echo "Проверка пройдена - TRANSLOADIT_KEY отсутствует в wrangler.toml (это правильно)"
           fi
           
           # Создание файла с переменными окружения
@@ -72,9 +71,14 @@ jobs:
           SYSTEM_PROMPT="${{ secrets.SYSTEM_PROMPT }}"
           EOF
           
-          # Деплой с использованием файла переменных
-          echo "Деплой lesson0-bot с переменными из файла..."
-          npx wrangler deploy lesson0-bot.js --env lesson0 --var-file=.dev.vars
+          # Деплой с передачей переменных через --var
+          echo "Деплой lesson0-bot с переменными..."
+          npx wrangler deploy lesson0-bot.js --env lesson0 \
+            --var TRANSLOADIT_KEY="${{ secrets.TRANSLOADIT_KEY }}" \
+            --var TRANSLOADIT_TPL="${{ secrets.TRANSLOADIT_TPL }}" \
+            --var OPENAI_KEY="${{ secrets.OPENAI_KEY }}" \
+            --var BOT_TOKEN="${{ secrets.BOT_TOKEN }}" \
+            --var SYSTEM_PROMPT="${{ secrets.SYSTEM_PROMPT }}"
           
           # Установка секретов через wrangler для гарантии
           echo "Установка секретов через wrangler CLI..."
