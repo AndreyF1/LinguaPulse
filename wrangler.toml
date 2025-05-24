@@ -1,37 +1,76 @@
-# Level_test
+name = "linguapulse"
+compatibility_date = "2025-05-17"
+
+# Global observability settings
+[observability.logs]
+enabled = true
+
+# Test Bot Environment
+[env.test-bot]
 name = "linguapulse-test-bot"
 main = "linguapulse-test-bot.js"
-compatibility_date = "2025-05-17"
 
-# KV namespaces должны быть в формате массива
-[[kv_namespaces]]
-binding = "TEST_KV"
+[[env.test-bot.kv_namespaces]]
+binding = "TEST_KV" 
 id = "ff3bf4d1633d45cd92e95d193b7d250f"
 
-# D1 databases также должны быть в формате массива
-[[d1_databases]]
+[[env.test-bot.d1_databases]]
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
-# Настройки логирования
-[observability.logs]
-enabled = true
-
-# Main webhook
+# Webhook Environment  
+[env.webhook]
 name = "telegram-webhook"
 main = "telegram-webhook.js"
-compatibility_date = "2025-05-17"
 
-# KV namespaces должны быть в формате массива
-[[kv_namespaces]]
+[[env.webhook.kv_namespaces]]
 binding = "TEST_KV"
 id = "ff3bf4d1633d45cd92e95d193b7d250f"
 
-# D1 databases также должны быть в формате массива
-[[d1_databases]]
+[[env.webhook.d1_databases]]
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
-# Настройки логирования
-[observability.logs]
-enabled = true
+# Lesson0 Environment
+[env.lesson0]
+name = "linguapulse-lesson0-bot"
+main = "linguapulse-lesson0-bot.js"
+
+[[env.lesson0.kv_namespaces]]
+binding = "CHAT_KV"
+id = "ff3bf4d1633d45cd92e95d193b7d250f"
+
+[[env.lesson0.d1_databases]]
+binding = "USER_DB"
+database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
+
+# Main Lesson Environment
+[env.main-lesson]
+name = "main-lesson"
+main = "main-lesson.js"
+
+[[env.main-lesson.kv_namespaces]]
+binding = "CHAT_KV"
+id = "ff3bf4d1633d45cd92e95d193b7d250f"
+
+[[env.main-lesson.d1_databases]]
+binding = "USER_DB"
+database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
+
+# Payment Environment
+[env.payment]
+name = "payment-worker"
+main = "payment.js"
+
+[[env.payment.d1_databases]]
+binding = "USER_DB"
+database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
+
+# Reminder Environment
+[env.reminder]
+name = "reminder-worker"
+main = "reminder.js"
+
+[[env.reminder.d1_databases]]
+binding = "USER_DB"
+database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
