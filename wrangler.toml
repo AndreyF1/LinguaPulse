@@ -34,7 +34,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Lesson0 Environment
 [env.lesson0]
 name = "linguapulse-lesson0-bot"
-main = "linguapulse-lesson0-bot.js"
+main = "lesson0-bot.js"
 
 [[env.lesson0.kv_namespaces]]
 binding = "CHAT_KV"
