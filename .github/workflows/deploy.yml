@@ -70,10 +70,6 @@ jobs:
           compatibility_date = "2025-05-17"
           keep_vars = true
           
-          [vars]
-          SYSTEM_PROMPT = "${{ secrets.SYSTEM_PROMPT }}"
-          TRANSLOADIT_TPL = "${{ secrets.TRANSLOADIT_TPL }}"
-          
           [[kv_namespaces]]
           binding = "CHAT_KV"
           id = "ff3bf4d1633d45cd92e95d193b7d250f"
@@ -87,15 +83,39 @@ jobs:
           echo "Деплой lesson0-bot с явными переменными..."
           npx wrangler deploy --config wrangler-temp.toml --keep-vars
           
-          # Устанавливаем секреты после деплоя
-          echo "Установка секретов..."
-          echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN
-          echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY
-          echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY
+          # Устанавливаем секреты после деплоя если их нет
+          echo "Установка секретов если они отсутствуют..."
+          # Проверяем наличие переменных перед установкой
+          SECRETS=$(npx wrangler secret list --env lesson0)
+          
+          if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
+            echo "Устанавливаем BOT_TOKEN..."
+            echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env lesson0
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "OPENAI_KEY"; then
+            echo "Устанавливаем OPENAI_KEY..."
+            echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY --env lesson0
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_KEY"; then
+            echo "Устанавливаем TRANSLOADIT_KEY..."
+            echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY --env lesson0
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_TPL"; then
+            echo "Устанавливаем TRANSLOADIT_TPL..."
+            echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env lesson0
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "SYSTEM_PROMPT"; then
+            echo "Устанавливаем SYSTEM_PROMPT..."
+            echo "${{ secrets.SYSTEM_PROMPT }}" | npx wrangler secret put SYSTEM_PROMPT --env lesson0
+          fi
           
           # Проверка настройки после деплоя
           echo "Проверка переменных после настройки..."
-          npx wrangler secret list
+          npx wrangler secret list --env lesson0
 
       # Информация о переменных для других воркеров
       - name: Note about other workers variables

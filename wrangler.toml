@@ -71,12 +71,22 @@ service = "payment"
 [env.lesson0]
 name = "linguapulse-lesson0-bot"
 main = "lesson0-bot.js"
+compatibility_date = "2025-05-17"
+keep_vars = true
 
 # Переменные окружения настраиваются через:
 # - GitHub Actions при CI/CD
 # - wrangler secret put для локальной разработки
 # - Cloudflare Dashboard для ручной настройки
 # НЕ ОПРЕДЕЛЯЙТЕ переменные с пустыми значениями, это затирает их значения!
+
+# ВАЖНО: Не определяйте пустые значения переменных!
+# Примеры необходимых переменных (должны быть настроены через secrets/dashboard):
+# - BOT_TOKEN: Telegram bot token
+# - OPENAI_KEY: OpenAI API key
+# - TRANSLOADIT_KEY: Transloadit API key 
+# - TRANSLOADIT_TPL: Transloadit template ID
+# - SYSTEM_PROMPT: Системный промпт для GPT
 
 [[env.lesson0.kv_namespaces]]
 binding = "CHAT_KV"

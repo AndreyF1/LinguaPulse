@@ -120,16 +120,20 @@ export default {
           
           // Count assistant turns (not counting initial greeting)
           const botTurns = hist.filter(h => h.role === 'assistant').length;
+          console.log(`Current bot turns: ${botTurns}/7`);
           
-          // If we've already had 3 bot responses after greeting, end the lesson
-          if (botTurns >= 6) { // Увеличиваем до 6 вместо 4 (будет примерно 5-6 ответов пользователя)
+          // If we've already had 7 bot responses (increased from 6), end the lesson
+          if (botTurns >= 7) {
             // Farewell message
-            const bye = "Thanks for practicing with me today! You did great. We'll continue tomorrow with new exercises. Have a wonderful day!";
+            const bye = "That concludes our English practice session for today. You've done really well! I'll analyze your speaking and provide feedback now. Thank you for practicing with me!";
             hist.push({ role: 'assistant', content: bye });
             await safeKvPut(kv, histKey, JSON.stringify(hist));
             await safeSendTTS(chatId, bye, env);
-
-            // Grammar analysis of all user utterances - one message per utterance
+            
+            // Send a transition message
+            await sendText(chatId, "🔍 *Analyzing your speaking...*", env);
+            
+            // Grammar analysis of all user utterances
             const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
             const analyses = await analyzeLanguage(userUtterances, env);
             
@@ -137,26 +141,27 @@ export default {
             if (analyses.length > 0) {
               await sendText(
                 chatId, 
-                "📝 *Here's your language feedback from today's practice:*", 
+                "📝 *Your Language Feedback*\n\nHere's a detailed analysis of your speaking during our conversation:", 
                 env
               );
               
               // Then send individual analysis for each utterance
-              for (const analysis of analyses) {
+              for (let i = 0; i < analyses.length; i++) {
+                const analysis = analyses[i];
                 await sendText(
                   chatId,
-                  `*Your phrase:* "${analysis.utterance}"\n\n${analysis.feedback}`,
+                  `*Utterance ${i+1}:* "${analysis.utterance}"\n\n${analysis.feedback}`,
                   env
                 );
                 
                 // Add a short delay between messages to avoid flooding
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 800));
               }
               
-              // After all analyses, send encouragement message
+              // Overall assessment based on all utterances
               await sendText(
                 chatId,
-                "🌟 *Keep practicing! With regular conversation practice, you'll improve quickly!*",
+                "🌟 *Overall Assessment*\n\nYou demonstrated good effort in communicating in English. With continued practice, you'll see significant improvements in fluency, grammar accuracy, and vocabulary usage. I recommend practicing daily conversations like this to build confidence and speaking skills.",
                 env
               );
             }
@@ -270,7 +275,18 @@ async function safeKvDelete(kv, key) {
 // Generate first greeting using GPT
 async function sendFirstGreeting(chatId, history, env, kv) {
   try {
-    const prompt = "Generate a friendly, conversational opening greeting for an English language practice session. Ask the student an engaging question about their day, interests, or preferences to start the conversation. Keep it natural and casual. Make sure your greeting is unique and different each time this function is called. Vary your greeting style, structure, and topic.";
+    const prompt = `
+Generate a friendly, engaging opening greeting for an English language practice session. 
+Your greeting should:
+1. Warmly welcome the student to the conversation practice
+2. Briefly explain that this is an opportunity to practice their English speaking skills
+3. Ask an interesting, open-ended question about their day, interests, or preferences to start the conversation
+4. Keep the tone conversational, encouraging, and supportive
+
+Make sure your greeting is unique and different each time this function is called.
+Vary your greeting style, question type, and topic to create a natural conversation starter.
+Keep the total length to 3-4 sentences maximum.
+`;
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -283,7 +299,8 @@ async function sendFirstGreeting(chatId, history, env, kv) {
         messages: [
           { role: 'system', content: prompt }
         ], 
-        temperature: 0.9 // Increased temperature for more variety
+        temperature: 1.0, // Maximum variety
+        max_tokens: 250
       })
     });
     
@@ -300,14 +317,18 @@ async function sendFirstGreeting(chatId, history, env, kv) {
     history.push({ role: 'assistant', content: greeting });
     await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
     
-    // Send greeting as voice message
+    // First send a welcome message
+    await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
+    
+    // Then send greeting as voice message
     await safeSendTTS(chatId, greeting, env);
   } catch (error) {
     console.error("Error generating first greeting:", error);
     // Fallback to a simple greeting if GPT fails
-    const fallbackGreeting = "Hi there! I'm your English conversation partner for today. How are you doing?";
+    const fallbackGreeting = "Hi there! I'm your English conversation partner for today. I'm excited to chat with you and help you practice your English. How are you doing today, and what would you like to talk about?";
     history.push({ role: 'assistant', content: fallbackGreeting });
     await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
+    await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
     await safeSendTTS(chatId, fallbackGreeting, env);
   }
 }
@@ -317,14 +338,27 @@ async function chatGPT(history, env) {
   try {
     // Get system prompt from environment with added instruction for varied responses
     const systemPrompt = env.SYSTEM_PROMPT || 
-      "You are a friendly English language tutor having a casual conversation with a student. " +
-      "Keep your responses conversational, supportive, and engaging. " +
-      "Ask follow-up questions to encourage the student to speak more. " +
-      "Your goal is to help the student practice their English in a natural way. " +
-      "Keep responses fairly short (1-3 sentences) to maintain a flowing conversation. " +
-      "IMPORTANT: Ensure each of your responses has a different structure and wording style. " +
-      "Vary your greeting patterns, question types, and expressions to provide a natural conversation experience. " +
-      "Avoid repetitive phrasing patterns across multiple interactions.";
+      `You are a friendly English language tutor having a conversation with a student to help them practice speaking.
+
+CONVERSATION GOALS:
+1. Create a natural, engaging conversation that encourages the student to speak more
+2. Introduce varied topics suitable for casual English practice
+3. Model proper grammar and natural expressions
+4. Ask open-ended questions to elicit longer responses
+5. Occasionally encourage the student to elaborate on their answers
+6. Implicitly correct grammar by using the correct form in your response
+
+STYLE GUIDELINES:
+- Keep your responses conversational, warm, and supportive
+- Vary your sentence structures, question types, and expressions
+- Avoid repetitive phrasing patterns across multiple interactions
+- Use expressions and vocabulary that are common in everyday English
+- Keep responses relatively short (2-3 sentences) to maintain conversation flow
+
+IMPORTANT:
+- Each response should feel unique and avoid formulaic patterns
+- Never explicitly correct grammar errors - model correct usage instead
+- Focus on maintaining an enjoyable conversation rather than formal teaching`;
     
     // Format messages for OpenAI API
     const messages = [
@@ -343,8 +377,8 @@ async function chatGPT(history, env) {
       body: JSON.stringify({ 
         model: 'gpt-4o-mini', 
         messages, 
-        temperature: 0.9, // Increased temperature for more variety
-        max_tokens: 200 // Limit response length to prevent overly long messages
+        temperature: 0.9, // High temperature for more variety
+        max_tokens: 250 // Increased slightly to allow for more natural responses
       })
     });
     
@@ -373,18 +407,20 @@ async function analyzeLanguage(utterances, env) {
     if (!utterance.trim()) continue; // Skip empty utterances
     
     const prompt = `
-As an English language teacher, provide a concise yet helpful language analysis for this specific student utterance:
+As an expert English language teacher, provide a detailed yet helpful language analysis for this specific student utterance:
 "${utterance}"
 
-Provide a brief analysis with:
-1. What the student did well
-2. One specific grammar or vocabulary suggestion if needed
-3. How a native speaker might express the same idea (if different)
+Your analysis should include:
+1. A positive note about what the student did well (fluency, vocabulary usage, etc.)
+2. One specific grammar correction if needed (explain the rule briefly)
+3. Vocabulary enhancement suggestions (1-2 more advanced or natural alternatives)
+4. Pronunciation guidance if applicable (based on likely pronunciation issues for non-native speakers)
+5. How a native speaker might express the same idea more naturally
 
 FORMAT: 
-- Keep feedback constructive and focused on just one key improvement
+- Keep feedback constructive and supportive
 - Use clear bullet points 
-- Keep total response under 150 words
+- Keep total response under 200 words
 - Start with a brief positive comment
 `;
     
@@ -400,7 +436,8 @@ FORMAT:
           messages: [
             { role: 'system', content: prompt }
           ], 
-          temperature: 0.3
+          temperature: 0.3,
+          max_tokens: 400  // Increased token limit for more detailed feedback
         })
       });
       
@@ -420,6 +457,9 @@ FORMAT:
         feedback: "Sorry, I couldn't analyze this particular response."
       });
     }
+    
+    // Add a small delay between API calls to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   return analyses;
@@ -432,7 +472,14 @@ async function safeSendTTS(chatId, text, env) {
   
   try {
     console.log(`Generating TTS for: ${t}`);
-    // Add more detailed logging to trace the problem
+    
+    // First, let's log the availability of required credentials
+    console.log("TTS process starting with credentials check:");
+    console.log("- OpenAI API key available:", !!env.OPENAI_KEY);
+    console.log("- Transloadit key available:", !!env.TRANSLOADIT_KEY);
+    console.log("- Transloadit template available:", !!env.TRANSLOADIT_TPL);
+    
+    // Generate audio with OpenAI TTS
     let rawBuf;
     try {
       rawBuf = await openaiTTS(t, env);
@@ -442,48 +489,50 @@ async function safeSendTTS(chatId, text, env) {
       throw new Error(`OpenAI TTS failed: ${openaiError.message}`);
     }
     
+    // First, try to send with Transloadit encoding (preferred)
     let voipBuf;
     try {
       voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
       console.log("Successfully encoded audio with Transloadit, buffer size:", voipBuf.byteLength);
-    } catch (transloaditError) {
-      console.error("Transloadit encoding failed:", transloaditError);
-      throw new Error(`Transloadit encoding failed: ${transloaditError.message}`);
-    }
-    
-    const dur = calculateDuration(voipBuf);
-    
-    try {
+      
+      const dur = calculateDuration(voipBuf);
       await telegramSendVoice(chatId, voipBuf, dur, env);
-      console.log("Successfully sent voice message to Telegram");
-    } catch (telegramError) {
-      console.error("Telegram voice sending failed:", telegramError);
-      throw new Error(`Telegram sendVoice failed: ${telegramError.message}`);
-    }
-    
-    // Add a small delay after sending audio to prevent flooding
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return true;
-  } catch (e) {
-    console.error("TTS process failed with error:", e);
-    // Attempt direct fallback for testing - should be removed in production
-    try {
-      // For debugging purposes, try to send the raw OpenAI audio if Transloadit fails
-      if (e.message && e.message.includes('Transloadit') && rawBuf) {
+      console.log("Successfully sent Transloadit-encoded voice message to Telegram");
+      
+      // Add a small delay after sending audio to prevent flooding
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return true;
+    } catch (transloaditError) {
+      console.error("Transloadit encoding or sending failed:", transloaditError);
+      console.log("Falling back to direct OpenAI audio...");
+      
+      // If Transloadit fails, try direct send as fallback
+      try {
         console.log("Attempting direct send of OpenAI audio without Transloadit encoding");
         const directDur = calculateDuration(rawBuf);
         await telegramSendVoice(chatId, rawBuf, directDur, env);
         console.log("Direct audio send successful");
+        
+        // Add a small delay after sending audio to prevent flooding
+        await new Promise(resolve => setTimeout(resolve, 1000));
         return true;
+      } catch (directError) {
+        console.error("Direct audio send failed:", directError);
+        throw new Error(`All audio sending methods failed: ${directError.message}`);
       }
-    } catch (directError) {
-      console.error("Direct audio send failed:", directError);
     }
+  } catch (e) {
+    console.error("TTS process failed with error:", e);
     
-    // Fallback to text if TTS fails
-    await sendText(chatId, "📝 " + t, env);
-    return false;
+    // Final fallback to text if all audio methods fail
+    try {
+      await sendText(chatId, "📝 " + t, env);
+      console.log("Fallback to text message successful");
+      return false;
+    } catch (textError) {
+      console.error("Even text fallback failed:", textError);
+      return false;
+    }
   }
 }
 
