@@ -161,7 +161,9 @@ export default {
           // УЛУЧШЕННАЯ ЛОГИКА: Проверяем конкретное количество сообщений пользователя
           // Завершаем урок только после 4+ полноценных реплик пользователя
           if (userTurns >= 4) {
-            console.log(`Ending free lesson after ${userTurns} user messages`);
+            console.log(`=== FREE LESSON COMPLETION PHASE START ===`);
+            console.log(`Ending free lesson after ${userTurns} user messages and ${botTurns} bot messages`);
+            console.log(`Full history at completion: ${JSON.stringify(hist)}`);
             
             // Farewell message
             const bye = "That concludes our English practice session for today. You've done really well! I'll analyze your speaking and provide feedback now. Thank you for practicing with me!";
@@ -171,6 +173,7 @@ export default {
 
             // Send a transition message
             await sendText(chatId, "🔍 *Analyzing your speaking...*", env);
+            console.log(`=== FREE LESSON FEEDBACK PHASE START ===`);
             
             // Grammar analysis of all user utterances
             const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
@@ -206,6 +209,7 @@ export default {
               );
             }
 
+            console.log(`=== FREE LESSON SUBSCRIPTION OFFER PHASE START ===`);
             // Subscription offer - sent after all feedback messages
             await new Promise(resolve => setTimeout(resolve, 1000));
             await sendText(
@@ -233,6 +237,7 @@ export default {
               body: JSON.stringify({ lesson_done: true, user_id: chatId })
             }).catch(e => console.error("Failed to notify about lesson completion:", e));
 
+            console.log(`=== FREE LESSON CLEANUP PHASE START ===`);
             // Clean up history and all session data
             await safeKvDelete(kv, histKey);
             await safeKvDelete(kv, `session:${chatId}`);
@@ -241,6 +246,7 @@ export default {
             for (const key of keys.keys) {
               await safeKvDelete(kv, key.name);
             }
+            console.log(`=== FREE LESSON COMPLETED SUCCESSFULLY ===`);
             return new Response('OK');
           } else {
             console.log(`Continuing free lesson, user turns: ${userTurns} (need 4+ to end)`);
