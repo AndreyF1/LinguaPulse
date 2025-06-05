@@ -83,9 +83,7 @@ jobs:
           echo "Деплой lesson0-bot с явными переменными..."
           npx wrangler deploy --config wrangler-temp.toml --keep-vars
           
-          # Устанавливаем секреты после деплоя если их нет
-          echo "Установка секретов если они отсутствуют..."
-          # Проверяем наличие переменных перед установкой
+          # Проверяем наличие секретов перед установкой
           SECRETS=$(npx wrangler secret list --env lesson0)
           
           if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
@@ -105,13 +103,14 @@ jobs:
           
           if ! echo "$SECRETS" | grep -q "TRANSLOADIT_TPL"; then
             echo "Устанавливаем TRANSLOADIT_TPL..."
-            echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env lesson0
+            echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env lesson0 || echo "TRANSLOADIT_TPL уже существует, пропускаем"
           fi
           
-          if ! echo "$SECRETS" | grep -q "SYSTEM_PROMPT"; then
-            echo "Устанавливаем SYSTEM_PROMPT..."
-            echo "${{ secrets.SYSTEM_PROMPT }}" | npx wrangler secret put SYSTEM_PROMPT --env lesson0
-          fi
+          # Для SYSTEM_PROMPT пропускаем установку, т.к. он уже существует
+          # if ! echo "$SECRETS" | grep -q "SYSTEM_PROMPT"; then
+          #  echo "Устанавливаем SYSTEM_PROMPT..."
+          #  echo "${{ secrets.SYSTEM_PROMPT }}" | npx wrangler secret put SYSTEM_PROMPT --env lesson0
+          # fi
           
           # Проверка настройки после деплоя
           echo "Проверка переменных после настройки..."
