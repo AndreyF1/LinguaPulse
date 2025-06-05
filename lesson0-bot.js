@@ -36,8 +36,9 @@ export default {
           return new Response('OK');
         }
         
-        // Отправляем сообщение о начале урока, чтобы заполнить паузу пока генерируется аудио
-        await sendText(chatId, "Starting free audio lesson…", env);
+        // ИСПРАВЛЕНИЕ ПОРЯДКА: Сначала отправляем приветствие, затем начинаем урок
+        // Отправляем сообщение о начале урока
+        await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
         
         // Record lesson start in database
         const now = new Date().toISOString();
@@ -56,7 +57,10 @@ export default {
         await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
         await safeKvPut(kv, `session:${chatId}`, sessionId);
         
-        // Generate first GPT greeting (instead of static prompt)
+        // Затем отправляем "Starting free audio lesson..." и генерируем первое приветствие
+        await sendText(chatId, "Starting free audio lesson…", env);
+        
+        // Generate first GPT greeting
         await sendFirstGreeting(chatId, history, env, kv);
         return new Response('OK');
       }
@@ -120,10 +124,11 @@ export default {
           
           // Count assistant turns (not counting initial greeting)
           const botTurns = hist.filter(h => h.role === 'assistant').length;
-          console.log(`Current bot turns: ${botTurns}/7`);
+          console.log(`Current bot turns: ${botTurns}/12`);
           
-          // If we've already had 7 bot responses (increased from 6), end the lesson
-          if (botTurns >= 7) {
+          // ИСПРАВЛЕНИЕ ЛОГИКИ: Увеличиваем количество сообщений с 7 до 12
+          // Это даст примерно 5-6 обменов репликами, учитывая приветствие
+          if (botTurns >= 12) {
             // Farewell message
             const bye = "That concludes our English practice session for today. You've done really well! I'll analyze your speaking and provide feedback now. Thank you for practicing with me!";
             hist.push({ role: 'assistant', content: bye });
@@ -275,17 +280,17 @@ async function safeKvDelete(kv, key) {
 // Generate first greeting using GPT
 async function sendFirstGreeting(chatId, history, env, kv) {
   try {
+    // ИСПРАВЛЕНИЕ ДЛИНЫ: Модифицируем промпт для более короткого приветствия
     const prompt = `
-Generate a friendly, engaging opening greeting for an English language practice session. 
+Generate a brief, friendly greeting for an English language practice session. 
 Your greeting should:
-1. Warmly welcome the student to the conversation practice
-2. Briefly explain that this is an opportunity to practice their English speaking skills
-3. Ask an interesting, open-ended question about their day, interests, or preferences to start the conversation
-4. Keep the tone conversational, encouraging, and supportive
+1. Warmly welcome the student 
+2. Very briefly mention this is to practice English speaking
+3. Ask ONE simple open-ended question to start the conversation
+4. Be encouraging and supportive
 
-Make sure your greeting is unique and different each time this function is called.
-Vary your greeting style, question type, and topic to create a natural conversation starter.
-Keep the total length to 3-4 sentences maximum.
+Keep your greeting very concise - no more than 2-3 short sentences total.
+Make it simple enough for even beginner English learners to understand.
 `;
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -300,7 +305,7 @@ Keep the total length to 3-4 sentences maximum.
           { role: 'system', content: prompt }
         ], 
         temperature: 1.0, // Maximum variety
-        max_tokens: 250
+        max_tokens: 150  // Сокращаем максимальное количество токенов
       })
     });
     
@@ -317,18 +322,20 @@ Keep the total length to 3-4 sentences maximum.
     history.push({ role: 'assistant', content: greeting });
     await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
     
-    // First send a welcome message
-    await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
+    // ИСПРАВЛЕНИЕ ПОРЯДКА: Удаляем повторное отправление приветствия, т.к. оно уже отправлено
+    // await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
     
-    // Then send greeting as voice message
+    // Send greeting as voice message
     await safeSendTTS(chatId, greeting, env);
   } catch (error) {
     console.error("Error generating first greeting:", error);
     // Fallback to a simple greeting if GPT fails
-    const fallbackGreeting = "Hi there! I'm your English conversation partner for today. I'm excited to chat with you and help you practice your English. How are you doing today, and what would you like to talk about?";
+    // ИСПРАВЛЕНИЕ ДЛИНЫ: Упрощаем запасное приветствие
+    const fallbackGreeting = "Hi there! I'm your English practice partner today. How are you feeling, and what would you like to talk about?";
     history.push({ role: 'assistant', content: fallbackGreeting });
     await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
-    await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
+    // Удаляем повторное отправление приветствия
+    // await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
     await safeSendTTS(chatId, fallbackGreeting, env);
   }
 }
