@@ -40,3 +40,4 @@ npx wrangler dev --env webhook
 ```
 
 Переменные окружения при локальной разработке можно задать в `.dev.vars` файле.
+# Debug trigger - Thu  5 Jun 20:17:59 CEST 2025
