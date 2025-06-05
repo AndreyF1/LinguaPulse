@@ -122,13 +122,16 @@ export default {
           // Add user message to history
           hist.push({ role: 'user', content: userText });
           
+          // Count user turns (for debugging)
+          const userTurns = hist.filter(h => h.role === 'user').length;
           // Count assistant turns (not counting initial greeting)
           const botTurns = hist.filter(h => h.role === 'assistant').length;
-          console.log(`Current bot turns: ${botTurns}/12`);
+          console.log(`Current user turns: ${userTurns}, bot turns: ${botTurns}/12`);
           
-          // ИСПРАВЛЕНИЕ ЛОГИКИ: Увеличиваем количество сообщений с 7 до 12
-          // Это даст примерно 5-6 обменов репликами, учитывая приветствие
-          if (botTurns >= 12) {
+          // ИСПРАВЛЕНИЕ ЛОГИКИ: Завершаем урок только если достаточно обменов репликами
+          // Нам нужно по крайней мере 3 ответа пользователя (4-й ответ завершает)
+          if (userTurns >= 4) {
+            console.log("Ending lesson after sufficient exchanges");
             // Farewell message
             const bye = "That concludes our English practice session for today. You've done really well! I'll analyze your speaking and provide feedback now. Thank you for practicing with me!";
             hist.push({ role: 'assistant', content: bye });
