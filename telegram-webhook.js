@@ -291,112 +291,159 @@ return new Response('OK');
       // Handle voice messages with improved routing
       if (update.message?.voice) {
         try {
+          console.log(`=== VOICE MESSAGE HANDLING START ===`);
           console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
+          console.log(`Available services:`, Object.keys(env).filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON', 'PAYMENT'].includes(key)));
+          
+          // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем доступность CHAT_KV
+          if (!env.CHAT_KV) {
+            console.error(`CHAT_KV is not available! Available env keys:`, Object.keys(env));
+            
+            // Если нет CHAT_KV, используем TEST_KV как резервный вариант
+            if (env.TEST_KV) {
+              console.log(`Using TEST_KV as fallback for session storage`);
+              
+              // Проверяем сессии в TEST_KV
+              const lesson0SessionKey = `session:${chatId}`;
+              const lesson0Session = await env.TEST_KV.get(lesson0SessionKey);
+              
+              if (lesson0Session) {
+                console.log(`Found lesson0 session in TEST_KV (${lesson0Session}), forwarding to LESSON0`);
+                return forward(env.LESSON0, update);
+              }
+            }
+            
+            // Если нет активной сессии нигде, проверим статус пользователя в DB
+            console.log(`No active session found, checking user status in database`);
+            const { results } = await env.USER_DB
+              .prepare('SELECT pass_lesson0_at FROM user_profiles WHERE telegram_id = ?')
+              .bind(parseInt(chatId, 10))
+              .all();
+            
+            if (results.length > 0 && !results[0].pass_lesson0_at) {
+              console.log(`User hasn't completed free lesson, suggesting free lesson`);
+              await sendMessageViaTelegram(chatId, 
+                "Would you like to try our free English conversation lesson?",
+                env,
+                { reply_markup: { inline_keyboard: [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]] } }
+              );
+            } else {
+              console.log(`User has completed free lesson or not found, suggesting subscription`);
+              await sendTributeChannelLink(chatId, env);
+            }
+            return new Response('OK');
+          }
           
           // First check if it's a main lesson session
           const mainSessionKey = `main_session:${chatId}`;
           let mainSession = null;
           
-          if (env.CHAT_KV) {
-            console.log(`Checking CHAT_KV for ${mainSessionKey}`);
-            mainSession = await env.CHAT_KV.get(mainSessionKey);
-            
-            if (mainSession) {
-              console.log(`Found active main-lesson session (${mainSession}), forwarding voice message to MAIN_LESSON`);
-              return forward(env.MAIN_LESSON, update);
-            }
-            
-            // If not found in main session, check for lesson0 session directly in CHAT_KV
-            const lesson0SessionKey = `session:${chatId}`;
-            const lesson0Session = await env.CHAT_KV.get(lesson0SessionKey);
-            
-            if (lesson0Session) {
-              console.log(`Found active lesson0 session (${lesson0Session}), forwarding voice message to LESSON0`);
-              return forward(env.LESSON0, update);
-            }
-            
-            // ДОБАВЛЕНА ПРОВЕРКА: Если у пользователя нет активной сессии, но есть история в KV,
-            // это может означать, что сессия была некорректно очищена
-            const histKey = `hist:${chatId}`;
-            const histData = await env.CHAT_KV.get(histKey);
-            
-            if (histData) {
-              try {
-                // Пробуем восстановить сессию для lesson0
-                const hist = JSON.parse(histData);
-                if (Array.isArray(hist) && hist.length > 0) {
-                  console.log(`Found history without session for ${chatId}, recreating lesson0 session`);
-                  // Создаем новый ID сессии и сохраняем его
-                  const newSessionId = Date.now().toString();
-                  await env.CHAT_KV.put(`session:${chatId}`, newSessionId);
-                  console.log(`Recreated lesson0 session (${newSessionId}), forwarding to LESSON0`);
-                  return forward(env.LESSON0, update);
-                }
-              } catch (e) {
-                console.error("Error parsing history data:", e);
-              }
-            }
-            
-            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Если нет активной сессии, проверим в базе данных,
-            // выполнил ли пользователь бесплатный урок, чтобы понять какое действие выполнить
+          console.log(`Checking CHAT_KV for ${mainSessionKey}`);
+          mainSession = await env.CHAT_KV.get(mainSessionKey);
+          
+          if (mainSession) {
+            console.log(`Found active main-lesson session (${mainSession}), forwarding voice message to MAIN_LESSON`);
+            return forward(env.MAIN_LESSON, update);
+          }
+          
+          // If not found in main session, check for lesson0 session directly in CHAT_KV
+          const lesson0SessionKey = `session:${chatId}`;
+          const lesson0Session = await env.CHAT_KV.get(lesson0SessionKey);
+          
+          if (lesson0Session) {
+            console.log(`Found active lesson0 session (${lesson0Session}), forwarding voice message to LESSON0`);
+            return forward(env.LESSON0, update);
+          }
+          
+          console.log(`=== NO ACTIVE SESSION FOUND ===`);
+          console.log(`Checking for orphaned history data...`);
+          
+          // ДОБАВЛЕНА ПРОВЕРКА: Если у пользователя нет активной сессии, но есть история в KV,
+          // это может означать, что сессия была некорректно очищена
+          const histKey = `hist:${chatId}`;
+          const histData = await env.CHAT_KV.get(histKey);
+          
+          if (histData) {
             try {
-              const { results } = await env.USER_DB
-                .prepare('SELECT pass_lesson0_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
-                .bind(parseInt(chatId, 10))
-                .all();
+              // Пробуем восстановить сессию для lesson0
+              const hist = JSON.parse(histData);
+              if (Array.isArray(hist) && hist.length > 0) {
+                console.log(`Found orphaned history (${hist.length} messages), recreating lesson0 session`);
+                // Создаем новый ID сессии и сохраняем его
+                const newSessionId = Date.now().toString();
+                await env.CHAT_KV.put(`session:${chatId}`, newSessionId);
+                console.log(`Recreated lesson0 session (${newSessionId}), forwarding to LESSON0`);
+                return forward(env.LESSON0, update);
+              } else {
+                console.log(`Found empty or invalid history, cleaning up`);
+                await env.CHAT_KV.delete(histKey);
+              }
+            } catch (e) {
+              console.error("Error parsing history data:", e);
+              // Очищаем поврежденные данные
+              await env.CHAT_KV.delete(histKey);
+            }
+          }
+          
+          console.log(`=== CHECKING USER STATUS IN DATABASE ===`);
+          // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Если нет активной сессии, проверим в базе данных,
+          // выполнил ли пользователь бесплатный урок, чтобы понять какое действие выполнить
+          try {
+            const { results } = await env.USER_DB
+              .prepare('SELECT pass_lesson0_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+              .bind(parseInt(chatId, 10))
+              .all();
+            
+            if (results.length > 0) {
+              console.log(`User found in database, pass_lesson0_at: ${!!results[0].pass_lesson0_at}`);
               
-              if (results.length > 0) {
-                // Если у пользователя уже пройден бесплатный урок
-                if (results[0].pass_lesson0_at) {
-                  const now = new Date();
-                  const hasActiveSubscription = results[0].subscription_expired_at && 
-                                               (new Date(results[0].subscription_expired_at) > now);
-                  
-                  if (hasActiveSubscription) {
-                    // Если есть активная подписка, предложить начать урок
-                    await sendMessageViaTelegram(chatId, 
-                      "Your previous lesson has ended. Would you like to start a new lesson?",
-                      env,
-                      { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
-                    );
-                  } else {
-                    // Если нет активной подписки, предложить подписку
-                    await sendTributeChannelLink(chatId, env);
-                  }
-                } else {
-                  // Если пользователь не проходил бесплатный урок, предложить его пройти
+              // Если у пользователя уже пройден бесплатный урок
+              if (results[0].pass_lesson0_at) {
+                const now = new Date();
+                const hasActiveSubscription = results[0].subscription_expired_at && 
+                                             (new Date(results[0].subscription_expired_at) > now);
+                
+                console.log(`User has completed free lesson, active subscription: ${hasActiveSubscription}`);
+                
+                if (hasActiveSubscription) {
+                  // Если есть активная подписка, предложить начать урок
                   await sendMessageViaTelegram(chatId, 
-                    "Would you like to try our free English conversation lesson?",
+                    "Your previous lesson has ended. Would you like to start a new lesson?",
                     env,
-                    { reply_markup: { inline_keyboard: [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]] } }
+                    { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
                   );
+                } else {
+                  // Если нет активной подписки, предложить подписку
+                  console.log(`Sending subscription offer`);
+                  await sendTributeChannelLink(chatId, env);
                 }
               } else {
-                // Если пользователя нет в базе, предложить начать с /start
+                console.log(`User hasn't completed free lesson, suggesting free lesson`);
+                // Если пользователь не проходил бесплатный урок, предложить его пройти
                 await sendMessageViaTelegram(chatId, 
-                  "Please start by taking our placement test. Type /start to begin.",
-                  env
+                  "Would you like to try our free English conversation lesson?",
+                  env,
+                  { reply_markup: { inline_keyboard: [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]] } }
                 );
               }
-            } catch (dbError) {
-              console.error("Error checking user status:", dbError);
-              // В случае ошибки базы данных, отправляем общее сообщение о необходимости начать сначала
+            } else {
+              console.log(`User not found in database, suggesting /start`);
+              // Если пользователя нет в базе, предложить начать с /start
               await sendMessageViaTelegram(chatId, 
-                "I couldn't find your active lesson. Please use /start to begin.",
+                "Please start by taking our placement test. Type /start to begin.",
                 env
               );
             }
-            
-            return new Response('OK');
+          } catch (dbError) {
+            console.error("Error checking user status:", dbError);
+            // В случае ошибки базы данных, отправляем общее сообщение о необходимости начать сначала
+            await sendMessageViaTelegram(chatId, 
+              "I couldn't find your active lesson. Please use /start to begin.",
+              env
+            );
           }
           
-          // If no KV storage or no active session found, default to TEST bot
-          console.log(`No active session found for ${chatId}, sending default message`);
-          await sendMessageViaTelegram(chatId, 
-            "I don't see an active lesson. Please use /start to begin or try our free lesson.",
-            env,
-            { reply_markup: { inline_keyboard: [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]] } }
-          );
+          console.log(`=== VOICE MESSAGE HANDLING COMPLETE ===`);
           return new Response('OK');
         } catch (error) {
           console.error("Error handling voice message:", error);
