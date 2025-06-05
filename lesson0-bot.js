@@ -148,16 +148,21 @@ export default {
           // Add user message to history
           hist.push({ role: 'user', content: userText });
           
-          // Count user turns (for debugging)
-          const userTurns = hist.filter(h => h.role === 'user').length;
-          // Count assistant turns (not counting initial greeting)
-          const botTurns = hist.filter(h => h.role === 'assistant').length;
-          console.log(`Current user turns: ${userTurns}, bot turns: ${botTurns}/12`);
+          // Отладочная информация о количестве сообщений
+          console.log(`History before check: ${JSON.stringify(hist)}`);
           
-          // ИСПРАВЛЕНИЕ ЛОГИКИ: Завершаем урок только если достаточно обменов репликами
-          // Нам нужно по крайней мере 3 ответа пользователя (4-й ответ завершает)
+          // УЛУЧШЕННАЯ ЛОГИКА: Используем выделенную функцию для подсчета сообщений
+          const { userTurns, botTurns } = countTurns(hist);
+          console.log(`Current user turns: ${userTurns}, bot turns: ${botTurns}`);
+          
+          // Сохраняем новое состояние истории с добавленным сообщением пользователя
+          await safeKvPut(kv, histKey, JSON.stringify(hist));
+          
+          // УЛУЧШЕННАЯ ЛОГИКА: Проверяем конкретное количество сообщений пользователя
+          // Завершаем урок только после 4+ полноценных реплик пользователя
           if (userTurns >= 4) {
-            console.log("Ending lesson after sufficient exchanges");
+            console.log(`Ending free lesson after ${userTurns} user messages`);
+            
             // Farewell message
             const bye = "That concludes our English practice session for today. You've done really well! I'll analyze your speaking and provide feedback now. Thank you for practicing with me!";
             hist.push({ role: 'assistant', content: bye });
@@ -169,6 +174,7 @@ export default {
             
             // Grammar analysis of all user utterances
             const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
+            console.log(`Analyzing user utterances: ${JSON.stringify(userUtterances)}`);
             const analyses = await analyzeLanguage(userUtterances, env);
             
             // First, send an introduction message
@@ -236,18 +242,20 @@ export default {
               await safeKvDelete(kv, key.name);
             }
             return new Response('OK');
+          } else {
+            console.log(`Continuing free lesson, user turns: ${userTurns} (need 4+ to end)`);
+            
+            // Generate GPT reply based on conversation history
+            const reply = await chatGPT(hist, env);
+            const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
+            
+            // Add bot response to history
+            hist.push({ role: 'assistant', content: safeReply });
+            await safeKvPut(kv, histKey, JSON.stringify(hist));
+            
+            // Send audio response
+            await safeSendTTS(chatId, safeReply, env);
           }
-
-          // Generate GPT reply based on conversation history
-          const reply = await chatGPT(hist, env);
-          const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
-          
-          // Add bot response to history
-          hist.push({ role: 'assistant', content: safeReply });
-          await safeKvPut(kv, histKey, JSON.stringify(hist));
-          
-          // Send audio response
-          await safeSendTTS(chatId, safeReply, env);
         } finally {
           // Clear processing flag
           await safeKvDelete(kv, processingKey);
@@ -261,6 +269,19 @@ export default {
     }
   }
 };
+
+// Функция для подсчета количества сообщений пользователя и бота в истории
+function countTurns(history) {
+  if (!Array.isArray(history)) {
+    console.error("Invalid history format in countTurns:", history);
+    return { userTurns: 0, botTurns: 0 };
+  }
+  
+  const userTurns = history.filter(msg => msg.role === 'user').length;
+  const botTurns = history.filter(msg => msg.role === 'assistant').length;
+  
+  return { userTurns, botTurns };
+}
 
 // Safe KV operations with error handling
 async function safeKvPut(kv, key, value, options = {}) {
@@ -349,10 +370,11 @@ Make it simple enough for even beginner English learners to understand.
     
     // Add greeting to history
     history.push({ role: 'assistant', content: greeting });
-    await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
     
-    // ИСПРАВЛЕНИЕ ПОРЯДКА: Удаляем повторное отправление приветствия, т.к. оно уже отправлено
-    // await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сохраняем историю в KV *ДО* отправки сообщения
+    // Это гарантирует, что история будет содержать приветствие даже если отправка сообщения не удастся
+    const saveResult = await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
+    console.log(`History saved with greeting: ${JSON.stringify(history)}, result: ${saveResult}`);
     
     // Send greeting as voice message
     await safeSendTTS(chatId, greeting, env);
@@ -361,10 +383,15 @@ Make it simple enough for even beginner English learners to understand.
     // Fallback to a simple greeting if GPT fails
     // ИСПРАВЛЕНИЕ ДЛИНЫ: Упрощаем запасное приветствие
     const fallbackGreeting = "Hi there! I'm your English practice partner today. How are you feeling, and what would you like to talk about?";
+    
+    // Add fallback greeting to history
     history.push({ role: 'assistant', content: fallbackGreeting });
-    await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
-    // Удаляем повторное отправление приветствия
-    // await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
+    
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сохраняем историю в KV *ДО* отправки сообщения
+    const saveResult = await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
+    console.log(`History saved with fallback greeting: ${JSON.stringify(history)}, result: ${saveResult}`);
+    
+    // Send fallback greeting
     await safeSendTTS(chatId, fallbackGreeting, env);
   }
 }
