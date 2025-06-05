@@ -148,18 +148,42 @@ export default {
           // Add user message to history
           hist.push({ role: 'user', content: userText });
           
-          // Отладочная информация о количестве сообщений
-          console.log(`History before check: ${JSON.stringify(hist)}`);
+          // ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ: Отладочная информация о количестве сообщений
+          console.log(`=== DETAILED HISTORY ANALYSIS ===`);
+          console.log(`Full history after adding user message:`, JSON.stringify(hist, null, 2));
+          console.log(`History length: ${hist.length}`);
+          
+          // Детально анализируем каждое сообщение
+          for (let i = 0; i < hist.length; i++) {
+            const msg = hist[i];
+            console.log(`Message ${i}: role="${msg.role}", content="${msg.content.substring(0, 50)}..."`);
+          }
           
           // УЛУЧШЕННАЯ ЛОГИКА: Используем выделенную функцию для подсчета сообщений
           const { userTurns, botTurns } = countTurns(hist);
-          console.log(`Current user turns: ${userTurns}, bot turns: ${botTurns}`);
+          console.log(`=== TURN COUNT ANALYSIS ===`);
+          console.log(`User turns: ${userTurns}, Bot turns: ${botTurns}`);
+          console.log(`Total messages in history: ${hist.length}`);
+          
+          // Дополнительная проверка: ручной подсчет для сравнения
+          const manualUserCount = hist.filter(h => h.role === 'user').length;
+          const manualBotCount = hist.filter(h => h.role === 'assistant').length;
+          console.log(`Manual count - User: ${manualUserCount}, Bot: ${manualBotCount}`);
+          
+          // Проверяем, что автоматический и ручной подсчет совпадают
+          if (userTurns !== manualUserCount || botTurns !== manualBotCount) {
+            console.error(`MISMATCH! Function count vs manual count differs!`);
+          }
           
           // Сохраняем новое состояние истории с добавленным сообщением пользователя
           await safeKvPut(kv, histKey, JSON.stringify(hist));
+          console.log(`History saved to KV with key: ${histKey}`);
           
           // УЛУЧШЕННАЯ ЛОГИКА: Проверяем конкретное количество сообщений пользователя
           // Завершаем урок только после 4+ полноценных реплик пользователя
+          console.log(`=== LESSON COMPLETION CHECK ===`);
+          console.log(`Checking if userTurns (${userTurns}) >= 4`);
+          
           if (userTurns >= 4) {
             console.log(`=== FREE LESSON COMPLETION PHASE START ===`);
             console.log(`Ending free lesson after ${userTurns} user messages and ${botTurns} bot messages`);
@@ -249,18 +273,25 @@ export default {
             console.log(`=== FREE LESSON COMPLETED SUCCESSFULLY ===`);
             return new Response('OK');
           } else {
+            console.log(`=== CONTINUING FREE LESSON ===`);
             console.log(`Continuing free lesson, user turns: ${userTurns} (need 4+ to end)`);
+            console.log(`This is user message #${userTurns}, will continue conversation`);
             
             // Generate GPT reply based on conversation history
             const reply = await chatGPT(hist, env);
             const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
             
+            console.log(`Generated bot reply: ${safeReply}`);
+            
             // Add bot response to history
             hist.push({ role: 'assistant', content: safeReply });
             await safeKvPut(kv, histKey, JSON.stringify(hist));
             
+            console.log(`Updated history after bot response, new length: ${hist.length}`);
+            
             // Send audio response
             await safeSendTTS(chatId, safeReply, env);
+            console.log(`Sent audio response to user`);
           }
         } finally {
           // Clear processing flag
@@ -336,6 +367,10 @@ async function safeKvDelete(kv, key) {
 // Generate first greeting using GPT
 async function sendFirstGreeting(chatId, history, env, kv) {
   try {
+    console.log(`=== GENERATING FIRST GREETING ===`);
+    console.log(`Starting sendFirstGreeting for user ${chatId}`);
+    console.log(`Initial history state:`, JSON.stringify(history));
+    
     // ИСПРАВЛЕНИЕ ДЛИНЫ: Модифицируем промпт для более короткого приветствия
     const prompt = `
 Generate a brief, friendly greeting for an English language practice session. 
@@ -372,33 +407,54 @@ Make it simple enough for even beginner English learners to understand.
     const j = await res.json();
     const greeting = j.choices[0].message.content.trim();
     
-    console.log(`First greeting: ${greeting}`);
+    console.log(`Generated greeting: "${greeting}"`);
+    console.log(`Greeting length: ${greeting.length} characters`);
     
     // Add greeting to history
     history.push({ role: 'assistant', content: greeting });
+    console.log(`Added greeting to history. New history:`, JSON.stringify(history));
+    console.log(`History length after adding greeting: ${history.length}`);
     
     // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сохраняем историю в KV *ДО* отправки сообщения
     // Это гарантирует, что история будет содержать приветствие даже если отправка сообщения не удастся
     const saveResult = await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
-    console.log(`History saved with greeting: ${JSON.stringify(history)}, result: ${saveResult}`);
+    console.log(`History saved to KV with result: ${saveResult}`);
+    console.log(`Saved history content:`, JSON.stringify(history));
+    
+    // Проверяем, что история была сохранена корректно
+    const verifyHistory = await safeKvGet(kv, `hist:${chatId}`);
+    if (verifyHistory) {
+      const parsedHistory = JSON.parse(verifyHistory);
+      console.log(`Verified saved history length: ${parsedHistory.length}`);
+      console.log(`Verified saved history:`, JSON.stringify(parsedHistory));
+    } else {
+      console.error(`Failed to verify saved history!`);
+    }
     
     // Send greeting as voice message
+    console.log(`Sending TTS greeting...`);
     await safeSendTTS(chatId, greeting, env);
+    console.log(`Greeting sent successfully`);
   } catch (error) {
     console.error("Error generating first greeting:", error);
     // Fallback to a simple greeting if GPT fails
     // ИСПРАВЛЕНИЕ ДЛИНЫ: Упрощаем запасное приветствие
     const fallbackGreeting = "Hi there! I'm your English practice partner today. How are you feeling, and what would you like to talk about?";
     
+    console.log(`Using fallback greeting: "${fallbackGreeting}"`);
+    
     // Add fallback greeting to history
     history.push({ role: 'assistant', content: fallbackGreeting });
+    console.log(`Added fallback greeting to history. New history:`, JSON.stringify(history));
     
     // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сохраняем историю в KV *ДО* отправки сообщения
     const saveResult = await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
-    console.log(`History saved with fallback greeting: ${JSON.stringify(history)}, result: ${saveResult}`);
+    console.log(`Fallback history saved to KV with result: ${saveResult}`);
     
     // Send fallback greeting
+    console.log(`Sending fallback TTS greeting...`);
     await safeSendTTS(chatId, fallbackGreeting, env);
+    console.log(`Fallback greeting sent successfully`);
   }
 }
 
