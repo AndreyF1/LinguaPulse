@@ -2,9 +2,10 @@ name = "linguapulse"
 compatibility_date = "2025-05-17"
 keep_vars = true
 
-# Global observability settings
-[observability.logs]
-enabled = true
+# Global observability settings - Keeping logs enabled across all environments
+[observability]
+  [observability.logs]
+  enabled = true
 
 # Secret Variables (DO NOT ADD THESE TO THIS FILE):
 # These should be set using 'wrangler secret put' or Cloudflare Dashboard:
@@ -23,6 +24,12 @@ enabled = true
 [env.test-bot]
 name = "linguapulse-test-bot"
 main = "linguapulse-test-bot.js"
+keep_vars = true
+
+# Enable logs specifically for this environment
+[env.test-bot.observability]
+  [env.test-bot.observability.logs]
+  enabled = true
 
 # Переменные окружения настраиваются через CI/CD или Dashboard
 # НЕ ОПРЕДЕЛЯЙТЕ переменные с пустыми значениями, это затирает их значения!
@@ -39,6 +46,12 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 [env.webhook]
 name = "telegram-webhook"
 main = "telegram-webhook.js"
+keep_vars = true
+
+# Enable logs specifically for this environment
+[env.webhook.observability]
+  [env.webhook.observability.logs]
+  enabled = true
 
 # Переменные окружения настраиваются через CI/CD или Dashboard
 # НЕ ОПРЕДЕЛЯЙТЕ переменные с пустыми значениями, это затирает их значения!
@@ -75,6 +88,11 @@ main = "lesson0-bot.js"
 compatibility_date = "2025-05-17"
 keep_vars = true
 
+# Enable logs specifically for this environment
+[env.lesson0.observability]
+  [env.lesson0.observability.logs]
+  enabled = true
+
 # Переменные окружения настраиваются через:
 # - GitHub Actions при CI/CD
 # - wrangler secret put для локальной разработки
@@ -101,6 +119,12 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 [env.main-lesson]
 name = "main-lesson"
 main = "main-lesson.js"
+keep_vars = true
+
+# Enable logs specifically for this environment
+[env.main-lesson.observability]
+  [env.main-lesson.observability.logs]
+  enabled = true
 
 # Переменные окружения настраиваются через CI/CD или Dashboard
 # НЕ ОПРЕДЕЛЯЙТЕ переменные с пустыми значениями, это затирает их значения!
@@ -117,6 +141,12 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 [env.payment]
 name = "payment"
 main = "payment.js"
+keep_vars = true
+
+# Enable logs specifically for this environment
+[env.payment.observability]
+  [env.payment.observability.logs]
+  enabled = true
 
 # Переменные окружения настраиваются через CI/CD или Dashboard
 # НЕ ОПРЕДЕЛЯЙТЕ переменные с пустыми значениями, это затирает их значения!
@@ -129,6 +159,12 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 [env.reminder]
 name = "reminder"
 main = "reminder.js"
+keep_vars = true
+
+# Enable logs specifically for this environment
+[env.reminder.observability]
+  [env.reminder.observability.logs]
+  enabled = true
 
 [[env.reminder.d1_databases]]
 binding = "USER_DB"
