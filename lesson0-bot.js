@@ -84,7 +84,33 @@ export default {
         // Get conversation history
         const histKey = `hist:${chatId}`;
         const stored = await safeKvGet(kv, histKey) || '[]';
-        const hist = JSON.parse(stored);
+        let hist;
+        
+        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Убедиться, что история корректно парсится
+        try {
+          hist = JSON.parse(stored);
+          
+          // Проверка на валидность истории
+          if (!Array.isArray(hist) || hist.length === 0) {
+            console.log("Invalid or empty history found, resetting session");
+            await sendText(chatId, "I couldn't retrieve your conversation history. Let's start over with a new free lesson.", env, 
+              [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]]);
+            
+            // Очистить данные сессии
+            await safeKvDelete(kv, histKey);
+            await safeKvDelete(kv, `session:${chatId}`);
+            return new Response('OK');
+          }
+        } catch (parseError) {
+          console.error("Error parsing history:", parseError);
+          await sendText(chatId, "There was an error processing your lesson. Let's start a new free lesson.", env,
+            [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]]);
+            
+          // Очистить данные сессии
+          await safeKvDelete(kv, histKey);
+          await safeKvDelete(kv, `session:${chatId}`);
+          return new Response('OK');
+        }
         
         // Check current session ID to avoid mixing test sessions
         const sessionKey = `session:${chatId}`;
