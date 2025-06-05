@@ -129,7 +129,7 @@ export default {
             hist.push({ role: 'assistant', content: bye });
             await safeKvPut(kv, histKey, JSON.stringify(hist));
             await safeSendTTS(chatId, bye, env);
-            
+
             // Send a transition message
             await sendText(chatId, "🔍 *Analyzing your speaking...*", env);
             
@@ -495,12 +495,12 @@ async function safeSendTTS(chatId, text, env) {
       voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
       console.log("Successfully encoded audio with Transloadit, buffer size:", voipBuf.byteLength);
       
-      const dur = calculateDuration(voipBuf);
-      await telegramSendVoice(chatId, voipBuf, dur, env);
+    const dur = calculateDuration(voipBuf);
+    await telegramSendVoice(chatId, voipBuf, dur, env);
       console.log("Successfully sent Transloadit-encoded voice message to Telegram");
-      
-      // Add a small delay after sending audio to prevent flooding
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Add a small delay after sending audio to prevent flooding
+    await new Promise(resolve => setTimeout(resolve, 1000));
       return true;
     } catch (transloaditError) {
       console.error("Transloadit encoding or sending failed:", transloaditError);
@@ -515,7 +515,7 @@ async function safeSendTTS(chatId, text, env) {
         
         // Add a small delay after sending audio to prevent flooding
         await new Promise(resolve => setTimeout(resolve, 1000));
-        return true;
+    return true;
       } catch (directError) {
         console.error("Direct audio send failed:", directError);
         throw new Error(`All audio sending methods failed: ${directError.message}`);
@@ -526,12 +526,12 @@ async function safeSendTTS(chatId, text, env) {
     
     // Final fallback to text if all audio methods fail
     try {
-      await sendText(chatId, "📝 " + t, env);
+    await sendText(chatId, "📝 " + t, env);
       console.log("Fallback to text message successful");
       return false;
     } catch (textError) {
       console.error("Even text fallback failed:", textError);
-      return false;
+    return false;
     }
   }
 }
@@ -699,13 +699,13 @@ async function telegramSendVoice(chatId, buf, dur, env) {
   
   try {
     console.log(`Sending voice message to Telegram API, token length: ${env.BOT_TOKEN ? env.BOT_TOKEN.length : 0}`);
-    const res = await fetch(
-      `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
-      { method: 'POST', body: fd }
-    );
-    
-    if (!res.ok) {
-      const errorText = await res.text();
+  const res = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
+    { method: 'POST', body: fd }
+  );
+  
+  if (!res.ok) {
+    const errorText = await res.text();
       console.error(`Telegram API error: ${res.status}, ${errorText}`);
       throw new Error(`Telegram sendVoice error: ${res.status} ${errorText}`);
     }

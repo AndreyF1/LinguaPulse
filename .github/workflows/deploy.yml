@@ -20,7 +20,7 @@ jobs:
           
       - name: Install dependencies
         run: npm install
-
+        
       # Деплой всех воркеров через стандартные действия с сохранением переменных
       - name: Deploy telegram-webhook
         uses: cloudflare/wrangler-action@v3
@@ -51,7 +51,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           command: deploy --env reminder --keep-vars
-
+          
       # Специальный шаг для установки переменных и деплоя lesson0-bot
       - name: Setup and deploy lesson0-bot
         env:

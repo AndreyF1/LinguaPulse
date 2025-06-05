@@ -14,6 +14,7 @@ enabled = true
 # - BOT_TOKEN: Telegram bot token
 # - OPENAI_KEY: OpenAI API key
 # - TRANSLOADIT_KEY: Transloadit API key 
+# - TRANSLOADIT_TPL: Transloadit template ID
 #
 # Example: npx wrangler secret put TRIBUTE_APP_LINK --env webhook
 # Example: npx wrangler secret put BOT_TOKEN --env webhook
