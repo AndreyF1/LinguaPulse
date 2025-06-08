@@ -774,7 +774,7 @@ async function handleUpdate(update, env, ctx) {
           // Если обе переменные отсутствуют, используем запасную ссылку
           if (!tributeAppLink || tributeAppLink.trim() === '') {
             console.warn(`No Tribute links found in environment, using fallback link`);
-            tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Правильная ссылка на Tribute
+            tributeAppLink = "https://t.me/tribute/app?startapp=svwW"; // Правильная ссылка на Tribute
           }
           
           // Проверяем формат ссылки
