@@ -321,20 +321,38 @@ return new Response('OK');
             // Если нет активной сессии нигде, проверим статус пользователя в DB
             console.log(`No active session found, checking user status in database`);
             const { results } = await env.USER_DB
-              .prepare('SELECT pass_lesson0_at FROM user_profiles WHERE telegram_id = ?')
+              .prepare('SELECT eng_level, pass_lesson0_at FROM user_profiles WHERE telegram_id = ?')
               .bind(parseInt(chatId, 10))
               .all();
             
-            if (results.length > 0 && !results[0].pass_lesson0_at) {
-              console.log(`User hasn't completed free lesson, suggesting free lesson`);
-              await sendMessageViaTelegram(chatId, 
-                "Would you like to try our free English conversation lesson?",
-                env,
-                { reply_markup: { inline_keyboard: [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]] } }
-              );
+            if (results.length > 0) {
+              // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test
+              if (!results[0].eng_level) {
+                console.log(`User hasn't completed placement test, directing to /start`);
+                await sendMessageViaTelegram(chatId, 
+                  "Please start by taking our placement test. Type /start to begin.",
+                  env
+                );
+                return new Response('OK');
+              }
+              
+              if (!results[0].pass_lesson0_at) {
+                console.log(`User has completed test but hasn't taken free lesson, suggesting free lesson`);
+                await sendMessageViaTelegram(chatId, 
+                  "Would you like to try our free English conversation lesson?",
+                  env,
+                  { reply_markup: { inline_keyboard: [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]] } }
+                );
+              } else {
+                console.log(`User has completed free lesson, suggesting subscription`);
+                await sendTributeChannelLink(chatId, env);
+              }
             } else {
-              console.log(`User has completed free lesson or not found, suggesting subscription`);
-              await sendTributeChannelLink(chatId, env);
+              console.log(`User not found in database, suggesting /start`);
+              await sendMessageViaTelegram(chatId, 
+                "Please start by taking our placement test. Type /start to begin.",
+                env
+              );
             }
             return new Response('OK');
           }
@@ -395,12 +413,22 @@ return new Response('OK');
           // выполнил ли пользователь бесплатный урок, чтобы понять какое действие выполнить
           try {
             const { results } = await env.USER_DB
-              .prepare('SELECT pass_lesson0_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+              .prepare('SELECT eng_level, pass_lesson0_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
               .bind(parseInt(chatId, 10))
               .all();
             
             if (results.length > 0) {
-              console.log(`User found in database, pass_lesson0_at: ${!!results[0].pass_lesson0_at}`);
+              console.log(`User found in database, eng_level: ${!!results[0].eng_level}, pass_lesson0_at: ${!!results[0].pass_lesson0_at}`);
+              
+              // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test  
+              if (!results[0].eng_level) {
+                console.log(`User hasn't completed placement test, directing to /start`);
+                await sendMessageViaTelegram(chatId, 
+                  "Please start by taking our placement test. Type /start to begin.",
+                  env
+                );
+                return new Response('OK');
+              }
               
               // Если у пользователя уже пройден бесплатный урок
               if (results[0].pass_lesson0_at) {
@@ -423,7 +451,7 @@ return new Response('OK');
                   await sendTributeChannelLink(chatId, env);
                 }
               } else {
-                console.log(`User hasn't completed free lesson, suggesting free lesson`);
+                console.log(`User has completed test but hasn't taken free lesson, suggesting free lesson`);
                 // Если пользователь не проходил бесплатный урок, предложить его пройти
                 await sendMessageViaTelegram(chatId, 
                   "Would you like to try our free English conversation lesson?",
@@ -1383,8 +1411,18 @@ async function handleLessonCommand(chatId, env) {
     
     // Check pass_lesson0_at first
     if (!profile.pass_lesson0_at) {
-      console.log(`User ${chatId} hasn't taken free lesson, showing free lesson button`);
+      console.log(`User ${chatId} hasn't taken free lesson, checking if test completed first`);
+      
+      // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test  
+      if (!profile.eng_level) {
+        console.log(`User ${chatId} hasn't completed placement test, directing to test`);
+        message += 'You need to complete the placement test first to determine your English level.';
+        await sendMessageWithSubscriptionCheck(chatId, message, env);
+        return;
+      }
+      
       // Free lesson not taken yet - show button
+      console.log(`User ${chatId} has completed test, showing free lesson button`);
       message += 'You haven\'t taken your free introductory lesson yet.';
       await sendMessageWithSubscriptionCheck(chatId, message, env, {
         reply_markup: {

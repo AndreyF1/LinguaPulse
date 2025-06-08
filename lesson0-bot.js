@@ -17,16 +17,27 @@ export default {
 
       // A) Start free lesson trigger
       if (raw.action === 'start_free') {
-        // First, check if the user has already completed the free lesson
+        // First, check if the user has already completed the free lesson AND has eng_level
         const { results } = await db.prepare(
-          `SELECT pass_lesson0_at FROM user_profiles 
+          `SELECT eng_level, pass_lesson0_at FROM user_profiles 
            WHERE telegram_id = ?`
         )
         .bind(parseInt(chatId, 10))
         .all();
         
+        // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test
+        if (results.length === 0 || !results[0].eng_level) {
+          console.log(`User ${chatId} hasn't completed placement test, redirecting to test`);
+          await sendText(
+            chatId, 
+            "You need to complete the placement test first to determine your English level. Please type /start to begin the test.",
+            env
+          );
+          return new Response('OK');
+        }
+        
         // If user already completed the lesson, show subscription offer instead
-        if (results.length > 0 && results[0].pass_lesson0_at) {
+        if (results[0].pass_lesson0_at) {
           await sendText(
             chatId, 
             "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just $1 per week. This gives you access to one extended lesson every day with personalized feedback.",
@@ -93,8 +104,7 @@ export default {
           // Проверка на валидность истории
           if (!Array.isArray(hist) || hist.length === 0) {
             console.log("Invalid or empty history found, resetting session");
-            await sendText(chatId, "I couldn't retrieve your conversation history. Let's start over with a new free lesson.", env, 
-              [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]]);
+            await sendText(chatId, "I couldn't retrieve your conversation history. Please use /lesson to start a new practice session.", env);
             
             // Очистить данные сессии
             await safeKvDelete(kv, histKey);
@@ -103,8 +113,7 @@ export default {
           }
         } catch (parseError) {
           console.error("Error parsing history:", parseError);
-          await sendText(chatId, "There was an error processing your lesson. Let's start a new free lesson.", env,
-            [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]]);
+          await sendText(chatId, "There was an error processing your lesson. Please use /lesson to start a new practice session.", env);
             
           // Очистить данные сессии
           await safeKvDelete(kv, histKey);
@@ -117,7 +126,7 @@ export default {
         const currentSession = await safeKvGet(kv, sessionKey);
         if (!currentSession) {
           console.log("No active session found, message might be from an old test session");
-          await sendText(chatId, "It seems your previous lesson has ended. To start a new lesson, please press the 'Free audio lesson' button again.", env);
+          await sendText(chatId, "It seems your previous lesson has ended. Please use /lesson to start a new practice session.", env);
           return new Response('OK');
         }
         
