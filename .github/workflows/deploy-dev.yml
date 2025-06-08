@@ -21,69 +21,67 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      # Deploy all dev workers
-      - name: Deploy dev-telegram-webhook
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: deploy --env dev-webhook --keep-vars
-          
+      # Deploy worker components first (without service bindings)
       - name: Deploy dev-test-bot
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: deploy --env dev-test-bot --keep-vars
+          command: deploy --env dev-test-bot
+          
+      - name: Deploy dev-lesson0
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          command: deploy --env dev-lesson0
           
       - name: Deploy dev-main-lesson
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: deploy --env dev-main-lesson --keep-vars
+          command: deploy --env dev-main-lesson
           
       - name: Deploy dev-reminder
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: deploy --env dev-reminder --keep-vars
-          
-      # Deploy dev-lesson0 with secret setup
-      - name: Setup and deploy dev-lesson0-bot
+          command: deploy --env dev-reminder
+
+      # Deploy webhook last (it has service bindings to other workers)
+      - name: Deploy dev-telegram-webhook
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          command: deploy --env dev-webhook
+
+      # Set essential secrets for dev-lesson0
+      - name: Set dev secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: |
-          echo "Настройка и деплой dev-lesson0-bot..."
+          echo "Setting essential dev secrets..."
           
-          # Deploy dev lesson0 bot
-          npx wrangler deploy --env dev-lesson0 --keep-vars
-          
-          # Check for secrets and set them if needed
-          SECRETS=$(npx wrangler secret list --env dev-lesson0)
-          
-          if ! echo "$SECRETS" | grep -q "DEV_BOT_TOKEN"; then
-            echo "Устанавливаем DEV_BOT_TOKEN..."
+          # Only set DEV_BOT_TOKEN if it exists
+          if [ ! -z "${{ secrets.DEV_BOT_TOKEN }}" ]; then
+            echo "Setting DEV_BOT_TOKEN for dev-lesson0..."
             echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-lesson0
-          fi
-          
-          if ! echo "$SECRETS" | grep -q "OPENAI_KEY"; then
-            echo "Устанавливаем OPENAI_KEY..."
-            echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY --env dev-lesson0
-          fi
-          
-          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_KEY"; then
-            echo "Устанавливаем TRANSLOADIT_KEY..."
-            echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY --env dev-lesson0
-          fi
-          
-          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_TPL"; then
-            echo "Устанавливаем TRANSLOADIT_TPL..."
-            echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env dev-lesson0
+          else
+            echo "DEV_BOT_TOKEN not found in secrets"
           fi
 
-      # Info about manual variable setup
-      - name: Note about dev environment variables
+      # Info about manual setup
+      - name: Dev environment deployed
         run: |
-          echo "✅ DEV среда деплоится с флагом --keep-vars"
-          echo "⚠️ ВАЖНО: Для dev среды используйте отдельные секреты:"
-          echo "- DEV_BOT_TOKEN: токен dev бота"
-          echo "- Те же OPENAI_KEY, TRANSLOADIT_KEY, TRANSLOADIT_TPL что и для продакшн"
-          echo "- Настройте переменные через Cloudflare Dashboard для dev воркеров" 
+          echo "✅ DEV environment deployed successfully!"
+          echo ""
+          echo "📋 Next steps:"
+          echo "1. Set DEV_BOT_TOKEN secret in GitHub if not already done"
+          echo "2. Configure dev bot webhook: https://dev-telegram-webhook.<your-subdomain>.workers.dev/tg"
+          echo "3. Add other secrets via Cloudflare Dashboard if needed:"
+          echo "   - OPENAI_KEY, TRANSLOADIT_KEY, TRANSLOADIT_TPL"
+          echo ""
+          echo "🔗 Dev workers deployed:"
+          echo "- dev-telegram-webhook"
+          echo "- dev-linguapulse-test-bot"  
+          echo "- dev-linguapulse-lesson0-bot"
+          echo "- dev-main-lesson"
+          echo "- dev-reminder" 
