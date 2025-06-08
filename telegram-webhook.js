@@ -85,18 +85,18 @@ if (update.message?.text) {
                                          (new Date(results[0].subscription_expired_at) > now);
             
             if (hasActiveSubscription) {
-              // If they have an active subscription but worker is unavailable
-              await sendMessageWithSubscriptionCheck(chatId, 
-                "Sorry, the lesson service is temporarily unavailable. Please try again later.", env);
+                      // If they have an active subscription but worker is unavailable
+        await sendMessageWithSubscriptionCheck(chatId, 
+          "❌ *Sorry, the lesson service is temporarily unavailable.* Please try again later.", env, { parse_mode: 'Markdown' });
             } else {
-              // If they don't have an active subscription, show subscription option
-              await sendMessageWithSubscriptionCheck(chatId, 
-                "You need an active subscription to access lessons. Subscribe to continue learning!", env);
+                        // If they don't have an active subscription, show subscription option
+          await sendMessageWithSubscriptionCheck(chatId, 
+            "🔒 *You need an active subscription to access lessons.* Subscribe to continue learning!", env, { parse_mode: 'Markdown' });
             }
           } else {
-            // If they haven't completed the test
-            await sendMessageWithSubscriptionCheck(chatId, 
-              "You need to complete the placement test first. Use /start to begin.", env);
+                      // If they haven't completed the test
+          await sendMessageWithSubscriptionCheck(chatId, 
+            "📝 *You need to complete the placement test first.* Use /start to begin.", env, { parse_mode: 'Markdown' });
           }
           return new Response('OK');
         }
@@ -117,7 +117,7 @@ if (update.message?.text) {
         
         if (!profile.eng_level) {
           await sendMessageWithSubscriptionCheck(chatId, 
-            'You haven\'t taken the placement test yet. Use /start to begin.', env);
+            '📝 *You haven\'t taken the placement test yet.* Use /start to begin.', env, { parse_mode: 'Markdown' });
         } else {
           // Basic profile info
           const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
@@ -130,14 +130,14 @@ if (update.message?.text) {
                                       (new Date(profile.subscription_expired_at) > now);
           const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
           
-          let message = `📊 Your Language Profile\n\n` +
-            `🎯 Level: ${profile.eng_level}\n` +
-            `💳 Subscription: ${subscriptionStatus}\n` +
-            `📚 Total lessons: ${lessonsTotal}\n` +
-            `🔥 Current streak: ${lessonsStreak} days\n\n`;
+          let message = `📊 *Your Language Profile*\n\n` +
+            `🎯 *Level:* ${profile.eng_level}\n` +
+            `💳 *Subscription:* ${subscriptionStatus}\n` +
+            `📚 *Total lessons:* ${lessonsTotal}\n` +
+            `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
           
           // Show profile with appropriate options based on subscription status
-          await sendMessageWithSubscriptionCheck(chatId, message, env);
+          await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
         }
         
         return new Response('OK');
@@ -781,9 +781,12 @@ async function handleTributeWebhook(request, env) {
         try {
           console.log(`Sending notification to user ${userId}`);
           await sendMessageWithSubscriptionCheck(userId,
-            "🎉 Your subscription has been activated! You now have access to daily personalized English lessons.",
+            "🎉 *Your subscription has been activated!* You now have access to daily personalized English lessons.",
             env,
-            { reply_markup: { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] } }
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] } 
+            }
           );
           console.log(`Notification sent to user ${userId}`);
         } catch (msgError) {
@@ -968,14 +971,14 @@ async function handleTestSubscription(request, env) {
       
       // Notify user
       await sendMessageWithSubscriptionCheck(userId,
-        "🎉 *Test subscription activated!* \\(Dev Environment\\)\n\n" +
-        "Your 7\\-day test subscription is now active\\. You have access to daily personalized English lessons\\.",
+        "🎉 *Test subscription activated!* (Dev Environment)\n\n" +
+        "Your 7-day test subscription is now active. You have access to daily personalized English lessons.",
         env,
         { 
+          parse_mode: 'Markdown',
           reply_markup: { 
             inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] 
-          },
-          parse_mode: 'MarkdownV2'
+          }
         }
       );
       
@@ -1030,21 +1033,22 @@ async function sendTributeChannelLink(chatId, env) {
     tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Правильная ссылка на Tribute
   }
 
-  const message = "🔑 To unlock premium lessons, please subscribe:\n\n" +
-                 "1. Click the button below to open the subscription page\n" +
-                 "2. Complete the payment process (€2/week)\n" +
-                 "3. After payment, you'll receive a confirmation message from the bot\n\n" +
-                 "Your subscription will give you access to daily personalized English lessons!";
+  const message = "🔑 *To unlock premium lessons, please subscribe:*\n\n" +
+                 "1️⃣ Click the button below to open the subscription page\n" +
+                 "2️⃣ Complete the payment process *(€2/week)*\n" +
+                 "3️⃣ After payment, you'll receive a confirmation message from the bot\n\n" +
+                 "🎯 *Your subscription will give you access to daily personalized English lessons!*";
   
   // Использовать inline_keyboard с кнопкой подписки
   if (tributeAppLink) {
     await sendMessageViaTelegram(chatId, message, env, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: "Subscribe for €2/week", url: tributeAppLink }]]
       }
     });
   } else {
-    await sendMessageViaTelegram(chatId, message, env);
+    await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
   }
 }
 
@@ -1061,6 +1065,11 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
     if (options) {
       console.log(`[DEBUG] Message options type:`, typeof options);
       
+      // Handle parse_mode option first (always check for it)
+      if (options.parse_mode) {
+        payload.parse_mode = options.parse_mode;
+      }
+      
       // If options already has a reply_markup
       if (options.reply_markup) {
         console.log(`[DEBUG] reply_markup found:`, JSON.stringify(options.reply_markup).substring(0, 200));
@@ -1072,15 +1081,6 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
         console.warn(`DEPRECATED: Passing inline_keyboard directly is deprecated. Use reply_markup.inline_keyboard instead.`);
         // Convert to correct format
         payload.reply_markup = { inline_keyboard: options.inline_keyboard };
-      }
-      // If options is an object with other properties
-      else {
-        console.log(`[DEBUG] Other options found:`, JSON.stringify(options).substring(0, 200));
-        
-        // Handle parse_mode option
-        if (options.parse_mode) {
-          payload.parse_mode = options.parse_mode;
-        }
       }
     }
     
@@ -1318,11 +1318,11 @@ async function handleLessonCommand(chatId, env) {
                                 (new Date(profile.subscription_expired_at) > now);
     const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
     
-    let message = `📊 Your Language Profile\n\n` +
-      `🎯 Level: ${profile.eng_level}\n` +
-      `💳 Subscription: ${subscriptionStatus}\n` +
-      `📚 Total lessons: ${lessonsTotal}\n` +
-      `🔥 Current streak: ${lessonsStreak} days\n\n`;
+    let message = `📊 *Your Language Profile*\n\n` +
+      `🎯 *Level:* ${profile.eng_level}\n` +
+      `💳 *Subscription:* ${subscriptionStatus}\n` +
+      `📚 *Total lessons:* ${lessonsTotal}\n` +
+      `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
     
     // Check pass_lesson0_at first
     if (!profile.pass_lesson0_at) {
@@ -1332,7 +1332,7 @@ async function handleLessonCommand(chatId, env) {
       if (!profile.eng_level) {
         console.log(`User ${chatId} hasn't completed placement test, directing to test`);
         message += 'You need to complete the placement test first to determine your English level.';
-        await sendMessageWithSubscriptionCheck(chatId, message, env);
+        await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
         return;
       }
       
@@ -1340,6 +1340,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} has completed test, showing free lesson button`);
       message += 'You haven\'t taken your free introductory lesson yet.';
       await sendMessageWithSubscriptionCheck(chatId, message, env, {
+        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
         }
@@ -1354,7 +1355,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
       // No active subscription or it's expired - show subscribe button to Tribute channel
       message += 'Your subscription has expired or you haven\'t subscribed yet.';
-      await sendMessageWithSubscriptionCheck(chatId, message, env);
+      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
       return;
     }
     
@@ -1365,15 +1366,16 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} lesson not yet available, showing wait message`);
       // Format the time until next lesson
       const timeUntil = formatTimeUntil(nextLessonAt);
-      message += `Your next lesson will be available in ${timeUntil}.`;
-      await sendMessageWithSubscriptionCheck(chatId, message, env);
+      message += `Your next lesson will be available in *${timeUntil}*.`;
+      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
       return;
     }
     
     console.log(`User ${chatId} lesson available now, showing start lesson button`);
     // Lesson is available now
-    message += 'Your next lesson is available now!';
+    message += '*Your next lesson is available now!*';
     await sendMessageWithSubscriptionCheck(chatId, message, env, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
       }
