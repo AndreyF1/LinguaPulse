@@ -151,3 +151,107 @@ keep_vars = true
 [[env.reminder.d1_databases]]
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
+
+# ========== DEV ENVIRONMENTS ==========
+# These environments are for development and testing
+# They use separate resources to avoid affecting production
+
+# Dev Test Bot Environment
+[env.dev-test-bot]
+name = "dev-linguapulse-test-bot"
+main = "linguapulse-test-bot.js"
+keep_vars = true
+
+[env.dev-test-bot.observability]
+  [env.dev-test-bot.observability.logs]
+  enabled = true
+
+[[env.dev-test-bot.kv_namespaces]]
+binding = "TEST_KV" 
+id = "REPLACE_WITH_DEV_KV_ID"
+
+[[env.dev-test-bot.d1_databases]]
+binding = "USER_DB"
+database_id = "REPLACE_WITH_DEV_DB_ID"
+
+# Dev Webhook Environment  
+[env.dev-webhook]
+name = "dev-telegram-webhook"
+main = "telegram-webhook.js"
+keep_vars = true
+
+[env.dev-webhook.observability]
+  [env.dev-webhook.observability.logs]
+  enabled = true
+
+[[env.dev-webhook.kv_namespaces]]
+binding = "TEST_KV"
+id = "REPLACE_WITH_DEV_KV_ID"
+
+[[env.dev-webhook.d1_databases]]
+binding = "USER_DB"
+database_id = "REPLACE_WITH_DEV_DB_ID"
+
+# Dev service bindings
+[[env.dev-webhook.services]]
+binding = "TEST"
+service = "dev-linguapulse-test-bot"
+
+[[env.dev-webhook.services]]
+binding = "LESSON0"
+service = "dev-linguapulse-lesson0-bot"
+
+[[env.dev-webhook.services]]
+binding = "MAIN_LESSON"
+service = "dev-main-lesson"
+
+# Dev Lesson0 Environment
+[env.dev-lesson0]
+name = "dev-linguapulse-lesson0-bot"
+main = "lesson0-bot.js"
+compatibility_date = "2025-05-17"
+keep_vars = true
+
+[env.dev-lesson0.observability]
+  [env.dev-lesson0.observability.logs]
+  enabled = true
+
+[[env.dev-lesson0.kv_namespaces]]
+binding = "CHAT_KV"
+id = "REPLACE_WITH_DEV_KV_ID"
+
+[[env.dev-lesson0.d1_databases]]
+binding = "USER_DB"
+database_id = "REPLACE_WITH_DEV_DB_ID"
+
+# Dev Main Lesson Environment
+[env.dev-main-lesson]
+name = "dev-main-lesson"
+main = "main-lesson.js"
+keep_vars = true
+
+[env.dev-main-lesson.observability]
+  [env.dev-main-lesson.observability.logs]
+  enabled = true
+
+[[env.dev-main-lesson.kv_namespaces]]
+binding = "CHAT_KV"
+id = "REPLACE_WITH_DEV_KV_ID"
+
+[[env.dev-main-lesson.d1_databases]]
+binding = "USER_DB"
+database_id = "REPLACE_WITH_DEV_DB_ID"
+
+# Dev Reminder Environment
+[env.dev-reminder]
+name = "dev-reminder"
+main = "reminder.js"
+keep_vars = true
+
+[env.dev-reminder.observability]
+  [env.dev-reminder.observability.logs]
+  enabled = true
+
+[[env.dev-reminder.d1_databases]]
+binding = "USER_DB"
+database_id = "REPLACE_WITH_DEV_DB_ID"

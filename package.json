@@ -11,7 +11,13 @@
     "deploy:main-lesson": "wrangler deploy --env main-lesson",
 
     "deploy:reminder": "wrangler deploy --env reminder",
-    "deploy:all": "npm run deploy:webhook && npm run deploy:test-bot && npm run deploy:lesson0 && npm run deploy:main-lesson && npm run deploy:reminder"
+    "deploy:all": "npm run deploy:webhook && npm run deploy:test-bot && npm run deploy:lesson0 && npm run deploy:main-lesson && npm run deploy:reminder",
+    "dev:webhook": "wrangler deploy --env dev-webhook",
+    "dev:test-bot": "wrangler deploy --env dev-test-bot", 
+    "dev:lesson0": "wrangler deploy --env dev-lesson0",
+    "dev:main-lesson": "wrangler deploy --env dev-main-lesson",
+    "dev:reminder": "wrangler deploy --env dev-reminder",
+    "dev:all": "npm run dev:webhook && npm run dev:test-bot && npm run dev:lesson0 && npm run dev:main-lesson && npm run dev:reminder"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20240508.0"
