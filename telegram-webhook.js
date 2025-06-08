@@ -9,7 +9,7 @@ export default {
     // Удаляем глобальную переменную и просто логируем сервисы
     console.log(`[DEBUG] Available services in env:`, 
                 Object.keys(env || {})
-                .filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON', 'PAYMENT'].includes(key))
+                .filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON'].includes(key))
                 .join(', '));
     
     try {
@@ -293,7 +293,7 @@ return new Response('OK');
         try {
           console.log(`=== VOICE MESSAGE HANDLING START ===`);
           console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
-          console.log(`Available services:`, Object.keys(env).filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON', 'PAYMENT'].includes(key)));
+          console.log(`Available services:`, Object.keys(env).filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON'].includes(key)));
           
           // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем доступность CHAT_KV
           if (!env.CHAT_KV) {

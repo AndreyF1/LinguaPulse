@@ -40,11 +40,7 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           command: deploy --env main-lesson --keep-vars
           
-      - name: Deploy payment
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: deploy --env payment --keep-vars
+
           
       - name: Deploy reminder
         uses: cloudflare/wrangler-action@v3

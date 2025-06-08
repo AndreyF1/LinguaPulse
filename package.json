@@ -9,9 +9,9 @@
     "deploy:test-bot": "wrangler deploy --env test-bot",
     "deploy:lesson0": "wrangler deploy --env lesson0",
     "deploy:main-lesson": "wrangler deploy --env main-lesson",
-    "deploy:payment": "wrangler deploy --env payment",
+
     "deploy:reminder": "wrangler deploy --env reminder",
-    "deploy:all": "npm run deploy:webhook && npm run deploy:test-bot && npm run deploy:lesson0 && npm run deploy:main-lesson && npm run deploy:payment && npm run deploy:reminder"
+    "deploy:all": "npm run deploy:webhook && npm run deploy:test-bot && npm run deploy:lesson0 && npm run deploy:main-lesson && npm run deploy:reminder"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20240508.0"

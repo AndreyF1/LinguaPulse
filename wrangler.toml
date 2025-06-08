@@ -77,9 +77,7 @@ service = "linguapulse-lesson0-bot"
 binding = "MAIN_LESSON"
 service = "main-lesson"
 
-[[env.webhook.services]]
-binding = "PAYMENT"
-service = "payment"
+
 
 # Lesson0 Environment
 [env.lesson0]
@@ -137,23 +135,7 @@ id = "ff3bf4d1633d45cd92e95d193b7d250f"
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
-# Payment Environment
-[env.payment]
-name = "payment"
-main = "payment.js"
-keep_vars = true
 
-# Enable logs specifically for this environment
-[env.payment.observability]
-  [env.payment.observability.logs]
-  enabled = true
-
-# Переменные окружения настраиваются через CI/CD или Dashboard
-# НЕ ОПРЕДЕЛЯЙТЕ переменные с пустыми значениями, это затирает их значения!
-
-[[env.payment.d1_databases]]
-binding = "USER_DB"
-database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
 # Reminder Environment
 [env.reminder]
