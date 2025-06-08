@@ -130,14 +130,14 @@ if (update.message?.text) {
                                       (new Date(profile.subscription_expired_at) > now);
           const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
           
-          let message = `📊 *Your Language Profile*\n\n` +
-            `🎯 *Level:* ${profile.eng_level}\n` +
-            `💳 *Subscription:* ${subscriptionStatus}\n` +
-            `📚 *Total lessons:* ${lessonsTotal}\n` +
-            `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
+          let message = `📊 Your Language Profile\n\n` +
+            `🎯 Level: ${profile.eng_level}\n` +
+            `💳 Subscription: ${subscriptionStatus}\n` +
+            `📚 Total lessons: ${lessonsTotal}\n` +
+            `🔥 Current streak: ${lessonsStreak} days\n\n`;
           
           // Show profile with appropriate options based on subscription status
-          await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+          await sendMessageWithSubscriptionCheck(chatId, message, env);
         }
         
         return new Response('OK');
@@ -367,12 +367,10 @@ return new Response('OK');
               
               // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test  
               if (!results[0].eng_level) {
-                console.log(`User hasn't completed placement test, directing to /start`);
-                await sendMessageViaTelegram(chatId, 
-                  "Please start by taking our placement test. Type /start to begin.",
-                  env
-                );
-                return new Response('OK');
+                console.log(`User ${chatId} hasn't completed placement test, directing to test`);
+                message += 'You need to complete the placement test first to determine your English level.';
+                await sendMessageWithSubscriptionCheck(chatId, message, env);
+                return;
               }
               
               // Если у пользователя уже пройден бесплатный урок
@@ -1320,11 +1318,11 @@ async function handleLessonCommand(chatId, env) {
                                 (new Date(profile.subscription_expired_at) > now);
     const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
     
-    let message = `📊 *Your Language Profile*\n\n` +
-      `🎯 *Level:* ${profile.eng_level}\n` +
-      `💳 *Subscription:* ${subscriptionStatus}\n` +
-      `📚 *Total lessons:* ${lessonsTotal}\n` +
-      `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
+    let message = `📊 Your Language Profile\n\n` +
+      `🎯 Level: ${profile.eng_level}\n` +
+      `💳 Subscription: ${subscriptionStatus}\n` +
+      `📚 Total lessons: ${lessonsTotal}\n` +
+      `🔥 Current streak: ${lessonsStreak} days\n\n`;
     
     // Check pass_lesson0_at first
     if (!profile.pass_lesson0_at) {
@@ -1334,7 +1332,7 @@ async function handleLessonCommand(chatId, env) {
       if (!profile.eng_level) {
         console.log(`User ${chatId} hasn't completed placement test, directing to test`);
         message += 'You need to complete the placement test first to determine your English level.';
-        await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+        await sendMessageWithSubscriptionCheck(chatId, message, env);
         return;
       }
       
@@ -1342,7 +1340,6 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} has completed test, showing free lesson button`);
       message += 'You haven\'t taken your free introductory lesson yet.';
       await sendMessageWithSubscriptionCheck(chatId, message, env, {
-        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
         }
@@ -1357,7 +1354,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
       // No active subscription or it's expired - show subscribe button to Tribute channel
       message += 'Your subscription has expired or you haven\'t subscribed yet.';
-      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+      await sendMessageWithSubscriptionCheck(chatId, message, env);
       return;
     }
     
@@ -1369,7 +1366,7 @@ async function handleLessonCommand(chatId, env) {
       // Format the time until next lesson
       const timeUntil = formatTimeUntil(nextLessonAt);
       message += `Your next lesson will be available in ${timeUntil}.`;
-      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+      await sendMessageWithSubscriptionCheck(chatId, message, env);
       return;
     }
     
@@ -1377,7 +1374,6 @@ async function handleLessonCommand(chatId, env) {
     // Lesson is available now
     message += 'Your next lesson is available now!';
     await sendMessageWithSubscriptionCheck(chatId, message, env, {
-      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
       }
