@@ -1066,6 +1066,26 @@ async function simulateSuccessfulPayment(chatId, env) {
     
     if (response.status === 200) {
       console.log(`✅ Payment simulation successful for user ${chatId}`);
+      
+      // После успешной активации тестовой подписки открываем канал (как делает настоящий Tribute)
+      setTimeout(async () => {
+        try {
+          await sendMessageViaTelegram(chatId, 
+            "🎯 *Welcome to the LinguaPulse community!*\n\n" +
+            "Join our Telegram channel to stay updated with English learning tips and connect with other learners:",
+            env,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: { 
+                inline_keyboard: [[{ text: "📢 Join Channel", url: "https://t.me/lingua_pulse" }]] 
+              }
+            }
+          );
+        } catch (channelError) {
+          console.error('Error sending channel invitation:', channelError);
+        }
+      }, 2000); // Отправляем через 2 секунды после уведомления о подписке
+      
     } else {
       console.error(`❌ Payment simulation failed for user ${chatId}`);
     }
