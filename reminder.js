@@ -83,7 +83,7 @@ export default {
             
             // ИЗМЕНЕНО: Используем ссылку на канал Tribute из env
             await sendTelegramMessage(user.telegram_id, message, env, [
-              [{ text: "Subscribe to Channel ($1/week)", url: env.TRIBUTE_CHANNEL_LINK }]
+              [{ text: "Subscribe to Channel (€2/week)", url: env.TRIBUTE_CHANNEL_LINK }]
             ]);
             
             remindersSent++;

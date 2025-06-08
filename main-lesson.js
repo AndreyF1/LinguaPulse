@@ -365,7 +365,7 @@ async function handleLessonStart(chatId, env, db, kv) {
       chatId,
       "You don't have an active subscription. Subscribe to access daily lessons!",
       env,
-      [[{ text: "Subscribe for $1/week", callback_data: "sub:weekly" }]]
+      [[{ text: "Subscribe for €2/week", callback_data: "sub:weekly" }]]
     );
     return new Response('OK');
   }

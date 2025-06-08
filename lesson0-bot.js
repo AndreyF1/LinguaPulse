@@ -40,9 +40,9 @@ export default {
         if (results[0].pass_lesson0_at) {
           await sendText(
             chatId, 
-            "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just $1 per week. This gives you access to one extended lesson every day with personalized feedback.",
+            "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just €2 per week. This gives you access to one extended lesson every day with personalized feedback.",
             env,
-            [[{ text: "Subscribe for $1/week", callback_data: "subscribe:weekly" }]]
+            [[{ text: "Subscribe for €2/week", callback_data: "subscribe:weekly" }]]
           );
           return new Response('OK');
         }
@@ -247,9 +247,9 @@ export default {
             await new Promise(resolve => setTimeout(resolve, 1000));
             await sendText(
               chatId,
-              "To unlock daily personalized audio lessons, you can subscribe for just $1 per week.",
+              "To unlock daily personalized audio lessons, you can subscribe for just €2 per week.",
               env,
-              [[{ text: "Subscribe for $1/week", callback_data: "subscribe:weekly" }]]
+              [[{ text: "Subscribe for €2/week", callback_data: "subscribe:weekly" }]]
             );
 
             // Record lesson completion in database

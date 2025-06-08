@@ -783,7 +783,7 @@ async function handleUpdate(update, env, ctx) {
           }
           
           // Добавляем кнопку подписки под кнопкой бесплатного урока
-          buttons.push([{ text: "Subscribe for $1/week", url: tributeAppLink }]);
+          buttons.push([{ text: "Subscribe for €2/week", url: tributeAppLink }]);
         }
         
         await sendMessage(

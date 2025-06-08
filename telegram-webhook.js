@@ -255,7 +255,7 @@ return new Response('OK');
                 await sendMessageWithSubscriptionCheck(chatId,
                   "Welcome back! Your subscription has expired. Subscribe again to continue learning.",
                   env,
-                  { reply_markup: { inline_keyboard: [[{ text: "Subscribe for $1/week", url: channelLink }]] }});
+                  { reply_markup: { inline_keyboard: [[{ text: "Subscribe for €2/week", url: channelLink }]] }});
                 return new Response('OK');
               }
             }
@@ -1124,7 +1124,7 @@ async function sendTributeChannelLink(chatId, env) {
 
   const message = "🔑 To unlock premium lessons, please subscribe:\n\n" +
                  "1. Click the button below to open the subscription page\n" +
-                 "2. Complete the payment process ($1/week)\n" +
+                 "2. Complete the payment process (€2/week)\n" +
                  "3. After payment, you'll receive a confirmation message from the bot\n\n" +
                  "Your subscription will give you access to daily personalized English lessons!";
   
@@ -1132,7 +1132,7 @@ async function sendTributeChannelLink(chatId, env) {
   if (tributeAppLink) {
     await sendMessageViaTelegram(chatId, message, env, {
       reply_markup: {
-        inline_keyboard: [[{ text: "Subscribe for $1/week", url: tributeAppLink }]]
+        inline_keyboard: [[{ text: "Subscribe for €2/week", url: tributeAppLink }]]
       }
     });
   } else {
@@ -1271,16 +1271,16 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
       if (!messageOptions.reply_markup) {
         // Нет кнопок - создаем новую клавиатуру
         messageOptions.reply_markup = {
-          inline_keyboard: [[{ text: "Subscribe for $1/week", url: tributeAppLink }]]
+          inline_keyboard: [[{ text: "Subscribe for €2/week", url: tributeAppLink }]]
         };
       } else {
         // Уже есть кнопки
         if (!messageOptions.reply_markup.inline_keyboard) {
           // Нет именно inline_keyboard, создаем ее
-          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for $1/week", url: tributeAppLink }]];
+          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for €2/week", url: tributeAppLink }]];
         } else {
           // Есть inline_keyboard, добавляем новую строку с кнопкой
-          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for $1/week", url: tributeAppLink }]);
+          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for €2/week", url: tributeAppLink }]);
         }
       }
       
@@ -1404,10 +1404,10 @@ async function handleLessonCommand(chatId, env) {
     const lessonsTotal = profile.number_of_lessons || 0;
     const lessonsStreak = profile.lessons_in_row || 0;
     
-    let message = `Your language profile:\n` +
-      `Language level: ${profile.eng_level}\n` +
-      `Total lessons completed: ${lessonsTotal}\n` +
-      `Current lesson streak: ${lessonsStreak}\n\n`;
+    let message = `📊 *Your Language Profile*\n\n` +
+      `🎯 *Level:* ${profile.eng_level}\n` +
+      `📚 *Total lessons:* ${lessonsTotal}\n` +
+      `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
     
     // Check pass_lesson0_at first
     if (!profile.pass_lesson0_at) {
@@ -1417,7 +1417,7 @@ async function handleLessonCommand(chatId, env) {
       if (!profile.eng_level) {
         console.log(`User ${chatId} hasn't completed placement test, directing to test`);
         message += 'You need to complete the placement test first to determine your English level.';
-        await sendMessageWithSubscriptionCheck(chatId, message, env);
+        await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
         return;
       }
       
@@ -1425,6 +1425,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} has completed test, showing free lesson button`);
       message += 'You haven\'t taken your free introductory lesson yet.';
       await sendMessageWithSubscriptionCheck(chatId, message, env, {
+        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
         }
@@ -1440,7 +1441,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
       // No active subscription or it's expired - show subscribe button to Tribute channel
       message += 'Your subscription has expired or you haven\'t subscribed yet.';
-      await sendMessageWithSubscriptionCheck(chatId, message, env);
+      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
       return;
     }
     
@@ -1452,7 +1453,7 @@ async function handleLessonCommand(chatId, env) {
       // Format the time until next lesson
       const timeUntil = formatTimeUntil(nextLessonAt);
       message += `Your next lesson will be available in ${timeUntil}.`;
-      await sendMessageWithSubscriptionCheck(chatId, message, env);
+      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
       return;
     }
     
@@ -1460,6 +1461,7 @@ async function handleLessonCommand(chatId, env) {
     // Lesson is available now
     message += 'Your next lesson is available now!';
     await sendMessageWithSubscriptionCheck(chatId, message, env, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
       }
