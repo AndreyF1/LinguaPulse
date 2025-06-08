@@ -573,6 +573,19 @@ return new Response('OK');
         return new Response('OK');
       }
 
+      // 2.2 handle TEST PAYMENT button (DEV ONLY)
+      if (update.callback_query?.data === 'test:payment' && env.DEV_MODE === 'true') {
+        // Acknowledge the callback query
+        await callTelegram('answerCallbackQuery', {
+          callback_query_id: update.callback_query.id
+        }, env);
+        
+        console.log(`TEST PAYMENT button pressed by user ${chatId} in DEV mode`);
+        
+        // Simulate successful payment by calling internal test webhook
+        return await simulateSuccessfulPayment(chatId, env);
+      }
+
       // 4. receive end-of-lesson notification (if you choose to send it)
       if (update.lesson_done) {
         // проверяем наличие USER_PROFILE или используем TEST_KV
@@ -1013,6 +1026,66 @@ async function handleTestSubscription(request, env) {
   }
 }
 
+// Simulate successful payment (DEV ONLY)
+async function simulateSuccessfulPayment(chatId, env) {
+  try {
+    console.log(`=== SIMULATING SUCCESSFUL PAYMENT FOR USER ${chatId} ===`);
+    
+    // Create fake Tribute webhook payload  
+    const fakeWebhookPayload = {
+      name: "new_subscription",
+      payload: {
+        telegram_user_id: chatId,
+        subscription_id: `test_sub_${Date.now()}`,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+        amount: 200,
+        currency: "EUR",
+        created_at: new Date().toISOString(),
+        status: "active"
+      },
+      timestamp: Math.floor(Date.now() / 1000),
+      webhook_id: `webhook_test_${Date.now()}`
+    };
+    
+    console.log('Simulating Tribute webhook payload:', JSON.stringify(fakeWebhookPayload));
+    
+    // Create fake request object
+    const fakeRequest = {
+      method: 'POST',
+      headers: new Map([
+        ['content-type', 'application/json'],
+        ['trbt-signature', `test_signature_${Date.now()}`]
+      ]),
+      text: async () => JSON.stringify(fakeWebhookPayload)
+    };
+    
+    // Call the actual webhook handler
+    const response = await handleTributeWebhook(fakeRequest, env);
+    
+    console.log(`Simulated payment webhook response status: ${response.status}`);
+    
+    if (response.status === 200) {
+      console.log(`✅ Payment simulation successful for user ${chatId}`);
+    } else {
+      console.error(`❌ Payment simulation failed for user ${chatId}`);
+    }
+    
+    return new Response('OK');
+    
+  } catch (error) {
+    console.error('Error in simulateSuccessfulPayment:', error);
+    
+    // Send error message to user
+    await sendMessageViaTelegram(chatId, 
+      `❌ *Payment simulation failed* (Dev Mode)\n\nError: ${error.message}`, 
+      env, 
+      { parse_mode: 'Markdown' }
+    );
+    
+    return new Response('OK');
+  }
+}
+
 // Function to send Tribute channel link for subscription
 async function sendTributeChannelLink(chatId, env) {
   console.log(`[DEBUG] sendTributeChannelLink called for user ${chatId}`);
@@ -1044,12 +1117,25 @@ async function sendTributeChannelLink(chatId, env) {
                  "3️⃣ After payment, you'll receive a confirmation message from the bot\n\n" +
                  "🎯 *Your subscription will give you access to daily personalized English lessons!*";
   
-  // Использовать inline_keyboard с кнопкой подписки
+  // Prepare buttons array
+  const buttons = [];
+  
+  // Always add the real subscription button if link is available
   if (tributeAppLink) {
+    buttons.push([{ text: "Subscribe for €2/week", url: tributeAppLink }]);
+  }
+  
+  // Add test payment button ONLY in dev mode
+  if (env.DEV_MODE === 'true') {
+    buttons.push([{ text: "🧪 TEST PAYMENT (Dev Only)", callback_data: "test:payment" }]);
+  }
+  
+  // Send message with appropriate buttons
+  if (buttons.length > 0) {
     await sendMessageViaTelegram(chatId, message, env, {
       parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: [[{ text: "Subscribe for €2/week", url: tributeAppLink }]]
+        inline_keyboard: buttons
       }
     });
   } else {
