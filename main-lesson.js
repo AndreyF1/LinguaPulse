@@ -933,26 +933,37 @@ function calculateDuration(buf) {
 
 // Send subscription message with proper Tribute link
 async function sendSubscriptionMessage(chatId, env) {
-  // Get Tribute link using the same logic as telegram-webhook
+  console.log(`[DEBUG] sendSubscriptionMessage called for user ${chatId}`);
+  
+  // Используем точно такую же логику, как в sendTributeChannelLink из telegram-webhook.js
+  // Сначала проверяем специальную ссылку на приложение Tribute
   let tributeAppLink = env.TRIBUTE_APP_LINK;
   
-  // If no app link, check for channel link
+  // Если нет специальной ссылки, проверяем обычную ссылку на канал
   if (!tributeAppLink || tributeAppLink.trim() === '') {
+    console.log(`[DEBUG] TRIBUTE_APP_LINK not found, checking TRIBUTE_CHANNEL_LINK`);
     tributeAppLink = env.TRIBUTE_CHANNEL_LINK;
   }
   
-  // If both are missing, use fallback
+  // Если обе переменные отсутствуют, используем запасную ссылку
   if (!tributeAppLink || tributeAppLink.trim() === '') {
-    tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Fallback link
+    console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
+    tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Запасная ссылка на Tribute
   }
   
-  // Ensure proper URL format
+  // Проверяем, что ссылка имеет корректный формат
   if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+    console.warn(`[DEBUG] Tribute link doesn't start with http:// or https://, fixing: ${tributeAppLink}`);
     tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
   }
-  
-  const message = "🔒 *You don't have an active subscription.*\n\n" +
-                 "Subscribe to access daily personalized English lessons for just €2/week!";
+
+  console.log(`[DEBUG] Using tribute link: ${tributeAppLink}`);
+
+  const message = "🔑 *To unlock premium lessons, please subscribe:*\n\n" +
+                 "1️⃣ Click the button below to open the subscription page\n" +
+                 "2️⃣ Complete the payment process *(€2/week)*\n" +
+                 "3️⃣ After payment, you'll receive a confirmation message from the bot\n\n" +
+                 "🎯 *Your subscription will give you access to daily personalized English lessons!*";
   
   await sendText(
     chatId,
