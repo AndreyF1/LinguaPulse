@@ -6,6 +6,9 @@ export default {
     // Просто логируем все доступные ключи в env для диагностики
     console.log(`[DEBUG] All available env keys:`, Object.keys(env || {}).join(', '));
     
+    // Логируем DEV_MODE для диагностики
+    console.log(`[DEBUG] DEV_MODE value:`, env.DEV_MODE, `(type: ${typeof env.DEV_MODE})`);
+    
     // Удаляем глобальную переменную и просто логируем сервисы
     console.log(`[DEBUG] Available services in env:`, 
                 Object.keys(env || {})
@@ -1301,6 +1304,15 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
           // Есть inline_keyboard, добавляем новую строку с кнопкой
           messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for €2/week", url: tributeAppLink }]);
         }
+      }
+      
+      // Add test payment button ONLY in dev mode
+      if (env.DEV_MODE === 'true') {
+        if (!messageOptions.reply_markup.inline_keyboard) {
+          messageOptions.reply_markup.inline_keyboard = [];
+        }
+        messageOptions.reply_markup.inline_keyboard.push([{ text: "🧪 TEST PAYMENT (Dev Only)", callback_data: "test:payment" }]);
+        console.log(`[DEBUG] Added test payment button for dev mode`);
       }
       
       console.log(`[DEBUG] Final message options with subscription button:`, JSON.stringify(messageOptions));
