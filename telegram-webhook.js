@@ -119,80 +119,25 @@ if (update.message?.text) {
           await sendMessageWithSubscriptionCheck(chatId, 
             'You haven\'t taken the placement test yet. Use /start to begin.', env);
         } else {
-          // Format human-readable profile info
+          // Basic profile info
           const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
-          
-          // Check if subscription is active
-          const now = new Date();
-          const subscriptionDate = profile.subscription_expired_at ? new Date(profile.subscription_expired_at) : null;
-          const hasActiveSubscription = subscriptionDate && subscriptionDate > now;
-          
-          // Format subscription display
-          const subscriptionDisplay = hasActiveSubscription 
-            ? (() => {
-                const d = new Date(profile.subscription_expired_at);
-                const day = d.getDate();  
-                const month = d.toLocaleString('en-US', { month: 'long' }); 
-                const year = d.getFullYear();
-                const hours = String(d.getHours()).padStart(2, '0');
-                const minutes = String(d.getMinutes()).padStart(2, '0');
-                return `Active until ${day} ${month}, ${year}`;
-              })()
-            : 'Inactive - Subscribe to continue learning';
-
-          // Check streak validity - if last lesson wasn't yesterday or today, streak should be 0
-          let lessonsStreak = profile.lessons_in_row || 0;
-          
-          if (profile.daily_lesson_pass_at) {
-            const lastLessonDate = new Date(profile.daily_lesson_pass_at);
-            
-            // Calculate yesterday and today for comparison
-            const yesterday = new Date(now);
-            yesterday.setDate(yesterday.getDate() - 1);
-            yesterday.setHours(0, 0, 0, 0);
-            
-            const todayStart = new Date(now);
-            todayStart.setHours(0, 0, 0, 0);
-            
-            const tomorrowStart = new Date(now);
-            tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-            tomorrowStart.setHours(0, 0, 0, 0);
-            
-            // Check if last lesson was yesterday or today
-            const isRecentLesson = 
-              (lastLessonDate >= yesterday && lastLessonDate < todayStart) || // Yesterday
-              (lastLessonDate >= todayStart && lastLessonDate < tomorrowStart); // Today
-            
-            // If streak is broken and not updated yet, display it as 0 and update the DB
-            if (!isRecentLesson && lessonsStreak > 0) {
-              console.log(`Displaying reset streak for user ${chatId}. Last lesson: ${lastLessonDate.toISOString()}, Current streak: ${lessonsStreak}`);
-              
-              // Update streak in database
-              try {
-                await env.USER_DB
-                  .prepare('UPDATE user_profiles SET lessons_in_row = 0 WHERE telegram_id = ?')
-                  .bind(parseInt(chatId, 10))
-                  .run();
-                
-                // Set display value to 0
-                lessonsStreak = 0;
-              } catch (error) {
-                console.error(`Failed to reset streak for user ${chatId}:`, error);
-              }
-            }
-          }
-          
           const lessonsTotal = profile.number_of_lessons || 0;
+          const lessonsStreak = profile.lessons_in_row || 0;
           
-          // Create message text
-          const profileMessage = `📊 *Your Language Profile*\n\n` +
-            `🎯 *Level:* ${profile.eng_level}\n` +
-            `💳 *Subscription:* ${subscriptionDisplay}\n` +
-            `📚 *Total lessons:* ${lessonsTotal}\n` +
-            `🔥 *Current streak:* ${lessonsStreak} days`;
+          // Check subscription status (simple version)
+          const now = new Date();
+          const hasActiveSubscription = profile.subscription_expired_at && 
+                                      (new Date(profile.subscription_expired_at) > now);
+          const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
+          
+          let message = `📊 <b>Your Language Profile</b>\n\n` +
+            `🎯 <b>Level:</b> ${profile.eng_level}\n` +
+            `💳 <b>Subscription:</b> ${subscriptionStatus}\n` +
+            `📚 <b>Total lessons:</b> ${lessonsTotal}\n` +
+            `🔥 <b>Current streak:</b> ${lessonsStreak} days\n\n`;
           
           // Show profile with appropriate options based on subscription status
-          await sendMessageWithSubscriptionCheck(chatId, profileMessage, env, { parse_mode: 'Markdown' });
+          await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'HTML' });
         }
         
         return new Response('OK');
@@ -615,52 +560,17 @@ return new Response('OK');
         const profile = results[0];
         const now = new Date();
         
-        // Check if user has an active subscription
-        if (profile.subscription_expired_at) {
-          const subExpiredAt = new Date(profile.subscription_expired_at);
-          
-          // If subscription is still active
-          if (subExpiredAt.getTime() > now.getTime()) {
-            // Format the expiration date
-            const expiryDate = subExpiredAt.toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            });
-            
-            // Check if next lesson is available
-            if (profile.next_lesson_access_at) {
-              const nextLessonAt = new Date(profile.next_lesson_access_at);
-              
-              if (nextLessonAt.getTime() <= now.getTime()) {
-                // Next lesson is already available
-                await sendMessageWithSubscriptionCheck(chatId,
-                  `You already have an active subscription until ${expiryDate}. Your next lesson is available now!`, 
-                  env, 
-                  { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
-                );
-              } else {
-                // Next lesson will be available later
-                const timeUntil = formatTimeUntil(nextLessonAt);
-                await sendMessageWithSubscriptionCheck(chatId,
-                  `You already have an active subscription until ${expiryDate}. Your next lesson will be available in ${timeUntil}.`,
-                  env
-                );
-              }
-              return new Response('OK');
-            } else {
-              // Something went wrong - subscription exists but next_lesson_access_at is missing
-              await sendMessageWithSubscriptionCheck(chatId,
-                `You already have an active subscription until ${expiryDate}.`,
-                env,
-                { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] } }
-              );
-              return new Response('OK');
-            }
-          }
+        // Check subscription status
+        const subExpiredAt = profile.subscription_expired_at ? new Date(profile.subscription_expired_at) : null;
+        
+        if (!subExpiredAt || subExpiredAt.getTime() < now.getTime()) {
+          // If we get here, user doesn't have an active subscription or it has expired
+          // UPDATED: Redirect to Tribute channel subscription
+          await sendTributeChannelLink(chatId, env);
+          return new Response('OK');
         }
         
-        // If we get here, user doesn't have an active subscription or it has expired
+        // If we get here, user has an active subscription
         // UPDATED: Redirect to Tribute channel subscription
         await sendTributeChannelLink(chatId, env);
         return new Response('OK');
@@ -1404,10 +1314,17 @@ async function handleLessonCommand(chatId, env) {
     const lessonsTotal = profile.number_of_lessons || 0;
     const lessonsStreak = profile.lessons_in_row || 0;
     
-    let message = `📊 *Your Language Profile*\n\n` +
-      `🎯 *Level:* ${profile.eng_level}\n` +
-      `📚 *Total lessons:* ${lessonsTotal}\n` +
-      `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
+    // Check subscription status (simple version)
+    const now = new Date();
+    const hasActiveSubscription = profile.subscription_expired_at && 
+                                (new Date(profile.subscription_expired_at) > now);
+    const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
+    
+    let message = `📊 <b>Your Language Profile</b>\n\n` +
+      `🎯 <b>Level:</b> ${profile.eng_level}\n` +
+      `💳 <b>Subscription:</b> ${subscriptionStatus}\n` +
+      `📚 <b>Total lessons:</b> ${lessonsTotal}\n` +
+      `🔥 <b>Current streak:</b> ${lessonsStreak} days\n\n`;
     
     // Check pass_lesson0_at first
     if (!profile.pass_lesson0_at) {
@@ -1417,7 +1334,7 @@ async function handleLessonCommand(chatId, env) {
       if (!profile.eng_level) {
         console.log(`User ${chatId} hasn't completed placement test, directing to test`);
         message += 'You need to complete the placement test first to determine your English level.';
-        await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+        await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'HTML' });
         return;
       }
       
@@ -1425,7 +1342,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} has completed test, showing free lesson button`);
       message += 'You haven\'t taken your free introductory lesson yet.';
       await sendMessageWithSubscriptionCheck(chatId, message, env, {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
         }
@@ -1434,14 +1351,13 @@ async function handleLessonCommand(chatId, env) {
     }
     
     // Check subscription status
-    const now = new Date();
     const subExpiredAt = profile.subscription_expired_at ? new Date(profile.subscription_expired_at) : null;
     
     if (!subExpiredAt || subExpiredAt.getTime() < now.getTime()) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
       // No active subscription or it's expired - show subscribe button to Tribute channel
       message += 'Your subscription has expired or you haven\'t subscribed yet.';
-      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'HTML' });
       return;
     }
     
@@ -1453,7 +1369,7 @@ async function handleLessonCommand(chatId, env) {
       // Format the time until next lesson
       const timeUntil = formatTimeUntil(nextLessonAt);
       message += `Your next lesson will be available in ${timeUntil}.`;
-      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'HTML' });
       return;
     }
     
@@ -1461,7 +1377,7 @@ async function handleLessonCommand(chatId, env) {
     // Lesson is available now
     message += 'Your next lesson is available now!';
     await sendMessageWithSubscriptionCheck(chatId, message, env, {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
       }
