@@ -20,8 +20,8 @@ export default {
         return await handleTributeWebhook(request, env);
       }
       
-      // Handle test subscription webhook for dev environment
-      if (pathname === '/test-subscription') {
+      // Handle test subscription webhook for dev environment only
+      if (pathname === '/test-subscription' && env.DEV_MODE === 'true') {
         return await handleTestSubscription(request, env);
       }
       
@@ -946,7 +946,13 @@ async function verifyTributeSignature(payload, signature, apiKey) {
 // Handle test subscription for dev environment
 async function handleTestSubscription(request, env) {
   try {
-    console.log('==== TEST SUBSCRIPTION WEBHOOK RECEIVED ====');
+    // Additional security check - only allow in dev mode
+    if (env.DEV_MODE !== 'true') {
+      console.log('Test subscription endpoint called but DEV_MODE is not enabled');
+      return new Response('Not found', { status: 404 });
+    }
+    
+    console.log('==== TEST SUBSCRIPTION WEBHOOK RECEIVED (DEV MODE) ====');
     
     // Ensure this is a POST request
     if (request.method !== 'POST') {
