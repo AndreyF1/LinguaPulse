@@ -70,9 +70,15 @@ if (update.message?.text) {
 
       // Handle /talk command - route to main-lesson
       if (update.message?.text === '/talk') {
+        console.log(`🎯 [${chatId}] /talk command received`);
+        console.log(`🔍 [${chatId}] Checking MAIN_LESSON worker availability...`);
+        console.log(`🔍 [${chatId}] env.MAIN_LESSON exists:`, !!env.MAIN_LESSON);
+        console.log(`🔍 [${chatId}] env.MAIN_LESSON type:`, typeof env.MAIN_LESSON);
+        
         // Check if the MAIN_LESSON worker is available
         if (!env.MAIN_LESSON) {
-          console.error("MAIN_LESSON worker is undefined, cannot forward /talk command");
+          console.error(`❌ [${chatId}] MAIN_LESSON worker is undefined, cannot forward /talk command`);
+          console.error(`❌ [${chatId}] Available env services:`, Object.keys(env).filter(key => key.includes('LESSON') || key.includes('TEST')));
           
           // Check if user has completed the test
           if (await hasCompletedTest(chatId, env)) {
@@ -104,8 +110,19 @@ if (update.message?.text) {
         }
         
         // Forward directly to main-lesson worker if available
-        console.log("Forwarding /talk command to MAIN_LESSON");
-        return forward(env.MAIN_LESSON, update);
+        console.log(`📤 [${chatId}] MAIN_LESSON worker found, attempting to forward /talk command`);
+        console.log(`📤 [${chatId}] Forward payload:`, JSON.stringify(update).substring(0, 200));
+        
+        try {
+          const forwardResult = forward(env.MAIN_LESSON, update);
+          console.log(`✅ [${chatId}] Forward call completed`);
+          return forwardResult;
+        } catch (forwardError) {
+          console.error(`❌ [${chatId}] Error in forward function:`, forwardError);
+          await sendMessageViaTelegram(chatId, 
+            "❌ *Sorry, there was an error starting your lesson.* Please try again.", env, { parse_mode: 'Markdown' });
+          return new Response('OK');
+        }
       }
 
       // Handle /profile command - show user-friendly profile data
@@ -532,12 +549,35 @@ return new Response('OK');
         } 
         // If this is the main lesson (from subscription)
         else if (update.callback_query?.data === 'lesson:start') {
+          console.log(`🎯 [${chatId}] lesson:start button pressed`);
+          console.log(`🔍 [${chatId}] Checking MAIN_LESSON worker availability...`);
+          console.log(`🔍 [${chatId}] env.MAIN_LESSON exists:`, !!env.MAIN_LESSON);
+          
+          if (!env.MAIN_LESSON) {
+            console.error(`❌ [${chatId}] MAIN_LESSON worker is undefined for lesson:start`);
+            await sendMessageViaTelegram(chatId, 
+              "❌ *Sorry, the lesson service is temporarily unavailable.* Please try again later.", env, { parse_mode: 'Markdown' });
+            return new Response('OK');
+          }
+          
           // Forward to the main-lesson worker with appropriate action
-          console.log("Forwarding lesson:start action to MAIN_LESSON");
-          return forward(env.MAIN_LESSON, {
+          console.log(`📤 [${chatId}] MAIN_LESSON worker found, forwarding lesson:start action`);
+          const payload = {
             user_id: chatId,
             action : 'start_lesson'
-          });
+          };
+          console.log(`📤 [${chatId}] Forward payload:`, JSON.stringify(payload));
+          
+          try {
+            const forwardResult = forward(env.MAIN_LESSON, payload);
+            console.log(`✅ [${chatId}] lesson:start forward call completed`);
+            return forwardResult;
+          } catch (forwardError) {
+            console.error(`❌ [${chatId}] Error forwarding lesson:start:`, forwardError);
+            await sendMessageViaTelegram(chatId, 
+              "❌ *Sorry, there was an error starting your lesson.* Please try again.", env, { parse_mode: 'Markdown' });
+            return new Response('OK');
+          }
         }
       }
       
@@ -1376,20 +1416,32 @@ async function callTelegram(method, payload, env) {
 /* ──── helper: proxy payload to another Worker ──── */
 function forward(service, payload) {
   // Добавляем подробное логирование
-  console.log(`[DEBUG] Attempting to forward request to service:`, service ? 'Service exists' : 'Service is undefined');
+  console.log(`🔄 [FORWARD] Attempting to forward request to service:`, service ? 'Service exists' : 'Service is undefined');
+  console.log(`🔄 [FORWARD] Service type:`, typeof service);
+  console.log(`🔄 [FORWARD] Payload:`, JSON.stringify(payload).substring(0, 300));
+  
   if (!service) {
-    console.error(`[DEBUG] Service binding is undefined`);
+    console.error(`❌ [FORWARD] Service binding is undefined`);
     throw new Error('Service binding is undefined');
   }
   
+  if (typeof service.fetch !== 'function') {
+    console.error(`❌ [FORWARD] Service doesn't have fetch method, available methods:`, Object.keys(service));
+    throw new Error('Service does not have a fetch method');
+  }
+  
   try {
-    return service.fetch('https://internal/', {
+    console.log(`🚀 [FORWARD] Calling service.fetch...`);
+    const result = service.fetch('https://internal/', {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body   : JSON.stringify(payload)
     });
+    console.log(`✅ [FORWARD] service.fetch call successful`);
+    return result;
   } catch (error) {
-    console.error(`[DEBUG] Error forwarding request:`, error);
+    console.error(`❌ [FORWARD] Error forwarding request:`, error);
+    console.error(`❌ [FORWARD] Error stack:`, error.stack);
     throw error;
   }
 }
