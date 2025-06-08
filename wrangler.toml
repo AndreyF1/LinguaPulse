@@ -168,11 +168,11 @@ keep_vars = true
 
 [[env.dev-test-bot.kv_namespaces]]
 binding = "TEST_KV" 
-id = "REPLACE_WITH_DEV_KV_ID"
+id = "cc6437f9f5b647a4bf4d8a61fb1d950d"
 
 [[env.dev-test-bot.d1_databases]]
 binding = "USER_DB"
-database_id = "REPLACE_WITH_DEV_DB_ID"
+database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
 
 # Dev Webhook Environment  
 [env.dev-webhook]
@@ -186,11 +186,11 @@ keep_vars = true
 
 [[env.dev-webhook.kv_namespaces]]
 binding = "TEST_KV"
-id = "REPLACE_WITH_DEV_KV_ID"
+id = "cc6437f9f5b647a4bf4d8a61fb1d950d"
 
 [[env.dev-webhook.d1_databases]]
 binding = "USER_DB"
-database_id = "REPLACE_WITH_DEV_DB_ID"
+database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
 
 # Dev service bindings
 [[env.dev-webhook.services]]
@@ -218,11 +218,11 @@ keep_vars = true
 
 [[env.dev-lesson0.kv_namespaces]]
 binding = "CHAT_KV"
-id = "REPLACE_WITH_DEV_KV_ID"
+id = "cc6437f9f5b647a4bf4d8a61fb1d950d"
 
 [[env.dev-lesson0.d1_databases]]
 binding = "USER_DB"
-database_id = "REPLACE_WITH_DEV_DB_ID"
+database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
 
 # Dev Main Lesson Environment
 [env.dev-main-lesson]
@@ -236,11 +236,11 @@ keep_vars = true
 
 [[env.dev-main-lesson.kv_namespaces]]
 binding = "CHAT_KV"
-id = "REPLACE_WITH_DEV_KV_ID"
+id = "cc6437f9f5b647a4bf4d8a61fb1d950d"
 
 [[env.dev-main-lesson.d1_databases]]
 binding = "USER_DB"
-database_id = "REPLACE_WITH_DEV_DB_ID"
+database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
 
 # Dev Reminder Environment
 [env.dev-reminder]
@@ -254,4 +254,4 @@ keep_vars = true
 
 [[env.dev-reminder.d1_databases]]
 binding = "USER_DB"
-database_id = "REPLACE_WITH_DEV_DB_ID"
+database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
