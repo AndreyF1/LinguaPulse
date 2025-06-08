@@ -81,9 +81,28 @@ npm run dev:reminder
 
 ## Тестирование
 
-1. Найдите вашего dev бота в Telegram
-2. Отправьте `/start` для начала тестирования
-3. Все изменения будут влиять только на dev среду
+### Основное тестирование:
+1. Найдите `@dev_lpulse_bot` в Telegram
+2. Отправьте `/start` для прохождения теста уровня
+3. Используйте `/help` для просмотра всех команд
+4. Все изменения будут влиять только на dev среду
+
+### Тестирование подписки:
+Поскольку у Tribute нет сэндбокса, мы создали тестовый эндпоинт:
+
+1. Получите ваш Telegram user ID (можно увидеть в логах после `/start`)
+2. Запустите тестовый скрипт:
+   ```bash
+   ./test-subscription.sh YOUR_TELEGRAM_ID
+   ```
+3. Бот отправит подтверждение активации тестовой подписки
+4. Теперь можно тестировать платные функции
+
+### Доступные эндпоинты:
+- `https://dev-telegram-webhook.andreykatkov13.workers.dev/tg` - основной webhook
+- `https://dev-telegram-webhook.andreykatkov13.workers.dev/test-subscription` - тестовая подписка
+- `https://dev-linguapulse-test-bot.andreykatkov13.workers.dev/` - тестирование уровня
+- `https://dev-linguapulse-lesson0-bot.andreykatkov13.workers.dev/` - бесплатный урок
 
 ## Безопасность
 

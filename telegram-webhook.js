@@ -20,6 +20,11 @@ export default {
         return await handleTributeWebhook(request, env);
       }
       
+      // Handle test subscription webhook for dev environment
+      if (pathname === '/test-subscription') {
+        return await handleTestSubscription(request, env);
+      }
+      
       if (pathname !== '/tg') return new Response('Not found', { status: 404 });
 
       // 0. parse safely
@@ -180,14 +185,14 @@ if (update.message?.text) {
           const lessonsTotal = profile.number_of_lessons || 0;
           
           // Create message text
-          const profileMessage = `Your language profile:\n\n` +
-            `Language level: ${profile.eng_level}\n` +
-            `Subscription: ${subscriptionDisplay}\n` +
-            `Total lessons completed: ${lessonsTotal}\n` +
-            `Current lesson streak: ${lessonsStreak}`;
+          const profileMessage = `📊 *Your Language Profile*\n\n` +
+            `🎯 *Level:* ${profile.eng_level}\n` +
+            `💳 *Subscription:* ${subscriptionDisplay}\n` +
+            `📚 *Total lessons:* ${lessonsTotal}\n` +
+            `🔥 *Current streak:* ${lessonsStreak} days`;
           
           // Show profile with appropriate options based on subscription status
-          await sendMessageWithSubscriptionCheck(chatId, profileMessage, env);
+          await sendMessageWithSubscriptionCheck(chatId, profileMessage, env, { parse_mode: 'Markdown' });
         }
         
         return new Response('OK');
@@ -935,6 +940,132 @@ async function verifyTributeSignature(payload, signature, apiKey) {
   } catch (error) {
     console.error('Error during signature verification:', error);
     throw new Error('Signature verification failed: ' + error.message);
+  }
+}
+
+// Handle test subscription for dev environment
+async function handleTestSubscription(request, env) {
+  try {
+    console.log('==== TEST SUBSCRIPTION WEBHOOK RECEIVED ====');
+    
+    // Ensure this is a POST request
+    if (request.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405 });
+    }
+    
+    // Get the payload
+    const payload = await request.text();
+    console.log('Test subscription payload:', payload);
+    
+    let event;
+    try {
+      event = JSON.parse(payload);
+      console.log('Parsed test subscription event:', JSON.stringify(event));
+    } catch (parseError) {
+      console.error('Failed to parse test subscription payload:', parseError);
+      return new Response('Invalid JSON payload', { status: 400 });
+    }
+    
+    // Extract user ID
+    const userId = event.user_id || event.telegram_id;
+    if (!userId) {
+      console.error('Missing user_id in test subscription payload');
+      return new Response('Missing user_id', { status: 400 });
+    }
+    
+    console.log(`Processing test subscription for user: ${userId}`);
+    
+    // Calculate subscription dates
+    const now = new Date();
+    const subscribed_at = now.toISOString();
+    
+    // Set expiry to 7 days from now
+    const expiryDate = new Date(now);
+    expiryDate.setDate(expiryDate.getDate() + 7);
+    const subscription_expired_at = expiryDate.toISOString();
+    
+    // Make next lesson immediately available
+    const nextLessonDate = new Date(now);
+    nextLessonDate.setTime(now.getTime() - 60000); // 1 minute ago
+    const next_lesson_access_at = nextLessonDate.toISOString();
+    
+    // Update user profile
+    try {
+      // Check if user exists
+      const { results } = await env.USER_DB
+        .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
+        .bind(parseInt(userId, 10))
+        .all();
+      
+      if (results.length === 0) {
+        return new Response(`User ${userId} not found in database`, { status: 404 });
+      }
+      
+      // Update subscription
+      const updateResult = await env.USER_DB
+        .prepare(`
+          UPDATE user_profiles
+          SET subscribed_at = ?,
+              subscription_expired_at = ?,
+              next_lesson_access_at = ?
+          WHERE telegram_id = ?
+        `)
+        .bind(
+          subscribed_at,
+          subscription_expired_at,
+          next_lesson_access_at,
+          parseInt(userId, 10)
+        )
+        .run();
+      
+      if (!updateResult.success) {
+        throw new Error('Failed to update subscription: ' + updateResult.error);
+      }
+      
+      console.log('Test subscription updated successfully for user:', userId);
+      
+      // Notify user
+      await sendMessageWithSubscriptionCheck(userId,
+        "🎉 *Test subscription activated!* \\(Dev Environment\\)\n\n" +
+        "Your 7\\-day test subscription is now active\\. You have access to daily personalized English lessons\\.",
+        env,
+        { 
+          reply_markup: { 
+            inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] 
+          },
+          parse_mode: 'MarkdownV2'
+        }
+      );
+      
+      return new Response(JSON.stringify({ 
+        status: 'success',
+        message: 'Test subscription activated',
+        user_id: userId,
+        expiry_date: subscription_expired_at
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } catch (error) {
+      console.error('Error processing test subscription:', error);
+      return new Response(JSON.stringify({ 
+        status: 'error', 
+        message: error.message 
+      }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+  } catch (error) {
+    console.error('Unhandled error in handleTestSubscription:', error);
+    return new Response(JSON.stringify({ 
+      status: 'error', 
+      message: 'Internal server error: ' + error.message 
+    }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
 
