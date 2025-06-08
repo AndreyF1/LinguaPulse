@@ -360,13 +360,8 @@ async function handleLessonStart(chatId, env, db, kv) {
   
   // Both conditions must be true to start the lesson
   if (!hasActiveSubscription) {
-    // No active subscription
-    await sendText(
-      chatId,
-      "You don't have an active subscription. Subscribe to access daily lessons!",
-      env,
-      [[{ text: "Subscribe for €2/week", callback_data: "sub:weekly" }]]
-    );
+    // No active subscription - send subscription link
+    await sendSubscriptionMessage(chatId, env);
     return new Response('OK');
   }
   
@@ -934,6 +929,37 @@ function calculateDuration(buf) {
   const estimatedSeconds = Math.max(1, Math.round(buf.byteLength / 20000));
   console.log(`Audio size: ${buf.byteLength} bytes, estimated duration: ${estimatedSeconds} seconds`);
   return estimatedSeconds;
+}
+
+// Send subscription message with proper Tribute link
+async function sendSubscriptionMessage(chatId, env) {
+  // Get Tribute link using the same logic as telegram-webhook
+  let tributeAppLink = env.TRIBUTE_APP_LINK;
+  
+  // If no app link, check for channel link
+  if (!tributeAppLink || tributeAppLink.trim() === '') {
+    tributeAppLink = env.TRIBUTE_CHANNEL_LINK;
+  }
+  
+  // If both are missing, use fallback
+  if (!tributeAppLink || tributeAppLink.trim() === '') {
+    tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Fallback link
+  }
+  
+  // Ensure proper URL format
+  if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+    tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
+  }
+  
+  const message = "🔒 *You don't have an active subscription.*\n\n" +
+                 "Subscribe to access daily personalized English lessons for just €2/week!";
+  
+  await sendText(
+    chatId,
+    message,
+    env,
+    [[{ text: "Subscribe for €2/week", url: tributeAppLink }]]
+  );
 }
 
 // Format time until date in human-readable form

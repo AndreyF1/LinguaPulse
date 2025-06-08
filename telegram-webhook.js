@@ -86,16 +86,15 @@ if (update.message?.text) {
             
             if (hasActiveSubscription) {
                       // If they have an active subscription but worker is unavailable
-        await sendMessageWithSubscriptionCheck(chatId, 
+        await sendMessageViaTelegram(chatId, 
           "❌ *Sorry, the lesson service is temporarily unavailable.* Please try again later.", env, { parse_mode: 'Markdown' });
             } else {
                         // If they don't have an active subscription, show subscription option
-          await sendMessageWithSubscriptionCheck(chatId, 
-            "🔒 *You need an active subscription to access lessons.* Subscribe to continue learning!", env, { parse_mode: 'Markdown' });
+          await sendTributeChannelLink(chatId, env);
             }
           } else {
                       // If they haven't completed the test
-          await sendMessageWithSubscriptionCheck(chatId, 
+          await sendMessageViaTelegram(chatId, 
             "📝 *You need to complete the placement test first.* Use /start to begin.", env, { parse_mode: 'Markdown' });
           }
           return new Response('OK');
@@ -1030,7 +1029,13 @@ async function sendTributeChannelLink(chatId, env) {
   // Если обе переменные отсутствуют, используем запасную ссылку
   if (!tributeAppLink || tributeAppLink.trim() === '') {
     console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
-    tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Правильная ссылка на Tribute
+    tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Запасная ссылка на Tribute
+  }
+  
+  // Проверяем, что ссылка имеет корректный формат
+  if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+    console.warn(`[DEBUG] Tribute link doesn't start with http:// or https://, fixing: ${tributeAppLink}`);
+    tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
   }
 
   const message = "🔑 *To unlock premium lessons, please subscribe:*\n\n" +
@@ -1123,7 +1128,7 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
     // Если обе переменные отсутствуют, используем запасную ссылку
     if (!tributeAppLink || tributeAppLink.trim() === '') {
       console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
-      tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Правильная ссылка на Tribute
+      tributeAppLink = "https://t.me/tribute/app?startapp=stO5"; // Запасная ссылка на Tribute
     }
     
     // Проверяем, что ссылка имеет корректный формат и начинается с https:// или http://
