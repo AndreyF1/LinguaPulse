@@ -13,10 +13,8 @@
 4. Сохраните полученный токен как `DEV_BOT_TOKEN`
 
 #### Dev D1 Database
-```bash
-npx wrangler d1 create linguapulse-dev-db
-```
-Скопируйте `database_id` из вывода.
+Dev среда использует продакшн базу данных для тестовых вопросов.
+Отдельная dev база не нужна - все тесты используют одинаковые вопросы.
 
 #### Dev KV Namespace  
 ```bash
@@ -26,9 +24,10 @@ npx wrangler kv:namespace create "DEV_CHAT_KV"
 
 ### 2. Обновление wrangler.toml
 
-Замените в файле `wrangler.toml` плейсхолдеры:
-- `REPLACE_WITH_DEV_KV_ID` → ID вашего dev KV namespace
-- `REPLACE_WITH_DEV_DB_ID` → ID вашей dev D1 database
+Dev среда уже настроена:
+- Использует отдельный KV namespace для изоляции сессий
+- Использует продакшн базу данных для тестовых вопросов
+- Это обеспечивает одинаковость тестов между dev и prod
 
 ### 3. Настройка секретов для dev среды
 
