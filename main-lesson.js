@@ -379,21 +379,40 @@ async function handleLessonStart(chatId, env, db, kv) {
   }
   
   // If we get here, user can start the lesson
+  console.log(`🚀 [${chatId}] Starting lesson for user with level: ${profile.eng_level}`);
   await sendText(chatId, "🎓 Your English lesson is starting...", env);
   
   // Initialize empty history and create a new session ID
+  console.log(`💾 [${chatId}] Initializing lesson session`);
   const history = [];
   const sessionId = Date.now().toString();
-  await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
-  await safeKvPut(kv, `main_session:${chatId}`, sessionId);
-  await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
+  
+  // Save all session data with error checking
+  const historyResult = await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
+  const sessionResult = await safeKvPut(kv, `main_session:${chatId}`, sessionId);
+  const activityResult = await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
   
   // FIXED: Store user's level in KV for reference throughout the session
   const userLevel = profile.eng_level || "B1";
-  await safeKvPut(kv, `main_user_level:${chatId}`, userLevel);
+  const levelResult = await safeKvPut(kv, `main_user_level:${chatId}`, userLevel);
+  
+  console.log(`💾 [${chatId}] Session data saved:`, {
+    history: historyResult,
+    session: sessionResult,
+    activity: activityResult,
+    level: levelResult,
+    sessionId: sessionId
+  });
+  
+  if (!sessionResult) {
+    console.error(`❌ [${chatId}] CRITICAL: Failed to save session ID - lesson may not work properly`);
+  }
   
   // Generate first GPT greeting with user's actual level
+  console.log(`🤖 [${chatId}] Starting first greeting generation`);
   await sendFirstGreeting(chatId, history, env, kv, userLevel);
+  
+  console.log(`✅ [${chatId}] Lesson startup completed`);
   return new Response('OK');
 }
 
@@ -443,6 +462,8 @@ async function safeKvDelete(kv, key) {
 
 // Generate first greeting using GPT - FIXED: Uses actual user level
 async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
+  console.log(`👋 [${chatId}] Starting first greeting generation for level: ${userLevel}`);
+  
   try {
     // Format prompt based on user's actual language level
     let levelPrompt;
@@ -468,6 +489,8 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
         levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and sentence structures. You can ask one or two related questions. Discuss a range of familiar and some unfamiliar topics.";
     }
     
+    console.log(`🤖 [${chatId}] Calling OpenAI GPT for greeting generation`);
+    
     const prompt = `Generate a friendly, conversational opening greeting for an English language practice session with a subscriber. ${levelPrompt} Make the greeting engaging and personalized. Ask a thoughtful question to start the conversation naturally. Keep your response between 1-3 sentences total.`;
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -487,22 +510,39 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
     });
     
     if (!res.ok) {
-      throw new Error(`OpenAI API error: ${await res.text()}`);
+      const errorText = await res.text();
+      console.error(`❌ [${chatId}] OpenAI API error:`, errorText);
+      throw new Error(`OpenAI API error: ${errorText}`);
     }
     
     const j = await res.json();
     const greeting = j.choices[0].message.content.trim();
     
-    console.log(`First greeting: ${greeting}`);
+    console.log(`✅ [${chatId}] Generated greeting: "${greeting}"`);
     
     // Add greeting to history
+    console.log(`💾 [${chatId}] Saving greeting to conversation history`);
     history.push({ role: 'assistant', content: greeting });
-    await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
+    const saveResult = await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
+    
+    if (!saveResult) {
+      console.error(`❌ [${chatId}] Failed to save history to KV`);
+    } else {
+      console.log(`✅ [${chatId}] History saved successfully`);
+    }
     
     // Send greeting as voice message
-    await safeSendTTS(chatId, greeting, env);
+    console.log(`🎤 [${chatId}] Sending greeting as TTS message`);
+    const ttsResult = await safeSendTTS(chatId, greeting, env);
+    
+    if (ttsResult) {
+      console.log(`🎉 [${chatId}] First greeting completed successfully!`);
+    } else {
+      console.log(`⚠️ [${chatId}] First greeting sent but TTS failed (fallback to text used)`);
+    }
+    
   } catch (error) {
-    console.error("Error generating first greeting:", error);
+    console.error(`❌ [${chatId}] Error generating first greeting:`, error);
     
     // Fallback greetings based on level
     let fallbackGreeting;
@@ -525,9 +565,13 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
         break;
     }
     
+    console.log(`🔄 [${chatId}] Using fallback greeting: "${fallbackGreeting}"`);
+    
     history.push({ role: 'assistant', content: fallbackGreeting });
     await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
-    await safeSendTTS(chatId, fallbackGreeting, env);
+    
+    const fallbackResult = await safeSendTTS(chatId, fallbackGreeting, env);
+    console.log(`🔄 [${chatId}] Fallback greeting ${fallbackResult ? 'sent successfully' : 'failed (text fallback used)'}`);
   }
 }
 
@@ -755,23 +799,47 @@ Contextualize these scores relative to their ${userLevel} level - do not evaluat
 // Send TTS audio message safely
 async function safeSendTTS(chatId, text, env) {
   const t = text.trim();
-  if (!t) return;
+  if (!t) {
+    console.log(`safeSendTTS: Empty text provided for user ${chatId}`);
+    return false;
+  }
+
+  console.log(`🎤 [${chatId}] Starting TTS generation for: "${t.substring(0, 50)}${t.length > 50 ? '...' : ''}"`);
 
   try {
-    console.log(`Generating TTS for: ${t}`);
+    // Step 1: Generate TTS with OpenAI
+    console.log(`🔊 [${chatId}] Step 1: Calling OpenAI TTS`);
     const rawBuf = await openaiTTS(t, env);
+    console.log(`✅ [${chatId}] OpenAI TTS successful, buffer size: ${rawBuf.byteLength} bytes`);
+    
+    // Step 2: Convert to Telegram-compatible format
+    console.log(`🔄 [${chatId}] Step 2: Converting audio with Transloadit`);
     const voipBuf = await encodeVoipWithTransloadit(rawBuf, env);
+    console.log(`✅ [${chatId}] Transloadit conversion successful, buffer size: ${voipBuf.byteLength} bytes`);
+    
+    // Step 3: Calculate duration and send
     const dur = calculateDuration(voipBuf);
+    console.log(`📱 [${chatId}] Step 3: Sending voice message to Telegram (duration: ${dur}s)`);
     await telegramSendVoice(chatId, voipBuf, dur, env);
+    console.log(`🎉 [${chatId}] Voice message sent successfully!`);
     
     // Add a small delay after sending audio to prevent flooding
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     return true;
   } catch (e) {
-    console.error("TTS failed:", e);
+    console.error(`❌ [${chatId}] TTS failed at step:`, e.message);
+    console.error(`❌ [${chatId}] Full error:`, e);
+    
     // Fallback to text if TTS fails
-    await sendText(chatId, "📝 " + t, env);
+    try {
+      console.log(`📝 [${chatId}] Falling back to text message`);
+      await sendText(chatId, "📝 " + t, env);
+      console.log(`✅ [${chatId}] Fallback text message sent successfully`);
+    } catch (fallbackError) {
+      console.error(`❌ [${chatId}] Fallback text message also failed:`, fallbackError);
+    }
+    
     return false;
   }
 }

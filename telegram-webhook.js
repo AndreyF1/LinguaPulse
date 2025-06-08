@@ -308,12 +308,15 @@ return new Response('OK');
           const mainSessionKey = `main_session:${chatId}`;
           let mainSession = null;
           
-          console.log(`Checking CHAT_KV for ${mainSessionKey}`);
+          console.log(`🔍 [${chatId}] Checking CHAT_KV for ${mainSessionKey}`);
           mainSession = await env.CHAT_KV.get(mainSessionKey);
           
           if (mainSession) {
-            console.log(`Found active main-lesson session (${mainSession}), forwarding voice message to MAIN_LESSON`);
+            console.log(`✅ [${chatId}] Found active main-lesson session (${mainSession}), forwarding voice message to MAIN_LESSON`);
+            console.log(`📤 [${chatId}] Forwarding voice message to MAIN_LESSON worker`);
             return forward(env.MAIN_LESSON, update);
+          } else {
+            console.log(`❌ [${chatId}] No main-lesson session found in CHAT_KV`);
           }
           
           // If not found in main session, check for lesson0 session directly in CHAT_KV
