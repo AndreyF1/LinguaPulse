@@ -53,7 +53,7 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           command: deploy --env dev-webhook
 
-      # Set essential secrets for dev-lesson0
+      # Set essential secrets for dev environments
       - name: Set dev secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -62,8 +62,14 @@ jobs:
           
           # Only set DEV_BOT_TOKEN if it exists
           if [ ! -z "${{ secrets.DEV_BOT_TOKEN }}" ]; then
+            echo "Setting DEV_BOT_TOKEN for dev-test-bot..."
+            echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-test-bot
+            
             echo "Setting DEV_BOT_TOKEN for dev-lesson0..."
             echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-lesson0
+            
+            echo "Setting DEV_BOT_TOKEN for dev-webhook..."
+            echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-webhook
           else
             echo "DEV_BOT_TOKEN not found in secrets"
           fi
