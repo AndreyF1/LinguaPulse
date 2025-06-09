@@ -4,6 +4,16 @@
 export default {
   async fetch(request, env, ctx) {
     try {
+      // Handle GET requests (health checks, etc.)
+      if (request.method === 'GET') {
+        return new Response('Main lesson worker is running', { status: 200 });
+      }
+      
+      // Only process POST requests
+      if (request.method !== 'POST') {
+        return new Response('Method not allowed', { status: 405 });
+      }
+      
       const raw = await request.json();
       console.log('Main-lesson-bot raw update:', JSON.stringify(raw).substring(0, 500) + '...');
       
@@ -407,6 +417,10 @@ async function handleLessonStart(chatId, env, db, kv) {
   console.log(`💾 [${chatId}] Initializing lesson session`);
   const history = [];
   const sessionId = Date.now().toString();
+  
+  // CRITICAL FIX: Clear greeting flags from previous sessions
+  await safeKvDelete(kv, `greeting_sent:${chatId}`);
+  await safeKvDelete(kv, `greeting_attempts:${chatId}`);
   
   // Save all session data with error checking
   const historyResult = await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
