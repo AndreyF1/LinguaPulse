@@ -568,6 +568,39 @@ return new Response('OK');
         // If this is the main lesson (from subscription)
         else if (update.callback_query?.data === 'lesson:start') {
           console.log(`🎯 [${chatId}] lesson:start button pressed`);
+          
+          // CRITICAL: Anti-duplication check for lesson:start button
+          const lessonStartLockKey = `lesson_start_lock:${chatId}`;
+          
+          // Check if we have KV storage available for the lock
+          let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
+          if (!kvStorage) {
+            console.error(`❌ [${chatId}] No KV storage available for duplication protection`);
+            // Continue without lock as fallback
+          } else {
+            try {
+              const existingLock = await kvStorage.get(lessonStartLockKey);
+              
+              if (existingLock) {
+                const lockTime = parseInt(existingLock, 10);
+                const now = Date.now();
+                
+                // If lock is less than 30 seconds old, reject duplicate request
+                if (now - lockTime < 30000) {
+                  console.log(`🚫 [${chatId}] DUPLICATE lesson:start request blocked (lock age: ${now - lockTime}ms)`);
+                  return new Response('OK');
+                }
+              }
+              
+              // Set lock for 30 seconds
+              await kvStorage.put(lessonStartLockKey, Date.now().toString(), { expirationTtl: 30 });
+              console.log(`🔒 [${chatId}] lesson:start lock set in telegram-webhook`);
+            } catch (lockError) {
+              console.error(`❌ [${chatId}] Error with lesson:start lock:`, lockError);
+              // Continue without lock as fallback
+            }
+          }
+          
           console.log(`🔍 [${chatId}] Checking MAIN_LESSON worker availability...`);
           console.log(`🔍 [${chatId}] env.MAIN_LESSON exists:`, !!env.MAIN_LESSON);
           

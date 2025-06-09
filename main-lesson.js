@@ -14,6 +14,27 @@ export default {
       const db = env.USER_DB;
       const kv = env.CHAT_KV;
 
+      // CRITICAL ANTI-DUPLICATION CHECK for lesson start
+      if (raw.action === 'start_lesson' || raw.message?.text === '/talk') {
+        const startLockKey = `start_lock:${chatId}`;
+        const existingLock = await safeKvGet(kv, startLockKey);
+        
+        if (existingLock) {
+          const lockTime = parseInt(existingLock, 10);
+          const now = Date.now();
+          
+          // If lock is less than 60 seconds old, reject duplicate request
+          if (now - lockTime < 60000) {
+            console.log(`🚫 [${chatId}] DUPLICATE lesson start request blocked (lock age: ${now - lockTime}ms)`);
+            return new Response('OK');
+          }
+        }
+        
+        // Set lock for 60 seconds
+        await safeKvPut(kv, startLockKey, Date.now().toString(), { expirationTtl: 60 });
+        console.log(`🔒 [${chatId}] Lesson start lock set`);
+      }
+
       // Command entry point: /talk
       if (raw.message?.text === '/talk') {
         return await handleLessonStart(chatId, env, db, kv);
@@ -278,7 +299,7 @@ export default {
           const userLevel = await safeKvGet(kv, `main_user_level:${chatId}`) || "B1";
           
           // Generate GPT reply based on conversation history and actual user level
-          const reply = await chatGPT(hist, env, userLevel);
+          const reply = await chatGPT(hist, env, userLevel, chatId);
           const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
           
           // Add bot response to history
@@ -460,9 +481,39 @@ async function safeKvDelete(kv, key) {
   }
 }
 
-// Generate first greeting using GPT - FIXED: Uses actual user level
+// Generate first greeting using GPT - FIXED: Uses actual user level with attempt limiting
 async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   console.log(`👋 [${chatId}] Starting first greeting generation for level: ${userLevel}`);
+  
+  // CRITICAL: Check if greeting was already sent for this session
+  const greetingSentKey = `greeting_sent:${chatId}`;
+  const greetingAlreadySent = await safeKvGet(kv, greetingSentKey);
+  
+  if (greetingAlreadySent) {
+    console.log(`🚫 [${chatId}] Greeting already sent for this session, skipping`);
+    return;
+  }
+  
+  // Set flag immediately to prevent concurrent calls
+  await safeKvPut(kv, greetingSentKey, "1", { expirationTtl: 3600 });
+  
+  // Check if we've already tried to generate greeting for this session
+  const attemptKey = `greeting_attempts:${chatId}`;
+  const attemptCount = parseInt(await safeKvGet(kv, attemptKey) || '0', 10);
+  
+  if (attemptCount >= 2) {
+    console.log(`🚫 [${chatId}] Maximum greeting generation attempts (2) reached, using fallback`);
+    const fallbackGreeting = "Hello! Welcome to your English lesson. How are you today?";
+    history.push({ role: 'assistant', content: fallbackGreeting });
+    await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
+    const fallbackResult = await safeSendTTS(chatId, fallbackGreeting, env);
+    console.log(`🔄 [${chatId}] Fallback greeting sent due to attempt limit`);
+    return;
+  }
+  
+  // Increment attempt counter
+  await safeKvPut(kv, attemptKey, String(attemptCount + 1), { expirationTtl: 3600 });
+  console.log(`🔢 [${chatId}] Greeting generation attempt ${attemptCount + 1}/2`);
   
   try {
     // Format prompt based on user's actual language level
@@ -575,9 +626,19 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   }
 }
 
-// Chat with GPT based on conversation history - FIXED: Use actual user level
-async function chatGPT(history, env, userLevel = "B1") {
-  try {
+// Chat with GPT based on conversation history - FIXED: Use actual user level with attempt limiting  
+async function chatGPT(history, env, userLevel = "B1", chatId = 'unknown') {
+  
+  // Check attempt count in a simple way - use a global counter or pass kv
+  // For now, just limit retries within this function call
+  let attempts = 0;
+  const maxAttempts = 2;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    console.log(`🤖 [${chatId}] ChatGPT attempt ${attempts}/${maxAttempts}`);
+    
+    try {
     // Construct system prompt based on user's actual level
     let levelPrompt;
     
@@ -637,14 +698,25 @@ async function chatGPT(history, env, userLevel = "B1") {
       throw new Error(`OpenAI API error: ${await res.text()}`);
     }
     
-    const j = await res.json();
-    const response = j.choices[0].message.content.trim();
-    console.log("GPT response:", response);
-    return response;
-  } catch (error) {
-    console.error("Error in chatGPT function:", error);
-    return "I'm interested in hearing more about that. Could you tell me a bit more?";
+      const j = await res.json();
+      const response = j.choices[0].message.content.trim();
+      console.log(`✅ [${chatId}] GPT response received on attempt ${attempts}:`, response);
+      return response;
+    } catch (error) {
+      console.error(`❌ [${chatId}] ChatGPT attempt ${attempts} failed:`, error);
+      
+      if (attempts >= maxAttempts) {
+        console.error(`🚫 [${chatId}] All ChatGPT attempts exhausted, using fallback`);
+        return "I'm sorry, I'm having trouble responding right now. Could you please try again in a moment?";
+      }
+      
+      // Continue to next attempt
+      console.log(`🔄 [${chatId}] Retrying ChatGPT call...`);
+    }
   }
+  
+  // This should never be reached, but just in case
+  return "I'm having technical difficulties. Please try again later.";
 }
 
 // Analyze user language for grammar and vocabulary feedback - FIXED: Use actual user level and avoid redundant encouragement
@@ -796,7 +868,7 @@ Contextualize these scores relative to their ${userLevel} level - do not evaluat
   }
 }
 
-// Send TTS audio message safely
+// Send TTS audio message safely with attempt limiting
 async function safeSendTTS(chatId, text, env) {
   const t = text.trim();
   if (!t) {
@@ -806,7 +878,15 @@ async function safeSendTTS(chatId, text, env) {
 
   console.log(`🎤 [${chatId}] Starting TTS generation for: "${t.substring(0, 50)}${t.length > 50 ? '...' : ''}"`);
 
-  try {
+  // Limit TTS attempts to 2 per text to avoid excessive costs
+  let attempts = 0;
+  const maxAttempts = 2;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    console.log(`🔊 [${chatId}] TTS attempt ${attempts}/${maxAttempts}`);
+    
+    try {
     // Step 1: Generate TTS with OpenAI
     console.log(`🔊 [${chatId}] Step 1: Calling OpenAI TTS`);
     const rawBuf = await openaiTTS(t, env);
@@ -826,22 +906,32 @@ async function safeSendTTS(chatId, text, env) {
     // Add a small delay after sending audio to prevent flooding
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    return true;
-  } catch (e) {
-    console.error(`❌ [${chatId}] TTS failed at step:`, e.message);
-    console.error(`❌ [${chatId}] Full error:`, e);
-    
-    // Fallback to text if TTS fails
-    try {
-      console.log(`📝 [${chatId}] Falling back to text message`);
-      await sendText(chatId, "📝 " + t, env);
-      console.log(`✅ [${chatId}] Fallback text message sent successfully`);
-    } catch (fallbackError) {
-      console.error(`❌ [${chatId}] Fallback text message also failed:`, fallbackError);
+      return true;
+    } catch (e) {
+      console.error(`❌ [${chatId}] TTS attempt ${attempts} failed:`, e.message);
+      
+      if (attempts >= maxAttempts) {
+        console.error(`🚫 [${chatId}] All TTS attempts exhausted, falling back to text`);
+        
+        // Fallback to text if all TTS attempts fail
+        try {
+          console.log(`📝 [${chatId}] Falling back to text message`);
+          await sendText(chatId, "📝 " + t, env);
+          console.log(`✅ [${chatId}] Fallback text message sent successfully`);
+          return true; // Text was sent successfully
+        } catch (fallbackError) {
+          console.error(`❌ [${chatId}] Fallback text message also failed:`, fallbackError);
+          return false;
+        }
+      }
+      
+      // Continue to next attempt
+      console.log(`🔄 [${chatId}] Retrying TTS generation...`);
     }
-    
-    return false;
   }
+  
+  // This should never be reached, but just in case
+  return false;
 }
 
 // Convert audio to Telegram-compatible format with Transloadit
