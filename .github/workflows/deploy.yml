@@ -112,6 +112,66 @@ jobs:
           echo "Проверка переменных после настройки..."
           npx wrangler secret list --env lesson0
 
+      # CRITICAL FIX: Setup main-lesson worker secrets (missing in production!)
+      - name: Setup main-lesson worker secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          echo "Setting up main-lesson worker secrets..."
+          
+          # Check existing secrets
+          echo "Checking current secrets for main-lesson..."
+          SECRETS=$(npx wrangler secret list --env main-lesson)
+          
+          if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
+            echo "Setting BOT_TOKEN for main-lesson..."
+            echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env main-lesson
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "OPENAI_KEY"; then
+            echo "Setting OPENAI_KEY for main-lesson..."
+            echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY --env main-lesson
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_KEY"; then
+            echo "Setting TRANSLOADIT_KEY for main-lesson..."
+            echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY --env main-lesson
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_TPL"; then
+            echo "Setting TRANSLOADIT_TPL for main-lesson..."
+            echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env main-lesson
+          fi
+          
+          # Check setup after deployment
+          echo "Verifying main-lesson secrets after setup..."
+          npx wrangler secret list --env main-lesson
+
+      # Setup telegram-webhook worker secrets  
+      - name: Setup telegram-webhook worker secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          echo "Setting up telegram-webhook worker secrets..."
+          
+          # Check existing secrets
+          echo "Checking current secrets for telegram-webhook..."
+          SECRETS=$(npx wrangler secret list --env webhook)
+          
+          if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
+            echo "Setting BOT_TOKEN for telegram-webhook..."
+            echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env webhook
+          fi
+          
+          if ! echo "$SECRETS" | grep -q "TRIBUTE_API_KEY"; then
+            echo "Setting TRIBUTE_API_KEY for telegram-webhook..."
+            echo "${{ secrets.TRIBUTE_API_KEY }}" | npx wrangler secret put TRIBUTE_API_KEY --env webhook
+          fi
+          
+          # Check setup after deployment
+          echo "Verifying telegram-webhook secrets after setup..."
+          npx wrangler secret list --env webhook
+
       # Информация о переменных для других воркеров
       - name: Note about other workers variables
         run: |
