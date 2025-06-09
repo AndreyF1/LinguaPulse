@@ -408,6 +408,30 @@ async function handleLessonStart(chatId, env, db, kv) {
     return new Response('OK');
   }
   
+  // CRITICAL CHECK: See if user already has an active session
+  const existingSessionKey = `main_session:${chatId}`;
+  const existingSession = await safeKvGet(kv, existingSessionKey);
+  
+  if (existingSession) {
+    // Check if the existing session is still active (within last 10 minutes)
+    const lastActivityKey = `main_last_activity:${chatId}`;
+    const lastActivity = await safeKvGet(kv, lastActivityKey);
+    
+    if (lastActivity) {
+      const lastActiveTime = parseInt(lastActivity, 10);
+      const now = Date.now();
+      
+      // If active within last 10 minutes, reuse existing session
+      if (now - lastActiveTime < 600000) {
+        console.log(`🔄 [${chatId}] Active session found (${existingSession}), continuing existing lesson`);
+        await sendText(chatId, "You already have an active lesson session. Let's continue!", env);
+        return new Response('OK');
+      } else {
+        console.log(`⏰ [${chatId}] Session ${existingSession} expired, creating new session`);
+      }
+    }
+  }
+  
   // If we get here, user can start the lesson
   console.log(`🚀 [${chatId}] Starting lesson for user with level: ${profile.eng_level}`);
   await sendText(chatId, "🎓 Your English lesson is starting...", env);
