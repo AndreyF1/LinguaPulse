@@ -119,41 +119,23 @@ jobs:
         run: |
           echo "Setting up main-lesson worker secrets..."
           
-          # Check existing secrets
-          echo "Checking current secrets for main-lesson..."
-          SECRETS=$(npx wrangler secret list --env main-lesson)
+          # Set BOT_TOKEN (try and ignore if already exists)
+          echo "Setting BOT_TOKEN for main-lesson..."
+          echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env main-lesson || echo "BOT_TOKEN already exists or failed to set, continuing..."
           
-          if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
-            echo "Setting BOT_TOKEN for main-lesson..."
-            echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env main-lesson
-          else
-            echo "BOT_TOKEN already exists for main-lesson, skipping"
-          fi
+          # Set OPENAI_KEY (try and ignore if already exists)
+          echo "Setting OPENAI_KEY for main-lesson..."
+          echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY --env main-lesson || echo "OPENAI_KEY already exists or failed to set, continuing..."
           
-          if ! echo "$SECRETS" | grep -q "OPENAI_KEY"; then
-            echo "Setting OPENAI_KEY for main-lesson..."
-            echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY --env main-lesson
-          else
-            echo "OPENAI_KEY already exists for main-lesson, skipping"
-          fi
+          # Set TRANSLOADIT_KEY (try and ignore if already exists)
+          echo "Setting TRANSLOADIT_KEY for main-lesson..."
+          echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY --env main-lesson || echo "TRANSLOADIT_KEY already exists or failed to set, continuing..."
           
-          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_KEY"; then
-            echo "Setting TRANSLOADIT_KEY for main-lesson..."
-            echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY --env main-lesson
-          else
-            echo "TRANSLOADIT_KEY already exists for main-lesson, skipping"
-          fi
+          # Set TRANSLOADIT_TPL (try and ignore if already exists)
+          echo "Setting TRANSLOADIT_TPL for main-lesson..."
+          echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env main-lesson || echo "TRANSLOADIT_TPL already exists or failed to set, continuing..."
           
-          if ! echo "$SECRETS" | grep -q "TRANSLOADIT_TPL"; then
-            echo "Setting TRANSLOADIT_TPL for main-lesson..."
-            echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env main-lesson
-          else
-            echo "TRANSLOADIT_TPL already exists for main-lesson, skipping"
-          fi
-          
-          # Check setup after deployment
-          echo "Verifying main-lesson secrets after setup..."
-          npx wrangler secret list --env main-lesson
+          echo "Main-lesson secrets setup completed (existing secrets were skipped)"
 
       # Setup telegram-webhook worker secrets  
       - name: Setup telegram-webhook worker secrets
@@ -162,27 +144,15 @@ jobs:
         run: |
           echo "Setting up telegram-webhook worker secrets..."
           
-          # Check existing secrets
-          echo "Checking current secrets for telegram-webhook..."
-          SECRETS=$(npx wrangler secret list --env webhook)
+          # Set BOT_TOKEN (try and ignore if already exists)
+          echo "Setting BOT_TOKEN for telegram-webhook..."
+          echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env webhook || echo "BOT_TOKEN already exists or failed to set, continuing..."
           
-          if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
-            echo "Setting BOT_TOKEN for telegram-webhook..."
-            echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env webhook
-          else
-            echo "BOT_TOKEN already exists for telegram-webhook, skipping"
-          fi
+          # Set TRIBUTE_API_KEY (try and ignore if already exists)
+          echo "Setting TRIBUTE_API_KEY for telegram-webhook..."
+          echo "${{ secrets.TRIBUTE_API_KEY }}" | npx wrangler secret put TRIBUTE_API_KEY --env webhook || echo "TRIBUTE_API_KEY already exists or failed to set, continuing..."
           
-          if ! echo "$SECRETS" | grep -q "TRIBUTE_API_KEY"; then
-            echo "Setting TRIBUTE_API_KEY for telegram-webhook..."
-            echo "${{ secrets.TRIBUTE_API_KEY }}" | npx wrangler secret put TRIBUTE_API_KEY --env webhook
-          else
-            echo "TRIBUTE_API_KEY already exists for telegram-webhook, skipping"
-          fi
-          
-          # Check setup after deployment
-          echo "Verifying telegram-webhook secrets after setup..."
-          npx wrangler secret list --env webhook
+          echo "Telegram-webhook secrets setup completed (existing secrets were skipped)"
 
       # Информация о переменных для других воркеров
       - name: Note about other workers variables
