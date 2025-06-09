@@ -34,7 +34,7 @@ export default {
       let update = {};
       try { 
         update = await request.json(); 
-        console.log(`Received update: ${JSON.stringify(update).substring(0, 200)}...`);
+        console.log(`📥 WEBHOOK RECEIVED: ${JSON.stringify(update).substring(0, 200)}...`);
       } catch (e) { 
         console.error("JSON parse error:", e);
         return new Response('Bad request', { status: 200 }); // Return 200 to Telegram even for bad requests
@@ -42,7 +42,19 @@ export default {
 
       const chatId = update.message?.chat?.id
                   || update.callback_query?.message?.chat?.id;
-      if (!chatId) return new Response('OK');
+      
+      console.log(`👤 Processing update for chatId: ${chatId}`);
+      console.log(`📝 Update type:`, {
+        hasMessage: !!update.message,
+        hasCallbackQuery: !!update.callback_query,
+        messageText: update.message?.text,
+        callbackData: update.callback_query?.data
+      });
+      
+      if (!chatId) {
+        console.log(`❌ No chatId found, ignoring update`);
+        return new Response('OK');
+      }
 
       // Handle /help command, unknown commands, and regular text messages
 const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help'];
@@ -520,10 +532,16 @@ return new Response('OK');
       // 2. handle lesson buttons
       if (update.callback_query?.data === 'lesson:free' || 
           update.callback_query?.data === 'lesson:start') {
+        
+        console.log(`🎯 CALLBACK RECEIVED: "${update.callback_query.data}" from user ${chatId}`);
+        console.log(`📊 Full callback query:`, JSON.stringify(update.callback_query));
+        
         // Acknowledge the callback query
         await callTelegram('answerCallbackQuery', {
           callback_query_id: update.callback_query.id
         }, env);
+        
+        console.log(`✅ Callback query acknowledged for: ${update.callback_query.data}`);
         
         // If this is the free lesson, handle it as before
         if (update.callback_query?.data === 'lesson:free') {
@@ -1552,12 +1570,15 @@ async function handleLessonCommand(chatId, env) {
     console.log(`User ${chatId} lesson available now, showing start lesson button`);
     // Lesson is available now
     message += '*Your next lesson is available now!*';
+    
+    console.log(`🎯 [${chatId}] About to send "Start lesson" button with callback_data: "lesson:start"`);
     await sendMessageWithSubscriptionCheck(chatId, message, env, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
       }
     });
+    console.log(`✅ [${chatId}] "Start lesson" button sent successfully`);
     
     console.log(`handleLessonCommand completed successfully for user ${chatId}`);
   } catch (error) {
