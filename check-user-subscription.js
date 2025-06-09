@@ -3,7 +3,7 @@
 // Quick script to check user subscription status in dev database
 // Usage: node check-user-subscription.js [telegram_user_id]
 
-const USER_ID = process.argv[2] || '7629847793'; // Default to your test user
+const USER_ID = process.argv[2] || '59156205'; // Default to your test user
 
 async function checkUserStatus() {
   console.log(`🔍 Checking subscription status for user ${USER_ID}...`);

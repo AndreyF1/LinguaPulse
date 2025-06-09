@@ -2,7 +2,7 @@
 // Receives every Telegram update on /tg and routes it to TEST or LESSON0
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // Просто логируем все доступные ключи в env для диагностики
     console.log(`[DEBUG] All available env keys:`, Object.keys(env || {}).join(', '));
     
@@ -695,13 +695,26 @@ return new Response('OK');
       if (update.callback_query?.data === 'test:payment' && env.DEV_MODE === 'true') {
         // Acknowledge the callback query
         await callTelegram('answerCallbackQuery', {
-          callback_query_id: update.callback_query.id
+          callback_query_id: update.callback_query.id,
+          text: "Processing payment..."
         }, env);
         
         console.log(`TEST PAYMENT button pressed by user ${chatId} in DEV mode`);
         
-        // Simulate successful payment by calling internal test webhook
-        return await simulateSuccessfulPayment(chatId, env);
+        // Send immediate processing message
+        await sendMessageViaTelegram(
+          chatId, 
+          "💳 *Processing your test payment...*\n\nPlease wait a moment while we confirm your subscription.", 
+          env
+        );
+        
+        // Schedule a delayed webhook to simulate successful payment after 3 seconds
+        // This mimics how real payment systems work - they send delayed notifications
+        ctx.waitUntil(
+          simulateDelayedPaymentWebhook(chatId, env)
+        );
+        
+        return new Response('OK');
       }
 
       // 4. receive end-of-lesson notification (if you choose to send it)
@@ -749,9 +762,15 @@ async function handleTributeWebhook(request, env) {
     }
     
     // Get the signature if available (for verification)
-    const signature = request.headers.get('trbt-signature');
+    const signature = request.headers.get('trbt-signature') || request.headers.get('X-Tribute-Signature');
     if (signature) {
       console.log('Provided signature:', signature);
+    }
+    
+    // Check if this is a dev mode test webhook
+    const isDevModeTest = env.DEV_MODE === 'true' && signature === 'test_signature_dev_mode';
+    if (isDevModeTest) {
+      console.log('🧪 Processing as DEV MODE test webhook');
     }
     
     // Get the raw payload
@@ -803,9 +822,10 @@ async function handleTributeWebhook(request, env) {
     let expiryDate = null;
     
     // Check if this is a new subscription by looking at the name field (Tribute specific)
-    if (event.name === 'new_subscription') {
+    // OR if this is a dev mode test with status "completed"
+    if (event.name === 'new_subscription' || (isDevModeTest && event.status === 'completed')) {
       isNewSubscription = true;
-      console.log('Identified as new subscription from event.name');
+      console.log('Identified as new subscription');
     }
     
     // Extract expiry date from the correct location (Tribute specific)
@@ -816,6 +836,12 @@ async function handleTributeWebhook(request, env) {
     else if (event.expires_at) {
       expiryDate = new Date(event.expires_at);
       console.log(`Found expires_at directly in event: ${event.expires_at}`);
+    }
+    // For dev mode test, calculate expiry based on subscription_duration_days
+    else if (isDevModeTest && event.subscription_duration_days) {
+      expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + event.subscription_duration_days);
+      console.log(`Dev mode: calculated expiry date from duration (${event.subscription_duration_days} days)`);
     }
     
     // Validate expiry date
@@ -1144,83 +1170,49 @@ async function handleTestSubscription(request, env) {
   }
 }
 
-// Simulate successful payment (DEV ONLY)
-async function simulateSuccessfulPayment(chatId, env) {
+// Simulate delayed payment webhook (DEV ONLY) - mimics real payment system behavior
+async function simulateDelayedPaymentWebhook(chatId, env) {
   try {
-    console.log(`=== SIMULATING SUCCESSFUL PAYMENT FOR USER ${chatId} ===`);
+    console.log(`⏰ Starting delayed payment simulation for user ${chatId}`);
     
-    // Create fake Tribute webhook payload  
-    const fakeWebhookPayload = {
-      name: "new_subscription",
-      payload: {
-        telegram_user_id: chatId,
-        subscription_id: `test_sub_${Date.now()}`,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
-        amount: 200,
-        currency: "EUR",
-        created_at: new Date().toISOString(),
-        status: "active"
-      },
-      timestamp: Math.floor(Date.now() / 1000),
-      webhook_id: `webhook_test_${Date.now()}`
+    // Wait 3 seconds to simulate payment processing time
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    console.log(`🎯 Sending simulated payment webhook for user ${chatId}`);
+    
+    // Create webhook payload that simulates successful payment
+    const webhookPayload = {
+      user_id: parseInt(chatId, 10),
+      amount: 200, // €2.00 in cents
+      currency: 'EUR',
+      status: 'completed',
+      subscription_type: 'weekly',
+      subscription_duration_days: 7,
+      payment_method: 'test_card',
+      transaction_id: `test_${Date.now()}_${chatId}`,
+      timestamp: new Date().toISOString()
     };
     
-    console.log('Simulating Tribute webhook payload:', JSON.stringify(fakeWebhookPayload));
+    // Send webhook to ourselves (simulate external payment notification)
+    const webhookUrl = `${env.WEBHOOK_BASE_URL || 'https://dev-telegram-webhook.andrei-alex.workers.dev'}/tribute-webhook`;
     
-    // Create fake request object
-    const fakeRequest = {
+    const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: new Map([
-        ['content-type', 'application/json'],
-        ['trbt-signature', `test_signature_${Date.now()}`]
-      ]),
-      text: async () => JSON.stringify(fakeWebhookPayload)
-    };
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tribute-Signature': 'test_signature_dev_mode' // Dev mode signature
+      },
+      body: JSON.stringify(webhookPayload)
+    });
     
-    // Call the actual webhook handler
-    const response = await handleTributeWebhook(fakeRequest, env);
-    
-    console.log(`Simulated payment webhook response status: ${response.status}`);
-    
-    if (response.status === 200) {
-      console.log(`✅ Payment simulation successful for user ${chatId}`);
-      
-      // После успешной активации тестовой подписки открываем канал (как делает настоящий Tribute)
-      setTimeout(async () => {
-        try {
-          await sendMessageViaTelegram(chatId, 
-            "🎯 *Welcome to the LinguaPulse community!*\n\n" +
-            "Join our Telegram channel to stay updated with English learning tips and connect with other learners:",
-            env,
-            { 
-              parse_mode: 'Markdown',
-              reply_markup: { 
-                inline_keyboard: [[{ text: "📢 Join Channel", url: "https://t.me/lingua_pulse" }]] 
-              }
-            }
-          );
-        } catch (channelError) {
-          console.error('Error sending channel invitation:', channelError);
-        }
-      }, 2000); // Отправляем через 2 секунды после уведомления о подписке
-      
+    if (response.ok) {
+      console.log(`✅ Delayed payment webhook sent successfully for user ${chatId}`);
     } else {
-      console.error(`❌ Payment simulation failed for user ${chatId}`);
+      console.error(`❌ Failed to send delayed payment webhook for user ${chatId}:`, await response.text());
     }
     
-    return new Response('OK');
-    
   } catch (error) {
-    console.error('Error in simulateSuccessfulPayment:', error);
-    
-    // Send error message to user
-    await sendMessageViaTelegram(chatId, 
-      `❌ *Payment simulation failed* (Dev Mode)\n\nError: ${error.message}`, 
-      env, 
-      { parse_mode: 'Markdown' }
-    );
-    
-    return new Response('OK');
+    console.error('Error in simulateDelayedPaymentWebhook:', error);
   }
 }
 

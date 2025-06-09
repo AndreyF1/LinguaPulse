@@ -155,8 +155,8 @@ export default {
           // Count assistant turns (not counting initial greeting)
           const botTurns = hist.filter(h => h.role === 'assistant').length;
           
-          // If we've already had 5-6 bot responses after greeting, end the lesson
-          if (botTurns >= 6) { // 1 greeting + 5 responses = 6 total
+          // If we've already had 9-10 bot responses after greeting, end the lesson
+          if (botTurns >= 10) { // 1 greeting + 9 responses = 10 total
             // Farewell message
             const bye = "That's all for today's lesson! You did great. Let's continue our practice tomorrow with new exercises. Have a wonderful day!";
             hist.push({ role: 'assistant', content: bye });
