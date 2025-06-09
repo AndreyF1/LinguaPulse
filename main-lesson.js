@@ -409,27 +409,41 @@ async function handleLessonStart(chatId, env, db, kv) {
   }
   
   // CRITICAL CHECK: See if user already has an active session
-  const existingSessionKey = `main_session:${chatId}`;
-  const existingSession = await safeKvGet(kv, existingSessionKey);
+  const existingSession = await safeKvGet(kv, `main_session:${chatId}`);
+  const existingActivity = await safeKvGet(kv, `main_last_activity:${chatId}`);
+  const existingHistory = await safeKvGet(kv, `main_hist:${chatId}`);
   
-  if (existingSession) {
-    // Check if the existing session is still active (within last 10 minutes)
-    const lastActivityKey = `main_last_activity:${chatId}`;
-    const lastActivity = await safeKvGet(kv, lastActivityKey);
+  console.log(`🔍 [${chatId}] Checking existing session data:`, {
+    session: !!existingSession,
+    activity: !!existingActivity, 
+    history: !!existingHistory
+  });
+  
+  // If we have any indication of active session, check if it's still valid
+  if (existingSession || existingActivity || existingHistory) {
     
-    if (lastActivity) {
-      const lastActiveTime = parseInt(lastActivity, 10);
+    // Check activity timestamp if it exists
+    if (existingActivity) {
+      const lastActiveTime = parseInt(existingActivity, 10);
       const now = Date.now();
+      const timeSinceActivity = now - lastActiveTime;
       
-      // If active within last 10 minutes, reuse existing session
-      if (now - lastActiveTime < 600000) {
-        console.log(`🔄 [${chatId}] Active session found (${existingSession}), continuing existing lesson`);
+      console.log(`🕐 [${chatId}] Time since last activity: ${timeSinceActivity}ms`);
+      
+      // If active within last 10 minutes, continue existing session
+      if (timeSinceActivity < 600000) {
+        console.log(`🔄 [${chatId}] Active session found, continuing existing lesson`);
         await sendText(chatId, "You already have an active lesson session. Let's continue!", env);
         return new Response('OK');
-      } else {
-        console.log(`⏰ [${chatId}] Session ${existingSession} expired, creating new session`);
       }
     }
+    
+    // If we have history but no recent activity, clean up old session
+    console.log(`🧹 [${chatId}] Cleaning up expired session data`);
+    await safeKvDelete(kv, `main_session:${chatId}`);
+    await safeKvDelete(kv, `main_hist:${chatId}`);
+    await safeKvDelete(kv, `main_last_activity:${chatId}`);
+    await safeKvDelete(kv, `main_user_level:${chatId}`);
   }
   
   // If we get here, user can start the lesson

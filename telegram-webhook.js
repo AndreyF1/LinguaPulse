@@ -346,53 +346,28 @@ return new Response('OK');
             return new Response('OK');
           }
           
-          // First check if it's a main lesson session
-          const mainSessionKey = `main_session:${chatId}`;
-          let mainSession = null;
+          // SIMPLIFIED: Check for ANY signs of main lesson session
+          console.log(`🔍 [${chatId}] Checking for main lesson session indicators`);
           
-          console.log(`🔍 [${chatId}] Checking CHAT_KV for ${mainSessionKey}`);
-          mainSession = await env.CHAT_KV.get(mainSessionKey);
+          // Check 1: Direct session key
+          const mainSession = await env.CHAT_KV.get(`main_session:${chatId}`);
           
-          if (mainSession) {
-            console.log(`✅ [${chatId}] Found active main-lesson session (${mainSession}), forwarding voice message to MAIN_LESSON`);
-            console.log(`📤 [${chatId}] Forwarding voice message to MAIN_LESSON worker`);
+          // Check 2: Last activity
+          const lastActivity = await env.CHAT_KV.get(`main_last_activity:${chatId}`);
+          
+          // Check 3: History 
+          const mainHist = await env.CHAT_KV.get(`main_hist:${chatId}`);
+          
+          console.log(`🔍 [${chatId}] Session indicators:`, {
+            session: !!mainSession,
+            activity: !!lastActivity,
+            history: !!mainHist
+          });
+          
+          // If we have ANY indication of main lesson session, forward to main-lesson
+          if (mainSession || lastActivity || mainHist) {
+            console.log(`✅ [${chatId}] Found main lesson indicators, forwarding to MAIN_LESSON`);
             return forward(env.MAIN_LESSON, update);
-          } else {
-            console.log(`❌ [${chatId}] No main-lesson session found in CHAT_KV`);
-            
-            // CRITICAL FIX: Also check last activity to see if session just expired
-            const lastActivityKey = `main_last_activity:${chatId}`;
-            const lastActivity = await env.CHAT_KV.get(lastActivityKey);
-            
-            if (lastActivity) {
-              const lastActiveTime = parseInt(lastActivity, 10);
-              const now = Date.now();
-              const timeSinceActivity = now - lastActiveTime;
-              
-              console.log(`🕐 [${chatId}] Last activity: ${timeSinceActivity}ms ago`);
-              
-              // If activity was very recent (less than 2 minutes), user is likely in session
-              if (timeSinceActivity < 120000) {
-                console.log(`🔄 [${chatId}] Recent activity detected, forwarding to MAIN_LESSON despite missing session key`);
-                return forward(env.MAIN_LESSON, update);
-              }
-            }
-            
-            // CRITICAL FIX: Also check if there's main lesson history
-            const mainHistKey = `main_hist:${chatId}`;
-            const mainHist = await env.CHAT_KV.get(mainHistKey);
-            
-            if (mainHist) {
-              try {
-                const hist = JSON.parse(mainHist);
-                if (Array.isArray(hist) && hist.length > 0) {
-                  console.log(`🔄 [${chatId}] Found main lesson history (${hist.length} messages), forwarding to MAIN_LESSON`);
-                  return forward(env.MAIN_LESSON, update);
-                }
-              } catch (e) {
-                console.error(`❌ [${chatId}] Error parsing main lesson history:`, e);
-              }
-            }
           }
           
           // If not found in main session, check for lesson0 session directly in CHAT_KV
