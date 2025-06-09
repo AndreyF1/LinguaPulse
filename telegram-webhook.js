@@ -696,23 +696,68 @@ return new Response('OK');
         // Acknowledge the callback query
         await callTelegram('answerCallbackQuery', {
           callback_query_id: update.callback_query.id,
-          text: "Processing payment..."
+          text: "Test payment activated!"
         }, env);
         
         console.log(`TEST PAYMENT button pressed by user ${chatId} in DEV mode`);
         
-        // Send immediate processing message
-        await sendMessageViaTelegram(
-          chatId, 
-          "💳 *Processing your test payment...*\n\nPlease wait a moment while we confirm your subscription.", 
-          env
-        );
-        
-        // Schedule a delayed webhook to simulate successful payment after 3 seconds
-        // This mimics how real payment systems work - they send delayed notifications
-        ctx.waitUntil(
-          simulateDelayedPaymentWebhook(chatId, env)
-        );
+        // Immediately activate subscription in database
+        try {
+          const now = new Date();
+          const subscribed_at = now.toISOString();
+          const expiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+          const subscription_expired_at = expiry.toISOString();
+          
+          // Make next lesson immediately available
+          const nextLessonDate = new Date(now.getTime() - 60000); // 1 minute ago
+          const next_lesson_access_at = nextLessonDate.toISOString();
+          
+          // Update user profile with subscription info
+          await env.USER_DB
+            .prepare(`
+              UPDATE user_profiles
+              SET subscribed_at = ?,
+                  subscription_expired_at = ?,
+                  next_lesson_access_at = ?
+              WHERE telegram_id = ?
+            `)
+            .bind(
+              subscribed_at,
+              subscription_expired_at,
+              next_lesson_access_at,
+              parseInt(chatId, 10)
+            )
+            .run();
+          
+          console.log(`✅ Test subscription activated in database for user ${chatId}`);
+          
+          // Send success message after activation
+          await sendMessageViaTelegram(
+            chatId,
+            "🎉 *Test subscription activated successfully!* (Dev Environment)\n\n" +
+            "Your 7-day test subscription is now active. You can now start your daily English lessons!",
+            env,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: { 
+                inline_keyboard: [
+                  [{ text: "Start Lesson Now", callback_data: "lesson:start" }]
+                ]
+              }
+            }
+          );
+          
+        } catch (error) {
+          console.error('Error activating test subscription:', error);
+          
+          // Send error message
+          await sendMessageViaTelegram(
+            chatId, 
+            `❌ *Test payment failed* (Dev Mode)\n\nError: ${error.message}`, 
+            env, 
+            { parse_mode: 'Markdown' }
+          );
+        }
         
         return new Response('OK');
       }
@@ -1167,52 +1212,6 @@ async function handleTestSubscription(request, env) {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
-  }
-}
-
-// Simulate delayed payment webhook (DEV ONLY) - mimics real payment system behavior
-async function simulateDelayedPaymentWebhook(chatId, env) {
-  try {
-    console.log(`⏰ Starting delayed payment simulation for user ${chatId}`);
-    
-    // Wait 3 seconds to simulate payment processing time
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    console.log(`🎯 Sending simulated payment webhook for user ${chatId}`);
-    
-    // Create webhook payload that simulates successful payment
-    const webhookPayload = {
-      user_id: parseInt(chatId, 10),
-      amount: 200, // €2.00 in cents
-      currency: 'EUR',
-      status: 'completed',
-      subscription_type: 'weekly',
-      subscription_duration_days: 7,
-      payment_method: 'test_card',
-      transaction_id: `test_${Date.now()}_${chatId}`,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Send webhook to ourselves (simulate external payment notification)
-    const webhookUrl = `${env.WEBHOOK_BASE_URL || 'https://dev-telegram-webhook.andrei-alex.workers.dev'}/tribute-webhook`;
-    
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Tribute-Signature': 'test_signature_dev_mode' // Dev mode signature
-      },
-      body: JSON.stringify(webhookPayload)
-    });
-    
-    if (response.ok) {
-      console.log(`✅ Delayed payment webhook sent successfully for user ${chatId}`);
-    } else {
-      console.error(`❌ Failed to send delayed payment webhook for user ${chatId}:`, await response.text());
-    }
-    
-  } catch (error) {
-    console.error('Error in simulateDelayedPaymentWebhook:', error);
   }
 }
 
