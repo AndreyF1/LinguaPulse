@@ -936,37 +936,126 @@ async function safeSendTTS(chatId, text, env) {
 
 // Convert audio to Telegram-compatible format with Transloadit
 async function encodeVoipWithTransloadit(buf, env) {
+  console.log("Starting Transloadit encoding, input buffer size:", buf.byteLength);
+  
+  // Расширенное логирование для диагностики
+  console.log("Checking Transloadit credentials:");
+  console.log("TRANSLOADIT_KEY exists:", !!env.TRANSLOADIT_KEY);
+  console.log("TRANSLOADIT_KEY length:", env.TRANSLOADIT_KEY ? env.TRANSLOADIT_KEY.length : 0);
+  console.log("TRANSLOADIT_TPL exists:", !!env.TRANSLOADIT_TPL);
+  console.log("TRANSLOADIT_TPL length:", env.TRANSLOADIT_TPL ? env.TRANSLOADIT_TPL.length : 0);
+  console.log("TRANSLOADIT_TPL value:", env.TRANSLOADIT_TPL ? env.TRANSLOADIT_TPL.substring(0, 5) + "..." : "null");
+  
+  // Проверка необходимых переменных окружения
+  if (!env.TRANSLOADIT_KEY || !env.TRANSLOADIT_TPL) {
+    console.error("Missing Transloadit credentials. TRANSLOADIT_KEY or TRANSLOADIT_TPL not set.");
+    throw new Error("Transloadit configuration missing");
+  }
+  
   const params = { 
     auth: { key: env.TRANSLOADIT_KEY }, 
     template_id: env.TRANSLOADIT_TPL, 
     fields: { filename: 'src.ogg' } 
   };
   
+  console.log("Transloadit params:", JSON.stringify({
+    template_id: env.TRANSLOADIT_TPL,
+    key_length: env.TRANSLOADIT_KEY ? env.TRANSLOADIT_KEY.length : 0
+  }));
+  
   const fd = new FormData();
   fd.append('params', JSON.stringify(params));
   fd.append('file', new File([buf], 'src.ogg', { type: 'audio/ogg' }));
   
-  const init = await (
-    await fetch('https://api2.transloadit.com/assemblies', { 
+  console.log("Sending request to Transloadit API");
+  let initResponse;
+  try {
+    const response = await fetch('https://api2.transloadit.com/assemblies', { 
       method: 'POST', 
       body: fd 
-    })
-  ).json();
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Transloadit API response error:", response.status, errorText);
+      throw new Error(`Transloadit API error: ${response.status} ${errorText}`);
+    }
+    
+    initResponse = await response.json();
+    console.log("Transloadit assembly initiated:", initResponse.assembly_id);
+  } catch (error) {
+    console.error("Error initiating Transloadit assembly:", error);
+    throw new Error(`Transloadit assembly initiation failed: ${error.message}`);
+  }
   
-  const done = await waitAssembly(init.assembly_ssl_url, 90000);
-  const url = done.results['encoded-audio'][0].ssl_url;
-  return (await fetch(url)).arrayBuffer();
+  try {
+    console.log("Waiting for Transloadit assembly to complete...");
+    const done = await waitAssembly(initResponse.assembly_ssl_url, 90000);
+    
+    if (!done.results || !done.results['encoded-audio'] || !done.results['encoded-audio'][0]) {
+      console.error("Invalid Transloadit result structure:", JSON.stringify(done));
+      throw new Error("Invalid Transloadit result");
+    }
+    
+    const url = done.results['encoded-audio'][0].ssl_url;
+    console.log("Transloadit processing complete, downloading result from:", url);
+    
+    const audioResponse = await fetch(url);
+    if (!audioResponse.ok) {
+      throw new Error(`Error downloading processed audio: ${audioResponse.status}`);
+    }
+    
+    const audioBuffer = await audioResponse.arrayBuffer();
+    console.log("Downloaded processed audio, size:", audioBuffer.byteLength);
+    return audioBuffer;
+  } catch (error) {
+    console.error("Error in Transloadit processing:", error);
+    throw new Error(`Transloadit processing failed: ${error.message}`);
+  }
 }
 
 // Wait for Transloadit assembly to complete
 async function waitAssembly(url, ms) {
+  console.log("Polling Transloadit assembly status at:", url);
   const start = Date.now();
+  let lastStatus = "";
+  
   while (Date.now() - start < ms) {
-    const j = await (await fetch(url)).json();
-    if (j.ok === 'ASSEMBLY_COMPLETED') return j;
-    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error("Error fetching assembly status:", response.status);
+        throw new Error(`Assembly status error: ${response.status}`);
+      }
+      
+      const j = await response.json();
+      
+      // Log only if status changed
+      if (j.ok !== lastStatus) {
+        console.log("Transloadit assembly status:", j.ok, 
+                    j.message ? `(${j.message})` : "",
+                    j.error ? `ERROR: ${j.error}` : "");
+        lastStatus = j.ok;
+      }
+      
+      if (j.ok === 'ASSEMBLY_COMPLETED') {
+        console.log("Transloadit assembly completed successfully");
+        return j;
+      }
+      
+      if (j.error) {
+        throw new Error(`Assembly error: ${j.error}`);
+      }
+      
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (error) {
+      console.error("Error polling assembly status:", error);
+      // Continue polling despite errors
+      await new Promise(r => setTimeout(r, 2000));
+    }
   }
-  throw new Error('Transloadit timeout');
+  
+  throw new Error(`Transloadit timeout after ${ms}ms`);
 }
 
 // Generate TTS with OpenAI
