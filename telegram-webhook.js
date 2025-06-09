@@ -62,8 +62,8 @@ const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help'];
 if (update.message?.text) {
   if (update.message.text === '/help' || 
       !supportedCommands.some(cmd => update.message.text.startsWith(cmd))) {
-    await sendMessageWithSubscriptionCheck(chatId, 
-      '🤖 *LinguaPulse Bot Commands:*\n\n' +
+    
+    const helpMessage = '🤖 *LinguaPulse Bot Commands:*\n\n' +
       '*/start* - Begin the language placement test or see your profile\n' +
       '*/profile* - View your language level and progress\n' +
       '*/lesson* - Access your lessons and subscription status\n' +
@@ -73,9 +73,19 @@ if (update.message?.text) {
       '• Send voice messages during the lesson to practice speaking\n' +
       '• The AI tutor may take a few seconds to think and respond\n' +
       '• Lessons end automatically\n' +
-      '• You\'ll receive personalized grammar and vocabulary feedback after each lesson', 
-      env,
-      { parse_mode: 'Markdown' });
+      '• You\'ll receive personalized grammar and vocabulary feedback after each lesson';
+    
+    // Check if user has active subscription
+    const userHasActiveSubscription = await hasActiveSubscription(chatId, env);
+    
+    if (userHasActiveSubscription) {
+      // For subscribed users, don't show subscription buttons
+      await sendMessageViaTelegram(chatId, helpMessage, env, { parse_mode: 'Markdown' });
+    } else {
+      // For non-subscribed users, show subscription options
+      await sendMessageWithSubscriptionCheck(chatId, helpMessage, env, { parse_mode: 'Markdown' });
+    }
+    
     return new Response('OK');
   }
 }
@@ -147,7 +157,7 @@ if (update.message?.text) {
         const profile = results[0] || {};
         
         if (!profile.eng_level) {
-          await sendMessageWithSubscriptionCheck(chatId, 
+          await sendMessageViaTelegram(chatId, 
             '📝 *You haven\'t taken the placement test yet.* Use /start to begin.', env, { parse_mode: 'Markdown' });
         } else {
           // Basic profile info
@@ -167,8 +177,14 @@ if (update.message?.text) {
             `📚 *Total lessons:* ${lessonsTotal}\n` +
             `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
           
-          // Show profile with appropriate options based on subscription status
+                  // Show profile with appropriate options based on subscription status
+        if (hasActiveSubscription) {
+          // For subscribed users, don't show subscription buttons
+          await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
+        } else {
+          // For non-subscribed users, show subscription options
           await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+        }
         }
         
         return new Response('OK');
@@ -218,7 +234,7 @@ return new Response('OK');
               // Subscription is active, check if lesson is available
               if (profile.next_lesson_access_at && (new Date(profile.next_lesson_access_at) <= now)) {
                 // Lesson is available, offer to start it
-                await sendMessageWithSubscriptionCheck(chatId,
+                await sendMessageViaTelegram(chatId,
                   "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
                   env,
                   { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
@@ -228,10 +244,7 @@ return new Response('OK');
               // Subscription inactive or expired, offer to subscribe
               const channelLink = env.TRIBUTE_CHANNEL_LINK;
               if (channelLink) {
-                await sendMessageWithSubscriptionCheck(chatId,
-                  "Welcome back! Your subscription has expired. Subscribe again to continue learning.",
-                  env,
-                  { reply_markup: { inline_keyboard: [[{ text: "Subscribe for €2/week", url: channelLink }]] }});
+                await sendTributeChannelLink(chatId, env);
                 return new Response('OK');
               }
             }
@@ -402,9 +415,10 @@ return new Response('OK');
               // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test  
               if (!results[0].eng_level) {
                 console.log(`User ${chatId} hasn't completed placement test, directing to test`);
-                message += 'You need to complete the placement test first to determine your English level.';
-                await sendMessageWithSubscriptionCheck(chatId, message, env);
-                return;
+                await sendMessageViaTelegram(chatId, 
+                  'You need to complete the placement test first to determine your English level. Use /start to begin.', 
+                  env);
+                return new Response('OK');
               }
               
               // Если у пользователя уже пройден бесплатный урок
@@ -485,7 +499,7 @@ return new Response('OK');
           
           // If user hasn't taken the test yet
           if (!results.length || !results[0].eng_level) {
-            await sendMessageWithSubscriptionCheck(chatId, 
+            await sendMessageViaTelegram(chatId, 
               "Please use /start to begin the placement test so I can determine your English level.", 
               env);
             return new Response('OK');
@@ -506,13 +520,13 @@ return new Response('OK');
               if (nextLessonAt > now) {
                 // Next lesson in the future - tell user when it will be available
                 const timeUntil = formatTimeUntil(nextLessonAt);
-                await sendMessageWithSubscriptionCheck(chatId,
+                await sendMessageViaTelegram(chatId,
                   `Your next lesson will be available in ${timeUntil}. You can use /profile to see your progress.`,
                   env);
                 return new Response('OK');
               } else {
                 // Lesson is available now - suggest starting it
-                await sendMessageWithSubscriptionCheck(chatId,
+                await sendMessageViaTelegram(chatId,
                   "Your next lesson is available now! Would you like to start?",
                   env,
                   { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
@@ -521,9 +535,7 @@ return new Response('OK');
             }
           } else {
             // No active subscription - send message with subscription button
-            await sendMessageWithSubscriptionCheck(chatId,
-              "To continue with your English lessons, you need an active subscription. Subscribe now for daily speaking practice!",
-              env);
+            await sendTributeChannelLink(chatId, env);
             return new Response('OK');
           }
         }
@@ -646,7 +658,7 @@ return new Response('OK');
           .all();
         
         if (!results.length) {
-          await sendMessageWithSubscriptionCheck(chatId, 
+          await sendMessageViaTelegram(chatId, 
             'You need to take the placement test first. Use /start to begin.', env);
           return new Response('OK');
         }
@@ -889,7 +901,7 @@ async function handleTributeWebhook(request, env) {
         // Notify user about successful subscription
         try {
           console.log(`Sending notification to user ${userId}`);
-          await sendMessageWithSubscriptionCheck(userId,
+          await sendMessageViaTelegram(userId,
             "🎉 *Your subscription has been activated!* You now have access to daily personalized English lessons.",
             env,
             { 
@@ -1079,7 +1091,7 @@ async function handleTestSubscription(request, env) {
       console.log('Test subscription updated successfully for user:', userId);
       
       // Notify user
-      await sendMessageWithSubscriptionCheck(userId,
+      await sendMessageViaTelegram(userId,
         "🎉 *Test subscription activated!* (Dev Environment)\n\n" +
         "Your 7-day test subscription is now active. You have access to daily personalized English lessons.",
         env,
