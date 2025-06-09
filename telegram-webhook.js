@@ -1596,7 +1596,8 @@ async function handleLessonCommand(chatId, env) {
       // Format the time until next lesson
       const timeUntil = formatTimeUntil(nextLessonAt);
       message += `Your next lesson will be available in *${timeUntil}*.`;
-      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+      // CRITICAL FIX: Use sendMessageViaTelegram because user already has active subscription
+      await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
       return;
     }
     
@@ -1605,7 +1606,9 @@ async function handleLessonCommand(chatId, env) {
     message += '*Your next lesson is available now!*';
     
     console.log(`🎯 [${chatId}] About to send "Start lesson" button with callback_data: "lesson:start"`);
-    await sendMessageWithSubscriptionCheck(chatId, message, env, {
+    // CRITICAL FIX: Use sendMessageViaTelegram instead of sendMessageWithSubscriptionCheck
+    // because we already confirmed the user has active subscription above
+    await sendMessageViaTelegram(chatId, message, env, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
