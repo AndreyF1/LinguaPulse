@@ -385,16 +385,15 @@ async function handleLessonStart(chatId, env, db, kv) {
   const hasActiveSubscription = profile.subscription_expired_at && 
                                (new Date(profile.subscription_expired_at) > now);
                                
-  // Check if next lesson is available
-  const lessonAvailable = profile.next_lesson_access_at && 
-                          (new Date(profile.next_lesson_access_at) <= now);
-  
-  // Both conditions must be true to start the lesson
   if (!hasActiveSubscription) {
     // No active subscription - send subscription link
     await sendSubscriptionMessage(chatId, env);
     return new Response('OK');
   }
+  
+  // Check if next lesson is available (null means available immediately)
+  const lessonAvailable = !profile.next_lesson_access_at || 
+                          (new Date(profile.next_lesson_access_at) <= now);
   
   if (!lessonAvailable) {
     // Subscription active but lesson not yet available
@@ -535,28 +534,34 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
     
     switch(userLevel) {
       case 'A1':
-        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short, basic sentences. Speak slowly and clearly. Ask only one simple question at a time. Focus on everyday topics the student would be familiar with.";
+        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short sentences. Ask about basic everyday topics like: daily routine, family, hobbies, food, weather, or simple personal preferences.";
         break;
       case 'A2':
-        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary and straightforward sentences. Ask one clear question at a time. Focus on familiar topics and everyday situations.";
+        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary. Ask about familiar topics like: work/studies, travel experiences, weekend plans, favorite activities, or personal experiences.";
         break;
       case 'B1':
-        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and sentence structures. You can ask one or two related questions. Discuss a range of familiar and some unfamiliar topics.";
+        levelPrompt = "The student is at intermediate level (B1). Ask about practical topics like: current events (simple), personal goals, lifestyle choices, cultural differences, or memorable experiences.";
         break;
       case 'B2':
-        levelPrompt = "The student is at upper-intermediate level (B2). Use natural language with varied vocabulary and sentence structures. You can ask related questions on a variety of topics including abstract concepts.";
+        levelPrompt = "The student is at upper-intermediate level (B2). Ask about topics like: career aspirations, social issues, technology in daily life, personal development, or interesting current events.";
         break;
       case 'C1':
       case 'C2':
-        levelPrompt = "The student is at advanced level (C1/C2). Use sophisticated vocabulary and complex sentences. You can ask challenging questions on any topic, including abstract and specialized subjects.";
+        levelPrompt = "The student is at advanced level (C1/C2). Ask about topics like: professional challenges, societal trends, personal insights, creative pursuits, or thought-provoking but accessible subjects.";
         break;
       default:
-        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and sentence structures. You can ask one or two related questions. Discuss a range of familiar and some unfamiliar topics.";
+        levelPrompt = "The student is at intermediate level (B1). Ask about practical topics like: current events (simple), personal goals, lifestyle choices, cultural differences, or memorable experiences.";
     }
     
     console.log(`🤖 [${chatId}] Calling OpenAI GPT for greeting generation`);
     
-    const prompt = `Generate a friendly, conversational opening greeting for an English language practice session with a subscriber. ${levelPrompt} Make the greeting engaging and personalized. Ask a thoughtful question to start the conversation naturally. Keep your response between 1-3 sentences total.`;
+    const prompt = `Generate a warm, friendly greeting for a casual English conversation practice. ${levelPrompt} 
+
+Keep it simple and conversational - like chatting with a friend. Ask ONE simple, relatable question that anyone could easily answer. Avoid complex, philosophical, or abstract topics.
+
+Examples of good questions: "How has your day been?", "What did you do this weekend?", "What's your favorite way to relax?"
+
+Keep your greeting to 1-2 sentences maximum.`;
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -658,20 +663,20 @@ async function chatGPT(history, env, userLevel = "B1", chatId = 'unknown') {
     
     switch(userLevel) {
       case 'A1':
-        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short sentences. Speak slowly and clearly with basic grammar. Focus on everyday topics.";
+        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short sentences. Keep to basic everyday topics like family, food, hobbies.";
         break;
       case 'A2':
-        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary and straightforward sentences. Focus on familiar topics and everyday situations.";
+        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary. Focus on familiar topics like work, travel, daily activities.";
         break;
       case 'B1':
-        levelPrompt = "The student is at intermediate level (B1). Use moderately complex vocabulary and sentence structures. Discuss a range of familiar and some unfamiliar topics.";
+        levelPrompt = "The student is at intermediate level (B1). Discuss practical topics like personal experiences, current events (simple), lifestyle choices.";
         break;
       case 'B2':
-        levelPrompt = "The student is at upper-intermediate level (B2). Use natural language with varied vocabulary and sentence structures. Discuss a variety of topics including abstract concepts.";
+        levelPrompt = "The student is at upper-intermediate level (B2). Discuss topics like career, social trends, technology use, personal development.";
         break;
       case 'C1':
       case 'C2':
-        levelPrompt = "The student is at advanced level (C1/C2). Use sophisticated vocabulary and complex sentences. Discuss any topic, including abstract and specialized subjects.";
+        levelPrompt = "The student is at advanced level (C1/C2). Discuss interesting topics like professional challenges, cultural insights, creative pursuits.";
         break;
     }
     
