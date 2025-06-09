@@ -180,17 +180,17 @@ if (update.message?.text === '/lesson' ||
 try {
 console.log(`Calling handleLessonCommand for user ${chatId}`);
 await handleLessonCommand(chatId, env);
-} catch (error) {
-console.error(`Error handling /lesson command for user ${chatId}:`, error);
-// Fallback response in case of error
-try {
-  await sendMessageWithSubscriptionCheck(chatId, 
-    "Sorry, there was an error processing your command. Please try again later or contact support.", 
-    env);
-} catch (sendError) {
-  console.error("Failed to send error message:", sendError);
-}
-}
+      } catch (error) {
+        console.error(`Error handling /lesson command for user ${chatId}:`, error);
+        // Fallback response in case of error
+        try {
+          await sendMessageViaTelegram(chatId, 
+            "Sorry, there was an error processing your command. Please try again later or contact support.", 
+            env);
+        } catch (sendError) {
+          console.error("Failed to send error message:", sendError);
+        }
+      }
 return new Response('OK');
 }
       
@@ -1523,7 +1523,7 @@ async function handleLessonCommand(chatId, env) {
     
     if (!results.length) {
       console.log(`User ${chatId} not found, sending test message`);
-      await sendMessageWithSubscriptionCheck(chatId, 
+      await sendMessageViaTelegram(chatId, 
         'You need to take the placement test first. Use /start to begin.', env);
       return;
     }
@@ -1561,14 +1561,14 @@ async function handleLessonCommand(chatId, env) {
       if (!profile.eng_level) {
         console.log(`User ${chatId} hasn't completed placement test, directing to test`);
         message += 'You need to complete the placement test first to determine your English level.';
-        await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+        await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
         return;
       }
       
       // Free lesson not taken yet - show button
       console.log(`User ${chatId} has completed test, showing free lesson button`);
       message += 'You haven\'t taken your free introductory lesson yet.';
-      await sendMessageWithSubscriptionCheck(chatId, message, env, {
+      await sendMessageViaTelegram(chatId, message, env, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
@@ -1584,7 +1584,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
       // No active subscription or it's expired - show subscribe button to Tribute channel
       message += 'Your subscription has expired or you haven\'t subscribed yet.';
-      await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+      await sendTributeChannelLink(chatId, env);
       return;
     }
     
@@ -1621,7 +1621,7 @@ async function handleLessonCommand(chatId, env) {
     console.error(`Error in handleLessonCommand for user ${chatId}:`, error);
     // Try to send a fallback message
     try {
-      await sendMessageWithSubscriptionCheck(chatId, 
+      await sendMessageViaTelegram(chatId, 
         "Sorry, there was an error processing your command. Please try again later or contact support.", 
         env);
     } catch (sendError) {
