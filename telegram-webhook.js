@@ -359,6 +359,40 @@ return new Response('OK');
             return forward(env.MAIN_LESSON, update);
           } else {
             console.log(`❌ [${chatId}] No main-lesson session found in CHAT_KV`);
+            
+            // CRITICAL FIX: Also check last activity to see if session just expired
+            const lastActivityKey = `main_last_activity:${chatId}`;
+            const lastActivity = await env.CHAT_KV.get(lastActivityKey);
+            
+            if (lastActivity) {
+              const lastActiveTime = parseInt(lastActivity, 10);
+              const now = Date.now();
+              const timeSinceActivity = now - lastActiveTime;
+              
+              console.log(`🕐 [${chatId}] Last activity: ${timeSinceActivity}ms ago`);
+              
+              // If activity was very recent (less than 2 minutes), user is likely in session
+              if (timeSinceActivity < 120000) {
+                console.log(`🔄 [${chatId}] Recent activity detected, forwarding to MAIN_LESSON despite missing session key`);
+                return forward(env.MAIN_LESSON, update);
+              }
+            }
+            
+            // CRITICAL FIX: Also check if there's main lesson history
+            const mainHistKey = `main_hist:${chatId}`;
+            const mainHist = await env.CHAT_KV.get(mainHistKey);
+            
+            if (mainHist) {
+              try {
+                const hist = JSON.parse(mainHist);
+                if (Array.isArray(hist) && hist.length > 0) {
+                  console.log(`🔄 [${chatId}] Found main lesson history (${hist.length} messages), forwarding to MAIN_LESSON`);
+                  return forward(env.MAIN_LESSON, update);
+                }
+              } catch (e) {
+                console.error(`❌ [${chatId}] Error parsing main lesson history:`, e);
+              }
+            }
           }
           
           // If not found in main session, check for lesson0 session directly in CHAT_KV
