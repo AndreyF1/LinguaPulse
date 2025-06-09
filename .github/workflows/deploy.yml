@@ -126,21 +126,29 @@ jobs:
           if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
             echo "Setting BOT_TOKEN for main-lesson..."
             echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env main-lesson
+          else
+            echo "BOT_TOKEN already exists for main-lesson, skipping"
           fi
           
           if ! echo "$SECRETS" | grep -q "OPENAI_KEY"; then
             echo "Setting OPENAI_KEY for main-lesson..."
             echo "${{ secrets.OPENAI_KEY }}" | npx wrangler secret put OPENAI_KEY --env main-lesson
+          else
+            echo "OPENAI_KEY already exists for main-lesson, skipping"
           fi
           
           if ! echo "$SECRETS" | grep -q "TRANSLOADIT_KEY"; then
             echo "Setting TRANSLOADIT_KEY for main-lesson..."
             echo "${{ secrets.TRANSLOADIT_KEY }}" | npx wrangler secret put TRANSLOADIT_KEY --env main-lesson
+          else
+            echo "TRANSLOADIT_KEY already exists for main-lesson, skipping"
           fi
           
           if ! echo "$SECRETS" | grep -q "TRANSLOADIT_TPL"; then
             echo "Setting TRANSLOADIT_TPL for main-lesson..."
             echo "${{ secrets.TRANSLOADIT_TPL }}" | npx wrangler secret put TRANSLOADIT_TPL --env main-lesson
+          else
+            echo "TRANSLOADIT_TPL already exists for main-lesson, skipping"
           fi
           
           # Check setup after deployment
@@ -161,11 +169,15 @@ jobs:
           if ! echo "$SECRETS" | grep -q "BOT_TOKEN"; then
             echo "Setting BOT_TOKEN for telegram-webhook..."
             echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env webhook
+          else
+            echo "BOT_TOKEN already exists for telegram-webhook, skipping"
           fi
           
           if ! echo "$SECRETS" | grep -q "TRIBUTE_API_KEY"; then
             echo "Setting TRIBUTE_API_KEY for telegram-webhook..."
             echo "${{ secrets.TRIBUTE_API_KEY }}" | npx wrangler secret put TRIBUTE_API_KEY --env webhook
+          else
+            echo "TRIBUTE_API_KEY already exists for telegram-webhook, skipping"
           fi
           
           # Check setup after deployment
