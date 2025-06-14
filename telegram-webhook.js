@@ -57,7 +57,23 @@ export default {
       }
 
       // Handle /help command, unknown commands, and regular text messages
-const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help'];
+const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help', '/feedback'];
+
+// Handle /feedback command
+if (update.message?.text === '/feedback') {
+  await sendMessageViaTelegram(chatId, 
+    "💬 *Join our feedback channel to share your thoughts and suggestions!*\n\n" +
+    "Your feedback helps us improve LinguaPulse and make it better for everyone.",
+    env,
+    { 
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: "Join Feedback Channel", url: "https://t.me/+sBmchJHjPKwyMDVi" }]]
+      }
+    }
+  );
+  return new Response('OK');
+}
 
 if (update.message?.text) {
   if (update.message.text === '/help' || 
