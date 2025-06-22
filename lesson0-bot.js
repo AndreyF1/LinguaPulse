@@ -6,8 +6,9 @@
 
 export default {
   async fetch(request, env, ctx) {
+    let raw; // Declared here to be accessible in the final catch block
     try {
-      const raw = await request.json();
+      raw = await request.json();
       console.log('Lesson0-bot raw update:', JSON.stringify(raw).substring(0, 500) + '...');
       const chatId = raw.user_id || raw.message?.chat?.id;
       if (!chatId) return new Response('OK');
