@@ -84,6 +84,7 @@ if (update.message?.text) {
       '*/profile* - View your language level and progress\n' +
       '*/lesson* - Access your lessons and subscription status\n' +
       '*/talk* - Start today\'s lesson (for subscribers)\n' +
+      '*/feedback* - Share your thoughts and suggestions\n' +
       '*/help* - Show this help message\n\n' +
       '💡 *Did you know?* Just 10-15 minutes of conversation practice daily can improve your English skills more than years of study without regular speaking practice!\n\n' +
       '• Send voice messages during the lesson to practice speaking\n' +
@@ -268,17 +269,17 @@ return new Response('OK');
           }
         }
         
-        // Check if user has completed onboarding
-        const { results: onboardingResults } = await env.USER_DB
-          .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+        // Check if user has completed the FULL onboarding (survey)
+        const { results: surveyResults } = await env.USER_DB
+          .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
           .bind(parseInt(chatId, 10))
           .all();
-        
-        if (onboardingResults.length === 0) {
-          // New user - start onboarding funnel
-          console.log(`New user ${chatId}, starting onboarding funnel`);
+
+        if (surveyResults.length === 0 || !surveyResults[0].completed_at) {
+          // User has NOT completed onboarding, or hasn't even started.
+          // Route to newbies-funnel.
+          console.log(`User ${chatId} has not completed onboarding, routing to NEWBIES_FUNNEL.`);
           
-          // Check if NEWBIES_FUNNEL worker is available
           if (!env.NEWBIES_FUNNEL) {
             console.error(`NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);
             await sendMessageViaTelegram(chatId, 
@@ -286,9 +287,7 @@ return new Response('OK');
               env);
             return new Response('OK');
           }
-          
-          // Forward to NEWBIES_FUNNEL for onboarding
-          console.log("Forwarding to NEWBIES_FUNNEL for onboarding");
+
           return forward(env.NEWBIES_FUNNEL, {
             user_id: chatId,
             action: 'start_onboarding'
@@ -296,7 +295,7 @@ return new Response('OK');
         }
         
         // User has completed onboarding - show lesson options
-        console.log(`User ${chatId} completed onboarding, showing lesson options`);
+        console.log(`User ${chatId} has completed onboarding, calling handleLessonCommand.`);
         await handleLessonCommand(chatId, env);
         return new Response('OK');
       }
@@ -671,8 +670,21 @@ return new Response('OK');
       console.log("Forwarding to NEWBIES_FUNNEL as default action");
       return forward(env.NEWBIES_FUNNEL, update);
     } catch (error) {
-      console.error("Unhandled error in telegram-webhook:", error);
-      // Always return 200 OK to Telegram webhook to avoid retries
+      console.error("Unhandled error in telegram-webhook:", error, error.stack);
+      
+      // Try to inform the user about the error
+      try {
+        const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
+        if (chatId) {
+          await sendMessageViaTelegram(chatId, 
+            "⚙️ Sorry, a technical error occurred. Please try your request again in a moment. If the problem persists, you can use /start to begin again.", 
+            env);
+        }
+      } catch (sendError) {
+        console.error("Fatal: Failed to send error message to user:", sendError);
+      }
+      
+      // Always return 200 OK to Telegram to avoid retries and getting banned
       return new Response('OK');
     }
   }

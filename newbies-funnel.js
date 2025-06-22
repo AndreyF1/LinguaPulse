@@ -14,28 +14,50 @@ export default {
 
       // A) Start onboarding funnel trigger
       if (raw.action === 'start_onboarding') {
-        console.log(`Starting onboarding funnel for user ${chatId}`);
+        console.log(`Starting/resuming onboarding for user ${chatId}`);
         
-        // Check if user already completed onboarding
-        const { results } = await db.prepare(
-          `SELECT interface_language FROM user_preferences 
-           WHERE telegram_id = ?`
+        // First, check if survey is already complete in DB
+        const { results: surveyResults } = await db.prepare(
+          `SELECT completed_at FROM user_survey WHERE telegram_id = ?`
         )
         .bind(parseInt(chatId, 10))
         .all();
-        
-        if (results.length > 0 && results[0].interface_language) {
-          console.log(`User ${chatId} already completed onboarding, redirecting to main flow`);
-          // User already completed onboarding, redirect to main flow
+
+        if (surveyResults.length > 0 && surveyResults[0].completed_at) {
+          // This case should be handled by telegram-webhook, but as a fallback:
+          console.log(`User ${chatId} already completed survey, sending welcome back.`);
           await sendText(
             chatId, 
-            "Welcome back! Use /start to begin your English learning journey.",
+            "Welcome back! Use /lesson to see your learning options.",
             env
           );
           return new Response('OK');
         }
-        
-        // Send welcome message in both languages
+
+        // Check if they are in the middle of a survey (state in KV)
+        const surveyStateRaw = await kv.get(`survey:${chatId}`);
+        if (surveyStateRaw) {
+          const surveyState = JSON.parse(surveyStateRaw);
+          console.log(`User ${chatId} is resuming survey at question: ${surveyState.currentQuestion}`);
+          await showSurveyQuestion(chatId, surveyState.currentQuestion, surveyState.language, env);
+          return new Response('OK');
+        }
+
+        // Check if they have selected a language but not started survey (no state in KV)
+        const { results: prefResults } = await db.prepare(
+          `SELECT interface_language FROM user_preferences WHERE telegram_id = ?`
+        )
+        .bind(parseInt(chatId, 10))
+        .all();
+
+        if (prefResults.length > 0 && prefResults[0].interface_language) {
+          console.log(`User ${chatId} selected language but survey not in KV. Starting survey now.`);
+          await startMiniSurvey(chatId, prefResults[0].interface_language, env);
+          return new Response('OK');
+        }
+
+        // If nothing else, they are a brand new user. Send language selection.
+        console.log(`User ${chatId} is brand new. Sending language selection.`);
         const welcomeMessage = 
           "👋 Привет! Я LinguaPulse, AI учитель, созданный для помощи в изучении английского языка.\n\n" +
           "Hello! I'm LinguaPulse, an AI teacher created to help you learn English.\n\n" +
