@@ -115,6 +115,21 @@ export default {
           callback_query_id: raw.callback_query.id
         }, env);
         
+        // Check if user has completed the survey first
+        const { results: surveyResults } = await db.prepare(
+          `SELECT * FROM user_survey WHERE telegram_id = ?`
+        )
+        .bind(parseInt(chatId, 10))
+        .all();
+        
+        if (surveyResults.length === 0) {
+          console.log(`User ${chatId} hasn't completed survey, redirecting to survey`);
+          await sendText(chatId, 
+            "Please complete the survey first to help us personalize your learning experience.", 
+            env);
+          return new Response('OK');
+        }
+        
         // Get user language preference
         const { results } = await db.prepare(
           `SELECT interface_language FROM user_preferences WHERE telegram_id = ?`
@@ -124,7 +139,45 @@ export default {
         
         const language = results[0]?.interface_language || 'en';
         
-        // Create initial user profile record with default level
+        // Map survey language level to CEFR level
+        const surveyLevel = surveyResults[0].language_level;
+        let cefrLevel;
+        
+        if (language === 'ru') {
+          // Russian survey responses
+          switch(surveyLevel) {
+            case 'Начинающий':
+              cefrLevel = 'A1';
+              break;
+            case 'Средний':
+              cefrLevel = 'B1';
+              break;
+            case 'Продвинутый':
+              cefrLevel = 'B2';
+              break;
+            default:
+              cefrLevel = 'B1'; // fallback
+          }
+        } else {
+          // English survey responses
+          switch(surveyLevel) {
+            case 'Beginner':
+              cefrLevel = 'A1';
+              break;
+            case 'Intermediate':
+              cefrLevel = 'B1';
+              break;
+            case 'Advanced':
+              cefrLevel = 'B2';
+              break;
+            default:
+              cefrLevel = 'B1'; // fallback
+          }
+        }
+        
+        console.log(`User ${chatId} survey level: ${surveyLevel}, mapped to CEFR: ${cefrLevel}`);
+        
+        // Create initial user profile record with level from survey
         const startAt = new Date().toISOString();
         await db.prepare(
           `INSERT INTO user_profiles (telegram_id, eng_level, start_test_at)
@@ -133,7 +186,7 @@ export default {
              SET eng_level = COALESCE(excluded.eng_level, eng_level),
                  start_test_at = COALESCE(excluded.start_test_at, start_test_at)`
         )
-        .bind(parseInt(chatId, 10), 'B1', startAt) // Default to B1 level
+        .bind(parseInt(chatId, 10), cefrLevel, startAt)
         .run();
         
         // Forward to lesson0 for free lesson
