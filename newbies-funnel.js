@@ -106,9 +106,9 @@ export default {
         return new Response('OK');
       }
 
-      // D) Handle start test callback
-      if (raw.callback_query?.data === 'start_test') {
-        console.log(`User ${chatId} starting placement test`);
+      // D) Handle free lesson callback (replaces placement test)
+      if (raw.callback_query?.data === 'lesson:free') {
+        console.log(`User ${chatId} starting free lesson`);
         
         // Acknowledge callback
         await callTelegram('answerCallbackQuery', {
@@ -124,99 +124,24 @@ export default {
         
         const language = results[0]?.interface_language || 'en';
         
-        // Create initial user profile record
+        // Create initial user profile record with default level
         const startAt = new Date().toISOString();
         await db.prepare(
-          `INSERT INTO user_profiles (telegram_id, start_test_at)
-           VALUES (?, ?)
+          `INSERT INTO user_profiles (telegram_id, eng_level, start_test_at)
+           VALUES (?, ?, ?)
            ON CONFLICT(telegram_id) DO UPDATE
-             SET start_test_at = excluded.start_test_at`
+             SET eng_level = COALESCE(excluded.eng_level, eng_level),
+                 start_test_at = COALESCE(excluded.start_test_at, start_test_at)`
         )
-        .bind(parseInt(chatId, 10), startAt)
+        .bind(parseInt(chatId, 10), 'B1', startAt) // Default to B1 level
         .run();
         
-        // Send test introduction message
-        const testIntro = language === 'ru' 
-          ? "🎯 *Тест на определение уровня английского языка*\n\n" +
-            "Этот тест поможет определить ваш уровень владения английским языком по шкале CEFR (A1-C2).\n\n" +
-            "Тест состоит из 12 вопросов:\n" +
-            "• 5 вопросов по лексике\n" +
-            "• 5 вопросов по грамматике\n" +
-            "• 2 вопроса на понимание прочитанного\n\n" +
-            "Готовы начать? Нажмите кнопку ниже!"
-          : "🎯 *English Placement Test*\n\n" +
-            "This test will help determine your English proficiency level according to the CEFR scale (A1-C2).\n\n" +
-            "The test consists of 12 questions:\n" +
-            "• 5 vocabulary questions\n" +
-            "• 5 grammar questions\n" +
-            "• 2 reading comprehension questions\n\n" +
-            "Ready to start? Press the button below!";
-        
-        await sendText(chatId, testIntro, env, [
-          [{ text: language === 'ru' ? "Начать тест" : "Start Test", callback_data: "start_test_questions" }]
-        ]);
-        
-        return new Response('OK');
-      }
-
-      // E) Handle actual test start
-      if (raw.callback_query?.data === 'start_test_questions') {
-        console.log(`User ${chatId} starting test questions`);
-        
-        // Acknowledge callback
-        await callTelegram('answerCallbackQuery', {
-          callback_query_id: raw.callback_query.id
-        }, env);
-        
-        // Initialize test state
-        const testState = {
-          questions: [],
-          answers: [],
-          index: 0,
-          currentCategoryIndex: 0,
-          categoryCompletionStatus: {
-            vocabulary: 0,
-            grammar: 0,
-            reading: 0
-          }
-        };
-        
-        await kv.put(`test:${chatId}`, JSON.stringify(testState));
-        
-        // Start with first question
-        await startTestQuestions(chatId, env);
-        
-        return new Response('OK');
-      }
-
-      // F) Handle test answers
-      if (raw.callback_query?.data?.startsWith('test_answer:')) {
-        const [_, answer] = raw.callback_query.data.split(':');
-        console.log(`User ${chatId} answered test question: ${answer}`);
-        
-        // Get test state
-        const testStateData = await kv.get(`test:${chatId}`) || '{}';
-        const testState = JSON.parse(testStateData);
-        
-        // Save answer
-        testState.answers[testState.index] = answer;
-        testState.index++;
-        
-        await kv.put(`test:${chatId}`, JSON.stringify(testState));
-        
-        // Acknowledge callback
-        await callTelegram('answerCallbackQuery', {
-          callback_query_id: raw.callback_query.id
-        }, env);
-        
-        // Show next question or complete test
-        if (testState.index < 12) {
-          await showNextTestQuestion(chatId, testState, env);
-        } else {
-          await completeTest(chatId, testState, env);
-        }
-        
-        return new Response('OK');
+        // Forward to lesson0 for free lesson
+        console.log("Forwarding to LESSON0 for free lesson");
+        return forward(env.LESSON0, {
+          user_id: chatId,
+          action: 'start_free'
+        });
       }
 
       return new Response('OK');
@@ -373,13 +298,13 @@ async function completeSurvey(chatId, surveyData, env) {
   // Clean up survey state
   await env.CHAT_KV.delete(`survey:${chatId}`);
   
-  // Send completion message
+  // Send completion message and offer free lesson
   const completionMessage = surveyData.language === 'ru' 
-    ? "🎉 Спасибо за ответы! Теперь давайте определим ваш уровень английского языка."
-    : "🎉 Thank you for your answers! Now let's determine your English level.";
+    ? "🎉 Спасибо за ответы! Теперь давайте попробуем бесплатный аудио-урок английского языка."
+    : "🎉 Thank you for your answers! Now let's try a free audio English lesson.";
   
   await sendText(chatId, completionMessage, env, [
-    [{ text: surveyData.language === 'ru' ? "Начать тест" : "Start Test", callback_data: "start_test" }]
+    [{ text: surveyData.language === 'ru' ? "Начать бесплатный урок" : "Start Free Lesson", callback_data: "lesson:free" }]
   ]);
 }
 
@@ -428,170 +353,32 @@ async function callTelegram(method, payload, env) {
   return res;
 }
 
-// Test-related functions
-async function startTestQuestions(chatId, env) {
-  try {
-    // Get first question from database
-    const { results } = await env.USER_DB
-      .prepare('SELECT * FROM test_questions WHERE category = ? AND level = ? ORDER BY RANDOM() LIMIT 1')
-      .bind('vocabulary', 'A1')
-      .all();
-    
-    if (results.length === 0) {
-      // Fallback question if database is empty
-      const fallbackQuestion = {
-        question_text: "What is the English word for 'hello'?",
-        options: JSON.stringify(["Hello", "Goodbye", "Thank you", "Sorry"]),
-        correct_answer: "Hello",
-        category: "vocabulary",
-        level: "A1"
-      };
-      await showTestQuestion(chatId, fallbackQuestion, 1, env);
-      return;
-    }
-    
-    const question = results[0];
-    await showTestQuestion(chatId, question, 1, env);
-  } catch (error) {
-    console.error('Error starting test questions:', error);
-    await sendText(chatId, "Sorry, there was an error loading the test. Please try again.", env);
+// Helper function to forward to other workers
+function forward(service, payload) {
+  console.log(`🔄 [FORWARD] Forwarding to service:`, service ? 'Service exists' : 'Service is undefined');
+  console.log(`🔄 [FORWARD] Payload:`, JSON.stringify(payload).substring(0, 300));
+  
+  if (!service) {
+    console.error(`❌ [FORWARD] Service binding is undefined`);
+    throw new Error('Service binding is undefined');
   }
-}
-
-async function showTestQuestion(chatId, question, questionNumber, env) {
-  try {
-    const options = JSON.parse(question.options);
-    const keyboard = options.map(option => [{
-      text: option,
-      callback_data: `test_answer:${option}`
-    }]);
-    
-    const questionText = `*Question ${questionNumber}/12*\n\n` +
-      `${getCategoryEmoji(question.category)} *${question.category.charAt(0).toUpperCase() + question.category.slice(1)}*\n\n` +
-      question.question_text;
-    
-    await sendText(chatId, questionText, env, keyboard);
-  } catch (error) {
-    console.error('Error showing test question:', error);
-    await sendText(chatId, "Sorry, there was an error showing the question. Please try again.", env);
+  
+  if (typeof service.fetch !== 'function') {
+    console.error(`❌ [FORWARD] Service doesn't have fetch method`);
+    throw new Error('Service does not have a fetch method');
   }
-}
-
-async function showNextTestQuestion(chatId, testState, env) {
+  
   try {
-    // Determine next category and level based on current state
-    const categories = ['vocabulary', 'grammar', 'reading'];
-    const currentCategory = categories[testState.currentCategoryIndex % 3];
-    
-    // Determine level based on performance
-    let level = 'A1';
-    if (testState.answers.length >= 3) {
-      const correctAnswers = testState.answers.filter((answer, index) => 
-        testState.questions[index] && answer === testState.questions[index].correct_answer
-      ).length;
-      const accuracy = correctAnswers / testState.answers.length;
-      
-      if (accuracy >= 0.8) level = 'A2';
-      else if (accuracy <= 0.4) level = 'A1';
-    }
-    
-    // Get next question
-    const { results } = await env.USER_DB
-      .prepare('SELECT * FROM test_questions WHERE category = ? AND level = ? ORDER BY RANDOM() LIMIT 1')
-      .bind(currentCategory, level)
-      .all();
-    
-    if (results.length === 0) {
-      // Fallback question
-      const fallbackQuestion = {
-        question_text: "Complete the sentence: I ___ English.",
-        options: JSON.stringify(["speak", "speaks", "speaking", "spoke"]),
-        correct_answer: "speak",
-        category: currentCategory,
-        level: level
-      };
-      testState.questions.push(fallbackQuestion);
-      await showTestQuestion(chatId, fallbackQuestion, testState.index + 1, env);
-      return;
-    }
-    
-    const question = results[0];
-    testState.questions.push(question);
-    testState.currentCategoryIndex++;
-    
-    await env.CHAT_KV.put(`test:${chatId}`, JSON.stringify(testState));
-    await showTestQuestion(chatId, question, testState.index + 1, env);
+    console.log(`🚀 [FORWARD] Calling service.fetch...`);
+    const result = service.fetch('https://internal/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    console.log(`✅ [FORWARD] service.fetch call successful`);
+    return result;
   } catch (error) {
-    console.error('Error showing next test question:', error);
-    await sendText(chatId, "Sorry, there was an error loading the next question. Please try again.", env);
-  }
-}
-
-async function completeTest(chatId, testState, env) {
-  try {
-    // Calculate results
-    const correctAnswers = testState.answers.filter((answer, index) => 
-      testState.questions[index] && answer === testState.questions[index].correct_answer
-    ).length;
-    
-    const accuracy = correctAnswers / testState.answers.length;
-    let level = 'A1';
-    
-    if (accuracy >= 0.9) level = 'C1';
-    else if (accuracy >= 0.8) level = 'B2';
-    else if (accuracy >= 0.65) level = 'B1';
-    else if (accuracy >= 0.45) level = 'A2';
-    
-    // Save test results
-    const testedAt = new Date().toISOString();
-    await env.USER_DB
-      .prepare(
-        `INSERT INTO user_profiles (telegram_id, eng_level, tested_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(telegram_id) DO UPDATE
-           SET eng_level = excluded.eng_level,
-               tested_at = excluded.tested_at`
-      )
-      .bind(parseInt(chatId, 10), level, testedAt)
-      .run();
-    
-    // Clean up test state
-    await env.CHAT_KV.delete(`test:${chatId}`);
-    
-    // Get user language preference
-    const { results } = await env.USER_DB
-      .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-      .bind(parseInt(chatId, 10))
-      .all();
-    
-    const language = results[0]?.interface_language || 'en';
-    
-    // Send results
-    const resultMessage = language === 'ru'
-      ? `🎓 *Тест завершен!*\n\n` +
-        `Ваш уровень английского: *${level}*\n` +
-        `Точность: ${Math.round(accuracy * 100)}%\n\n` +
-        `Отличная работа! Теперь вы можете начать практиковать английский язык.`
-      : `🎓 *Test completed!*\n\n` +
-        `Your English level: *${level}*\n` +
-        `Accuracy: ${Math.round(accuracy * 100)}%\n\n` +
-        `Great work! Now you can start practicing English.`;
-    
-    await sendText(chatId, resultMessage, env, [
-      [{ text: language === 'ru' ? "Бесплатный урок" : "Free Lesson", callback_data: "lesson:free" }]
-    ]);
-    
-  } catch (error) {
-    console.error('Error completing test:', error);
-    await sendText(chatId, "Sorry, there was an error processing your test results. Please try again.", env);
-  }
-}
-
-function getCategoryEmoji(category) {
-  switch (category) {
-    case 'vocabulary': return '📚';
-    case 'grammar': return '📝';
-    case 'reading': return '📖';
-    default: return '❓';
+    console.error(`❌ [FORWARD] Error forwarding request:`, error);
+    throw error;
   }
 } 

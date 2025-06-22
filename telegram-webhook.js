@@ -206,9 +206,8 @@ if (update.message?.text) {
         return new Response('OK');
       }
 
-      // Handle /lesson command - same as /start for users who completed the test
-if (update.message?.text === '/lesson' || 
-(update.message?.text === '/start' && await hasCompletedTest(chatId, env))) {
+      // Handle /lesson command - same as /start for users who completed onboarding
+if (update.message?.text === '/lesson') {
 try {
 console.log(`Calling handleLessonCommand for user ${chatId}`);
 await handleLessonCommand(chatId, env);
@@ -226,7 +225,7 @@ await handleLessonCommand(chatId, env);
 return new Response('OK');
 }
       
-      // Modified /start command to check for welcome parameter
+      // Handle /start command to check for welcome parameter
       if (update.message?.text?.startsWith('/start')) {
         // Check if this is a return from subscription
         const isWelcomeBack = update.message.text.includes('welcome');
@@ -267,12 +266,6 @@ return new Response('OK');
           }
         }
         
-        // Check if user has completed test already
-        if (await hasCompletedTest(chatId, env)) {
-          await handleLessonCommand(chatId, env);
-          return new Response('OK');
-        }
-        
         // Check if user has completed onboarding
         const { results: onboardingResults } = await env.USER_DB
           .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
@@ -300,21 +293,10 @@ return new Response('OK');
           });
         }
         
-        // User has completed onboarding but not test - start test
-        console.log(`User ${chatId} completed onboarding, starting test`);
-        
-        // Check if NEWBIES_FUNNEL worker is available for test
-        if (!env.NEWBIES_FUNNEL) {
-          console.error(`NEWBIES_FUNNEL worker is undefined, cannot start test`);
-          await sendMessageViaTelegram(chatId, 
-            "Sorry, the test service is temporarily unavailable. Please try again later.", 
-            env);
-          return new Response('OK');
-        }
-        
-        // Forward to NEWBIES_FUNNEL for test
-        console.log("Forwarding to NEWBIES_FUNNEL for test");
-        return forward(env.NEWBIES_FUNNEL, update);
+        // User has completed onboarding - show lesson options
+        console.log(`User ${chatId} completed onboarding, showing lesson options`);
+        await handleLessonCommand(chatId, env);
+        return new Response('OK');
       }
 
       // Handle voice messages with improved routing
@@ -324,126 +306,7 @@ return new Response('OK');
           console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
           console.log(`Available services:`, Object.keys(env).filter(key => ['NEWBIES_FUNNEL', 'LESSON0', 'MAIN_LESSON'].includes(key)));
           
-          // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем доступность CHAT_KV
-          if (!env.CHAT_KV) {
-            console.error(`CHAT_KV is not available! Available env keys:`, Object.keys(env));
-            
-            // Если нет CHAT_KV, используем TEST_KV как резервный вариант
-            if (env.TEST_KV) {
-              console.log(`Using TEST_KV as fallback for session storage`);
-              
-              // Проверяем сессии в TEST_KV
-              const lesson0SessionKey = `session:${chatId}`;
-              const lesson0Session = await env.TEST_KV.get(lesson0SessionKey);
-              
-              if (lesson0Session) {
-                console.log(`Found lesson0 session in TEST_KV (${lesson0Session}), forwarding to LESSON0`);
-                return forward(env.LESSON0, update);
-              }
-            }
-            
-            // Если нет активной сессии нигде, проверим статус пользователя в DB
-            console.log(`No active session found, checking user status in database`);
-            const { results } = await env.USER_DB
-              .prepare('SELECT eng_level, pass_lesson0_at FROM user_profiles WHERE telegram_id = ?')
-              .bind(parseInt(chatId, 10))
-              .all();
-            
-            if (results.length > 0) {
-              // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test
-              if (!results[0].eng_level) {
-                console.log(`User hasn't completed placement test, directing to /start`);
-                await sendMessageViaTelegram(chatId, 
-                  "Please start by taking our placement test. Type /start to begin.",
-                  env
-                );
-                return new Response('OK');
-              }
-              
-              if (!results[0].pass_lesson0_at) {
-                console.log(`User has completed test but hasn't taken free lesson, suggesting free lesson`);
-                await sendMessageViaTelegram(chatId, 
-                  "Would you like to try our free English conversation lesson?",
-                  env,
-                  { reply_markup: { inline_keyboard: [[{ text: "Start Free Lesson", callback_data: "lesson:free" }]] } }
-                );
-              } else {
-                console.log(`User has completed free lesson, suggesting subscription`);
-                await sendTributeChannelLink(chatId, env);
-              }
-            } else {
-              console.log(`User not found in database, suggesting /start`);
-              await sendMessageViaTelegram(chatId, 
-                "Please start by taking our placement test. Type /start to begin.",
-                env
-              );
-            }
-            return new Response('OK');
-          }
-          
-          // SIMPLIFIED: Check for ANY signs of main lesson session
-          console.log(`🔍 [${chatId}] Checking for main lesson session indicators`);
-          
-          // Check 1: Direct session key
-          const mainSession = await env.CHAT_KV.get(`main_session:${chatId}`);
-          
-          // Check 2: Last activity
-          const lastActivity = await env.CHAT_KV.get(`main_last_activity:${chatId}`);
-          
-          // Check 3: History 
-          const mainHist = await env.CHAT_KV.get(`main_hist:${chatId}`);
-          
-          console.log(`🔍 [${chatId}] Session indicators:`, {
-            session: !!mainSession,
-            activity: !!lastActivity,
-            history: !!mainHist
-          });
-          
-          // If we have ANY indication of main lesson session, forward to main-lesson
-          if (mainSession || lastActivity || mainHist) {
-            console.log(`✅ [${chatId}] Found main lesson indicators, forwarding to MAIN_LESSON`);
-            return forward(env.MAIN_LESSON, update);
-          }
-          
-          // If not found in main session, check for lesson0 session directly in CHAT_KV
-          const lesson0SessionKey = `session:${chatId}`;
-          const lesson0Session = await env.CHAT_KV.get(lesson0SessionKey);
-          
-          if (lesson0Session) {
-            console.log(`Found active lesson0 session (${lesson0Session}), forwarding voice message to LESSON0`);
-            return forward(env.LESSON0, update);
-          }
-          
-          console.log(`=== NO ACTIVE SESSION FOUND ===`);
-          console.log(`Checking for orphaned history data...`);
-          
-          // ДОБАВЛЕНА ПРОВЕРКА: Если у пользователя нет активной сессии, но есть история в KV,
-          // это может означать, что сессия была некорректно очищена
-          const histKey = `hist:${chatId}`;
-          const histData = await env.CHAT_KV.get(histKey);
-          
-          if (histData) {
-            try {
-              // Пробуем восстановить сессию для lesson0
-              const hist = JSON.parse(histData);
-              if (Array.isArray(hist) && hist.length > 0) {
-                console.log(`Found orphaned history (${hist.length} messages), recreating lesson0 session`);
-                // Создаем новый ID сессии и сохраняем его
-                const newSessionId = Date.now().toString();
-                await env.CHAT_KV.put(`session:${chatId}`, newSessionId);
-                console.log(`Recreated lesson0 session (${newSessionId}), forwarding to LESSON0`);
-                return forward(env.LESSON0, update);
-              } else {
-                console.log(`Found empty or invalid history, cleaning up`);
-                await env.CHAT_KV.delete(histKey);
-              }
-            } catch (e) {
-              console.error("Error parsing history data:", e);
-              // Очищаем поврежденные данные
-              await env.CHAT_KV.delete(histKey);
-            }
-          }
-          
+          // If no active session, check user status in database
           console.log(`=== CHECKING USER STATUS IN DATABASE ===`);
           // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Если нет активной сессии, проверим в базе данных,
           // выполнил ли пользователь бесплатный урок, чтобы понять какое действие выполнить
@@ -455,15 +318,6 @@ return new Response('OK');
             
             if (results.length > 0) {
               console.log(`User found in database, eng_level: ${!!results[0].eng_level}, pass_lesson0_at: ${!!results[0].pass_lesson0_at}`);
-              
-              // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test  
-              if (!results[0].eng_level) {
-                console.log(`User ${chatId} hasn't completed placement test, directing to test`);
-                await sendMessageViaTelegram(chatId, 
-                  'You need to complete the placement test first to determine your English level. Use /start to begin.', 
-                  env);
-                return new Response('OK');
-              }
               
               // Если у пользователя уже пройден бесплатный урок
               if (results[0].pass_lesson0_at) {
@@ -486,7 +340,7 @@ return new Response('OK');
                   await sendTributeChannelLink(chatId, env);
                 }
               } else {
-                console.log(`User has completed test but hasn't taken free lesson, suggesting free lesson`);
+                console.log(`User hasn't taken free lesson yet, suggesting free lesson`);
                 // Если пользователь не проходил бесплатный урок, предложить его пройти
                 await sendMessageViaTelegram(chatId, 
                   "Would you like to try our free English conversation lesson?",
@@ -498,7 +352,7 @@ return new Response('OK');
               console.log(`User not found in database, suggesting /start`);
               // Если пользователя нет в базе, предложить начать с /start
               await sendMessageViaTelegram(chatId, 
-                "Please start by taking our placement test. Type /start to begin.",
+                "Please start by completing our quick setup. Type /start to begin.",
                 env
               );
             }
@@ -541,10 +395,10 @@ return new Response('OK');
             .bind(parseInt(chatId, 10))
             .all();
           
-          // If user hasn't taken the test yet
-          if (!results.length || !results[0].eng_level) {
+          // If user hasn't completed onboarding yet
+          if (!results.length) {
             await sendMessageViaTelegram(chatId, 
-              "Please use /start to begin the placement test so I can determine your English level.", 
+              "Please use /start to complete our quick setup and begin your English learning journey.", 
               env);
             return new Response('OK');
           }
@@ -1544,16 +1398,6 @@ function forward(service, payload) {
   }
 }
 
-/* ──── helper: check if user has completed test ──── */
-async function hasCompletedTest(chatId, env) {
-  const { results } = await env.USER_DB
-    .prepare('SELECT eng_level FROM user_profiles WHERE telegram_id = ?')
-    .bind(parseInt(chatId, 10))
-    .all();
-  
-  return results[0]?.eng_level ? true : false;
-}
-
 /* ──── helper: handle lesson command ──── */
 async function handleLessonCommand(chatId, env) {
   try {
@@ -1569,9 +1413,9 @@ async function handleLessonCommand(chatId, env) {
     console.log(`Database query results for user ${chatId}:`, results.length ? "Found" : "Not found");
     
     if (!results.length) {
-      console.log(`User ${chatId} not found, sending test message`);
+      console.log(`User ${chatId} not found, sending onboarding message`);
       await sendMessageViaTelegram(chatId, 
-        'You need to take the placement test first. Use /start to begin.', env);
+        'Welcome! Let\'s start with a quick setup. Use /start to begin.', env);
       return;
     }
     
@@ -1595,25 +1439,17 @@ async function handleLessonCommand(chatId, env) {
     const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
     
     let message = `📊 *Your Language Profile*\n\n` +
-      `🎯 *Level:* ${profile.eng_level}\n` +
+      `🎯 *Level:* ${profile.eng_level || 'B1 (default)'}\n` +
       `💳 *Subscription:* ${subscriptionStatus}\n` +
       `📚 *Total lessons:* ${lessonsTotal}\n` +
       `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
     
     // Check pass_lesson0_at first
     if (!profile.pass_lesson0_at) {
-      console.log(`User ${chatId} hasn't taken free lesson, checking if test completed first`);
-      
-      // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test  
-      if (!profile.eng_level) {
-        console.log(`User ${chatId} hasn't completed placement test, directing to test`);
-        message += 'You need to complete the placement test first to determine your English level.';
-        await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
-        return;
-      }
+      console.log(`User ${chatId} hasn't taken free lesson, offering free lesson`);
       
       // Free lesson not taken yet - show button
-      console.log(`User ${chatId} has completed test, showing free lesson button`);
+      console.log(`User ${chatId} has completed onboarding, showing free lesson button`);
       message += 'You haven\'t taken your free introductory lesson yet.';
       await sendMessageViaTelegram(chatId, message, env, {
         parse_mode: 'Markdown',
