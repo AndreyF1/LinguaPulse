@@ -7,8 +7,12 @@ export default {
     try {
       raw = await request.json();
       console.log('Newbies-funnel raw update:', JSON.stringify(raw).substring(0, 500) + '...');
-      const chatId = raw.user_id || raw.message?.chat?.id;
-      if (!chatId) return new Response('OK');
+      const chatId = raw.user_id || raw.message?.chat?.id || raw.callback_query?.message?.chat?.id;
+      console.log(`[DEBUG] Extracted chatId: ${chatId}`);
+      if (!chatId) {
+        console.log('[DEBUG] No chatId found, returning OK');
+        return new Response('OK');
+      }
 
       const db = env.USER_DB;
       const kv = env.CHAT_KV;
@@ -35,16 +39,16 @@ export default {
           return new Response('OK');
         }
 
-        // Check if they are in the middle of a survey (state in KV)
-        const surveyStateRaw = await kv.get(`survey:${chatId}`);
-        if (surveyStateRaw) {
-          const surveyState = JSON.parse(surveyStateRaw);
-          console.log(`User ${chatId} is resuming survey at question: ${surveyState.currentQuestion}`);
-          await showSurveyQuestion(chatId, surveyState.currentQuestion, surveyState.language, env);
-          return new Response('OK');
+        // ИСПРАВЛЕНИЕ: Всегда начинаем с самого начала для новых пользователей
+        // Очищаем любое предыдущее состояние опроса
+        try {
+          await kv.delete(`survey:${chatId}`);
+          console.log(`Cleared any existing survey state for user ${chatId}`);
+        } catch (kvError) {
+          console.log(`Could not clear KV state (might not exist):`, kvError.message);
         }
 
-        // Check if they have selected a language but not started survey (no state in KV)
+        // Check if they have selected a language but not started survey
         const { results: prefResults } = await db.prepare(
           `SELECT interface_language FROM user_preferences WHERE telegram_id = ?`
         )
@@ -52,7 +56,7 @@ export default {
         .all();
 
         if (prefResults.length > 0 && prefResults[0].interface_language) {
-          console.log(`User ${chatId} selected language but survey not in KV. Starting survey now.`);
+          console.log(`User ${chatId} has language preference, starting fresh survey`);
           await startMiniSurvey(chatId, prefResults[0].interface_language, env);
           return new Response('OK');
         }
@@ -79,15 +83,28 @@ export default {
         const selectedLanguage = raw.callback_query.data.split(':')[1];
         console.log(`User ${chatId} selected language: ${selectedLanguage}`);
         
-        // Save language preference
-        await db.prepare(
-          `INSERT INTO user_preferences (telegram_id, interface_language, created_at)
-           VALUES (?, ?, ?)
-           ON CONFLICT(telegram_id) DO UPDATE
-           SET interface_language = excluded.interface_language`
-        )
-        .bind(parseInt(chatId, 10), selectedLanguage, new Date().toISOString())
-        .run();
+        // Debug logging
+        console.log(`[DEBUG] Database object available:`, !!db);
+        console.log(`[DEBUG] Database type:`, typeof db);
+        console.log(`[DEBUG] Attempting to save language preference for user ${chatId} with language ${selectedLanguage}`);
+        
+        try {
+          // Save language preference
+          const result = await db.prepare(
+            `INSERT INTO user_preferences (telegram_id, interface_language, created_at)
+             VALUES (?, ?, ?)
+             ON CONFLICT(telegram_id) DO UPDATE
+             SET interface_language = excluded.interface_language`
+          )
+          .bind(parseInt(chatId, 10), selectedLanguage, new Date().toISOString())
+          .run();
+          
+          console.log(`[DEBUG] Database insert result:`, result);
+          console.log(`[DEBUG] Language preference saved successfully for user ${chatId}`);
+        } catch (dbError) {
+          console.error(`[ERROR] Failed to save language preference:`, dbError);
+          throw dbError;
+        }
         
         // Acknowledge callback
         await callTelegram('answerCallbackQuery', {
@@ -102,27 +119,53 @@ export default {
       // C) Handle survey questions
       if (raw.callback_query?.data?.startsWith('survey:')) {
         const [_, questionType, answer] = raw.callback_query.data.split(':');
-        console.log(`User ${chatId} answered ${questionType}: ${answer}`);
+        console.log(`[SURVEY] User ${chatId} answered ${questionType}: ${answer}`);
         
         // Get current survey state
+        console.log(`[SURVEY] Getting survey state for user ${chatId}...`);
         const surveyState = await kv.get(`survey:${chatId}`) || '{}';
-        const state = JSON.parse(surveyState);
+        console.log(`[SURVEY] Raw survey state:`, surveyState);
+        
+        let state;
+        try {
+          state = JSON.parse(surveyState);
+          console.log(`[SURVEY] Parsed survey state:`, JSON.stringify(state));
+        } catch (parseError) {
+          console.error(`[SURVEY] Error parsing survey state:`, parseError);
+          state = {};
+        }
         
         // Save answer
         state[questionType] = answer;
         state.currentQuestion = getNextQuestion(questionType);
         
-        await kv.put(`survey:${chatId}`, JSON.stringify(state));
+        console.log(`[SURVEY] Updated state:`, JSON.stringify(state));
+        console.log(`[SURVEY] Next question:`, state.currentQuestion);
+        
+        // Save updated state
+        try {
+          await kv.put(`survey:${chatId}`, JSON.stringify(state));
+          console.log(`[SURVEY] State saved successfully`);
+        } catch (saveError) {
+          console.error(`[SURVEY] Error saving state:`, saveError);
+        }
         
         // Acknowledge callback
-        await callTelegram('answerCallbackQuery', {
-          callback_query_id: raw.callback_query.id
-        }, env);
+        try {
+          await callTelegram('answerCallbackQuery', {
+            callback_query_id: raw.callback_query.id
+          }, env);
+          console.log(`[SURVEY] Callback acknowledged`);
+        } catch (ackError) {
+          console.error(`[SURVEY] Error acknowledging callback:`, ackError);
+        }
         
         // Show next question or complete survey
         if (state.currentQuestion) {
+          console.log(`[SURVEY] Showing next question: ${state.currentQuestion}`);
           await showSurveyQuestion(chatId, state.currentQuestion, state.language, env);
         } else {
+          console.log(`[SURVEY] Survey completed, finishing up`);
           await completeSurvey(chatId, state, env);
         }
         
@@ -224,11 +267,11 @@ const SURVEY_QUESTIONS = {
   study_goal: {
     ru: {
       question: "Основная цель изучения?",
-      options: ["Для работы", "Для путешествий", "Для учебы в зарубежном учреждении", "Хобби", "Другое"]
+      options: ["Для работы", "Для путешествий", "Для учебы", "Хобби", "Другое"]
     },
     en: {
       question: "Main study goal?",
-      options: ["For work", "For travel", "For studying abroad", "Hobby", "Other"]
+      options: ["For work", "For travel", "For study", "Hobby", "Other"]
     }
   },
   gender: {
@@ -264,11 +307,11 @@ const SURVEY_QUESTIONS = {
   voice_usage: {
     ru: {
       question: "Часто ли ты пользуешься голосовыми сообщениями в Телеграм?",
-      options: ["Что это?", "Нет, не пользуюсь", "Иногда бывает", "Постоянно использую"]
+      options: ["Что это?", "Нет", "Иногда", "Постоянно"]
     },
     en: {
       question: "How often do you use voice messages in Telegram?",
-      options: ["What's that?", "No, I don't use them", "Sometimes", "I use them constantly"]
+      options: ["What's that?", "No", "Sometimes", "Constantly"]
     }
   }
 };
@@ -291,6 +334,8 @@ function getNextQuestion(currentQuestion) {
 }
 
 async function startMiniSurvey(chatId, language, env) {
+  console.log(`[SURVEY] Starting mini survey for user ${chatId} in language ${language}`);
+  
   const firstQuestion = QUESTION_ORDER[0];
   
   // Initialize survey state
@@ -299,9 +344,11 @@ async function startMiniSurvey(chatId, language, env) {
     currentQuestion: firstQuestion
   };
   
+  console.log(`[SURVEY] Saving initial state:`, JSON.stringify(state));
   await env.CHAT_KV.put(`survey:${chatId}`, JSON.stringify(state));
   
   // Show first question
+  console.log(`[SURVEY] Showing first question: ${firstQuestion}`);
   await showSurveyQuestion(chatId, firstQuestion, language, env);
 }
 
@@ -355,12 +402,22 @@ async function completeSurvey(chatId, surveyData, env) {
   // Clean up survey state
   await env.CHAT_KV.delete(`survey:${chatId}`);
   
-  // Send completion message and offer free lesson
-  const completionMessage = surveyData.language === 'ru' 
-    ? "🎉 Спасибо за ответы! Теперь давайте попробуем бесплатный аудио-урок английского языка."
-    : "🎉 Thank you for your answers! Now let's try a free audio English lesson.";
+  // Send tutor matching sequence
+  const searchingMessage = surveyData.language === 'ru' 
+    ? "🔍 Подбираю подходящего помощника LinguaPulse, который будет заниматься с тобой..."
+    : "🔍 Finding the right LinguaPulse assistant who will work with you...";
   
-  await sendText(chatId, completionMessage, env, [
+  await sendText(chatId, searchingMessage, env);
+  
+  // Send "thinking" dots
+  await sendText(chatId, "...", env);
+  
+  // Send tutor found message with free lesson offer
+  const tutorFoundMessage = surveyData.language === 'ru' 
+    ? "✅ Отлично! Найден подходящий тутор для твоего уровня. Давай попробуем первый бесплатный урок!"
+    : "✅ Great! Found a suitable tutor for your level. Let's try your first free lesson!";
+  
+  await sendText(chatId, tutorFoundMessage, env, [
     [{ text: surveyData.language === 'ru' ? "Начать бесплатный урок" : "Start Free Lesson", callback_data: "lesson:free" }]
   ]);
 }
@@ -377,8 +434,22 @@ async function sendText(chatId, text, env, keyboard = null) {
     payload.reply_markup = { inline_keyboard: keyboard };
   }
   
+  // Determine correct bot token based on environment
+  let botToken;
+  if (env.DEV_MODE === 'true') {
+    botToken = env.DEV_BOT_TOKEN;
+    if (!botToken) {
+      throw new Error("DEV_BOT_TOKEN is required in dev environment");
+    }
+  } else {
+    botToken = env.BOT_TOKEN;
+    if (!botToken) {
+      throw new Error("BOT_TOKEN is required in production environment");
+    }
+  }
+  
   const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
     { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
@@ -393,8 +464,22 @@ async function sendText(chatId, text, env, keyboard = null) {
 }
 
 async function callTelegram(method, payload, env) {
+  // Determine correct bot token based on environment
+  let botToken;
+  if (env.DEV_MODE === 'true') {
+    botToken = env.DEV_BOT_TOKEN;
+    if (!botToken) {
+      throw new Error("DEV_BOT_TOKEN is required in dev environment");
+    }
+  } else {
+    botToken = env.BOT_TOKEN;
+    if (!botToken) {
+      throw new Error("BOT_TOKEN is required in production environment");
+    }
+  }
+  
   const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,
+    `https://api.telegram.org/bot${botToken}/${method}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

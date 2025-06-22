@@ -1407,12 +1407,27 @@ async function callTelegram(method, payload, env) {
   try {
     console.log(`[DEBUG] Calling Telegram API ${method} with payload:`, JSON.stringify(payload).substring(0, 300));
     
-    if (!env.BOT_TOKEN) {
-      console.error(`[DEBUG] Missing BOT_TOKEN in environment`);
-      throw new Error("Missing BOT_TOKEN");
+    // Determine correct bot token based on environment
+    let botToken;
+    if (env.DEV_MODE === 'true') {
+      // Dev environment - use DEV_BOT_TOKEN
+      botToken = env.DEV_BOT_TOKEN;
+      if (!botToken) {
+        console.error(`[DEBUG] DEV_MODE is true but DEV_BOT_TOKEN is missing`);
+        throw new Error("DEV_BOT_TOKEN is required in dev environment");
+      }
+      console.log(`[DEBUG] Using DEV_BOT_TOKEN for dev environment`);
+    } else {
+      // Production environment - use BOT_TOKEN
+      botToken = env.BOT_TOKEN;
+      if (!botToken) {
+        console.error(`[DEBUG] Production environment but BOT_TOKEN is missing`);
+        throw new Error("BOT_TOKEN is required in production environment");
+      }
+      console.log(`[DEBUG] Using BOT_TOKEN for production environment`);
     }
     
-    const apiUrl = `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`;
+    const apiUrl = `https://api.telegram.org/bot${botToken}/${method}`;
     console.log(`[DEBUG] API URL:`, apiUrl);
     
     const response = await fetch(apiUrl, {
