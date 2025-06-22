@@ -412,6 +412,9 @@ async function completeSurvey(chatId, surveyData, env) {
   // Send "thinking" dots
   await sendText(chatId, "...", env);
   
+  // Wait 5 seconds to simulate tutor matching process
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  
   // Send tutor found message with free lesson offer
   const tutorFoundMessage = surveyData.language === 'ru' 
     ? "✅ Отлично! Найден подходящий тутор для твоего уровня. Давай попробуем первый бесплатный урок!"
