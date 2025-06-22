@@ -186,8 +186,24 @@ export default {
 
       return new Response('OK');
     } catch (e) {
-      console.error('Error in Newbies-funnel:', e);
-      return new Response('Error: ' + e.message, { status: 500 });
+      console.error('Error in Newbies-funnel:', e, e.stack);
+
+      // Try to inform the user about the error
+      try {
+        const chatId = raw.user_id || raw.message?.chat?.id;
+        if (chatId) {
+          await sendText(
+            chatId,
+            '⚙️ Sorry, a technical error occurred during the setup. Please try your request again in a moment. If the problem persists, you can use /start to begin again.',
+            env
+          );
+        }
+      } catch (sendError) {
+        console.error('Fatal: Failed to send error message from newbies-funnel:', sendError);
+      }
+      
+      // Return 200 OK to avoid Telegram retries
+      return new Response('OK');
     }
   }
 };

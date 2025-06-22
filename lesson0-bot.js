@@ -299,8 +299,24 @@ export default {
 
       return new Response('OK');
     } catch (e) {
-      console.error('Error in Lesson0 bot:', e);
-      return new Response('Error: ' + e.message, { status: 500 });
+      console.error('Error in Lesson0 bot:', e, e.stack);
+      
+      // Try to inform the user about the error
+      try {
+        const chatId = raw.user_id || raw.message?.chat?.id;
+        if (chatId) {
+          await sendText(
+            chatId,
+            '⚙️ Sorry, a technical error occurred during the free lesson. Please use /start to try again.',
+            env
+          );
+        }
+      } catch (sendError) {
+        console.error('Fatal: Failed to send error message from lesson0-bot:', sendError);
+      }
+      
+      // Return 200 OK to avoid Telegram retries
+      return new Response('OK');
     }
   }
 };

@@ -329,8 +329,24 @@ export default {
 
       return new Response('OK');
     } catch (e) {
-      console.error('Error in Main lesson bot:', e);
-      return new Response('Error: ' + e.message, { status: 500 });
+      console.error('Error in Main lesson bot:', e, e.stack);
+
+      // Try to inform the user about the error
+      try {
+        const chatId = raw.user_id || raw.message?.chat?.id;
+        if (chatId) {
+          await sendText(
+            chatId,
+            '⚙️ Sorry, a technical error occurred during your lesson. Please use /talk to start a new one, or contact support if the issue continues.',
+            env
+          );
+        }
+      } catch (sendError) {
+        console.error('Fatal: Failed to send error message from main-lesson:', sendError);
+      }
+      
+      // Return 200 OK to avoid Telegram retries
+      return new Response('OK');
     }
   }
 };
