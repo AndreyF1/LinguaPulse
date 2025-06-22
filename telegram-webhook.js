@@ -165,12 +165,19 @@ if (update.message?.text) {
 
       // Handle /profile command - show user-friendly profile data
       if (update.message?.text === '/profile') {
-        const { results } = await env.USER_DB
+        // Get user profile and survey data
+        const { results: profileResults } = await env.USER_DB
           .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
           .bind(parseInt(chatId, 10))
           .all();
         
-        const profile = results[0] || {};
+        const { results: surveyResults } = await env.USER_DB
+          .prepare('SELECT language_level FROM user_survey WHERE telegram_id = ?')
+          .bind(parseInt(chatId, 10))
+          .all();
+        
+        const profile = profileResults[0] || {};
+        const surveyLevel = surveyResults.length > 0 ? surveyResults[0].language_level : 'Intermediate';
         
         // Basic profile info
         const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
@@ -184,7 +191,7 @@ if (update.message?.text) {
         const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
         
         let message = `📊 *Your Language Profile*\n\n` +
-          `🎯 *Level:* ${profile.eng_level || 'B1 (default)'}\n` +
+          `🎯 *Level:* ${surveyLevel}\n` +
           `💳 *Subscription:* ${subscriptionStatus}\n` +
           `📚 *Total lessons:* ${lessonsTotal}\n` +
           `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
@@ -312,7 +319,7 @@ return new Response('OK');
               .all();
             
             if (results.length > 0) {
-              console.log(`User found in database, pass_lesson0_at: ${!!results[0].pass_lesson0_at}, subscription_expired_at: ${!!results[0].subscription_expired_at}`);
+              console.log(`User found in database, pass_lesson0_at: ${!!results[0].pass_lesson0_at}`);
               
               // Если у пользователя уже пройден бесплатный урок
               if (results[0].pass_lesson0_at) {
@@ -1416,11 +1423,19 @@ async function handleLessonCommand(chatId, env) {
     
     const profile = results[0];
     console.log(`User ${chatId} profile:`, {
-      eng_level: profile.eng_level || 'B1 (default)',
       pass_lesson0_at: !!profile.pass_lesson0_at,
       subscription_expired_at: profile.subscription_expired_at,
       next_lesson_access_at: profile.next_lesson_access_at
     });
+    
+    // Get user's language level from survey
+    const { results: surveyResults } = await env.USER_DB
+      .prepare('SELECT language_level FROM user_survey WHERE telegram_id = ?')
+      .bind(parseInt(chatId, 10))
+      .all();
+    
+    const userLevel = surveyResults.length > 0 ? surveyResults[0].language_level : 'Intermediate';
+    console.log(`User ${chatId} language level from survey: ${userLevel}`);
     
     // Basic profile info
     const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
@@ -1434,7 +1449,7 @@ async function handleLessonCommand(chatId, env) {
     const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
     
     let message = `📊 *Your Language Profile*\n\n` +
-      `🎯 *Level:* ${profile.eng_level || 'B1 (default)'}\n` +
+      `🎯 *Level:* ${userLevel}\n` +
       `💳 *Subscription:* ${subscriptionStatus}\n` +
       `📚 *Total lessons:* ${lessonsTotal}\n` +
       `🔥 *Current streak:* ${lessonsStreak} days\n\n`;

@@ -362,7 +362,7 @@ async function checkSessionActive(chatId, kv) {
 async function handleLessonStart(chatId, env, db, kv) {
   // First, check if user has active subscription and lesson is available
   const { results } = await db.prepare(
-    `SELECT subscription_expired_at, next_lesson_access_at, eng_level
+    `SELECT subscription_expired_at, next_lesson_access_at
      FROM user_profiles 
      WHERE telegram_id = ?`
   )
@@ -408,6 +408,16 @@ async function handleLessonStart(chatId, env, db, kv) {
     return new Response('OK');
   }
   
+  // Get user's language level from survey
+  const { results: surveyResults } = await db.prepare(
+    `SELECT language_level FROM user_survey WHERE telegram_id = ?`
+  )
+  .bind(parseInt(chatId, 10))
+  .all();
+  
+  const userLevel = surveyResults.length > 0 ? surveyResults[0].language_level : 'Intermediate';
+  console.log(`🚀 [${chatId}] Starting lesson for user with level: ${userLevel}`);
+  
   // CRITICAL CHECK: See if user already has an active session
   const existingSession = await safeKvGet(kv, `main_session:${chatId}`);
   const existingActivity = await safeKvGet(kv, `main_last_activity:${chatId}`);
@@ -447,7 +457,6 @@ async function handleLessonStart(chatId, env, db, kv) {
   }
   
   // If we get here, user can start the lesson
-  console.log(`🚀 [${chatId}] Starting lesson for user with level: ${profile.eng_level}`);
   await sendText(chatId, "🎓 Your English lesson is starting...", env);
   
   // Initialize empty history and create a new session ID
@@ -464,8 +473,7 @@ async function handleLessonStart(chatId, env, db, kv) {
   const sessionResult = await safeKvPut(kv, `main_session:${chatId}`, sessionId);
   const activityResult = await safeKvPut(kv, `main_last_activity:${chatId}`, Date.now().toString());
   
-  // FIXED: Store user's level in KV for reference throughout the session
-  const userLevel = profile.eng_level || "B1";
+  // Store user's level in KV for reference throughout the session
   const levelResult = await safeKvPut(kv, `main_user_level:${chatId}`, userLevel);
   
   console.log(`💾 [${chatId}] Session data saved:`, {
@@ -554,7 +562,7 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   
   if (attemptCount >= 2) {
     console.log(`🚫 [${chatId}] Maximum greeting generation attempts (2) reached, using fallback`);
-    const fallbackGreeting = "Hello! Welcome to your English lesson. How are you today?";
+    const fallbackGreeting = "Hello! How are you today?";
     history.push({ role: 'assistant', content: fallbackGreeting });
     await safeKvPut(kv, `main_hist:${chatId}`, JSON.stringify(history));
     const fallbackResult = await safeSendTTS(chatId, fallbackGreeting, env);
@@ -570,25 +578,14 @@ async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
     // Format prompt based on user's actual language level
     let levelPrompt;
     
-    switch(userLevel) {
-      case 'A1':
-        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short sentences. Ask about basic everyday topics like: daily routine, family, hobbies, food, weather, or simple personal preferences.";
-        break;
-      case 'A2':
-        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary. Ask about familiar topics like: work/studies, travel experiences, weekend plans, favorite activities, or personal experiences.";
-        break;
-      case 'B1':
-        levelPrompt = "The student is at intermediate level (B1). Ask about practical topics like: current events (simple), personal goals, lifestyle choices, cultural differences, or memorable experiences.";
-        break;
-      case 'B2':
-        levelPrompt = "The student is at upper-intermediate level (B2). Ask about topics like: career aspirations, social issues, technology in daily life, personal development, or interesting current events.";
-        break;
-      case 'C1':
-      case 'C2':
-        levelPrompt = "The student is at advanced level (C1/C2). Ask about topics like: professional challenges, societal trends, personal insights, creative pursuits, or thought-provoking but accessible subjects.";
-        break;
-      default:
-        levelPrompt = "The student is at intermediate level (B1). Ask about practical topics like: current events (simple), personal goals, lifestyle choices, cultural differences, or memorable experiences.";
+    // Simple 3-level system based on survey responses
+    if (userLevel === 'Beginner' || userLevel === 'Начинающий') {
+      levelPrompt = "The student is a beginner. Focus on very basic grammar (subject-verb agreement, simple present/past tense). Provide simple alternatives with common, everyday vocabulary. Be very encouraging.";
+    } else if (userLevel === 'Advanced' || userLevel === 'Продвинутый') {
+      levelPrompt = "The student is advanced. Focus on sophisticated language use, nuanced expressions, subtle grammar points, and native-like fluency. Your feedback can be more detailed.";
+    } else {
+      // Intermediate level (default)
+      levelPrompt = "The student is at intermediate level. You can suggest improvements to grammar accuracy, vocabulary range, and basic sentence structure. Balance encouragement with constructive feedback.";
     }
     
     console.log(`🤖 [${chatId}] Calling OpenAI GPT for greeting generation`);
@@ -655,22 +652,14 @@ Keep your greeting to 1-2 sentences maximum.`;
     // Fallback greetings based on level
     let fallbackGreeting;
     
-    switch(userLevel) {
-      case 'A1':
-        fallbackGreeting = "Hello! How are you today?";
-        break;
-      case 'A2':
-        fallbackGreeting = "Hi there! How was your day? Tell me about it.";
-        break;
-      case 'B1':
-      default:
-        fallbackGreeting = "Welcome to today's English practice! What have you been up to recently?";
-        break;
-      case 'B2':
-      case 'C1':
-      case 'C2':
-        fallbackGreeting = "Welcome back to our English practice session! I'm curious to hear what's been on your mind lately.";
-        break;
+    // Simple 3-level system based on survey responses
+    if (userLevel === 'Beginner' || userLevel === 'Начинающий') {
+      fallbackGreeting = "Hello! How are you today?";
+    } else if (userLevel === 'Advanced' || userLevel === 'Продвинутый') {
+      fallbackGreeting = "Welcome back to our English practice session! I'm curious to hear what's been on your mind lately.";
+    } else {
+      // Intermediate level (default)
+      fallbackGreeting = "Welcome to today's English practice! What have you been up to recently?";
     }
     
     console.log(`🔄 [${chatId}] Using fallback greeting: "${fallbackGreeting}"`);
@@ -699,23 +688,14 @@ async function chatGPT(history, env, userLevel = "B1", chatId = 'unknown') {
     // Construct system prompt based on user's actual level
     let levelPrompt;
     
-    switch(userLevel) {
-      case 'A1':
-        levelPrompt = "The student is at beginner level (A1). Use very simple vocabulary and short sentences. Keep to basic everyday topics like family, food, hobbies.";
-        break;
-      case 'A2':
-        levelPrompt = "The student is at elementary level (A2). Use simple vocabulary. Focus on familiar topics like work, travel, daily activities.";
-        break;
-      case 'B1':
-        levelPrompt = "The student is at intermediate level (B1). Discuss practical topics like personal experiences, current events (simple), lifestyle choices.";
-        break;
-      case 'B2':
-        levelPrompt = "The student is at upper-intermediate level (B2). Discuss topics like career, social trends, technology use, personal development.";
-        break;
-      case 'C1':
-      case 'C2':
-        levelPrompt = "The student is at advanced level (C1/C2). Discuss interesting topics like professional challenges, cultural insights, creative pursuits.";
-        break;
+    // Simple 3-level system based on survey responses
+    if (userLevel === 'Beginner' || userLevel === 'Начинающий') {
+      levelPrompt = "The student is a beginner. Use very simple vocabulary and short sentences. Keep to basic everyday topics like family, food, hobbies.";
+    } else if (userLevel === 'Advanced' || userLevel === 'Продвинутый') {
+      levelPrompt = "The student is advanced. Discuss interesting topics like professional challenges, cultural insights, creative pursuits.";
+    } else {
+      // Intermediate level (default)
+      levelPrompt = "The student is at intermediate level. Discuss practical topics like personal experiences, current events (simple), lifestyle choices.";
     }
     
     // Get system prompt from environment or use enhanced default with level adaptation
@@ -793,23 +773,14 @@ async function analyzeLanguage(utterances, env, userLevel = "B1") {
     // Adjust prompt based on actual user level
     let levelPrompt;
     
-    switch(userLevel) {
-      case 'A1':
-        levelPrompt = "The student is a beginner (A1). Focus on very basic grammar (subject-verb agreement, simple present/past tense). Provide simple alternatives with common, everyday vocabulary. Be very encouraging.";
-        break;
-      case 'A2':
-        levelPrompt = "The student is at elementary level (A2). Focus on basic sentence structure, common tenses, and everyday vocabulary. Keep feedback simple and encouraging.";
-        break;
-      case 'B1':
-        levelPrompt = "The student is at intermediate level (B1). You can suggest improvements to grammar accuracy, vocabulary range, and basic sentence structure. Balance encouragement with constructive feedback.";
-        break;
-      case 'B2':
-        levelPrompt = "The student is at upper-intermediate level (B2). You can provide feedback on more nuanced grammar points, varied vocabulary, cohesion, and natural phrasing. Challenge them appropriately.";
-        break;
-      case 'C1':
-      case 'C2':
-        levelPrompt = "The student is at advanced level (C1/C2). Focus on sophisticated language use, nuanced expressions, subtle grammar points, and native-like fluency. Your feedback can be more detailed.";
-        break;
+    // Simple 3-level system based on survey responses
+    if (userLevel === 'Beginner' || userLevel === 'Начинающий') {
+      levelPrompt = "The student is a beginner. Focus on very basic grammar (subject-verb agreement, simple present/past tense). Provide simple alternatives with common, everyday vocabulary. Be very encouraging.";
+    } else if (userLevel === 'Advanced' || userLevel === 'Продвинутый') {
+      levelPrompt = "The student is advanced. Focus on sophisticated language use, nuanced expressions, subtle grammar points, and native-like fluency. Your feedback can be more detailed.";
+    } else {
+      // Intermediate level (default)
+      levelPrompt = "The student is at intermediate level. You can suggest improvements to grammar accuracy, vocabulary range, and basic sentence structure. Balance encouragement with constructive feedback.";
     }
     
     // FIXED: Updated prompt to avoid redundant encouragement

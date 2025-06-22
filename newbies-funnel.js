@@ -139,54 +139,19 @@ export default {
         
         const language = results[0]?.interface_language || 'en';
         
-        // Map survey language level to CEFR level
+        // Use survey language level directly (no CEFR mapping needed)
         const surveyLevel = surveyResults[0].language_level;
-        let cefrLevel;
+        console.log(`User ${chatId} survey level: ${surveyLevel}`);
         
-        if (language === 'ru') {
-          // Russian survey responses
-          switch(surveyLevel) {
-            case 'Начинающий':
-              cefrLevel = 'A1';
-              break;
-            case 'Средний':
-              cefrLevel = 'B1';
-              break;
-            case 'Продвинутый':
-              cefrLevel = 'B2';
-              break;
-            default:
-              cefrLevel = 'B1'; // fallback
-          }
-        } else {
-          // English survey responses
-          switch(surveyLevel) {
-            case 'Beginner':
-              cefrLevel = 'A1';
-              break;
-            case 'Intermediate':
-              cefrLevel = 'B1';
-              break;
-            case 'Advanced':
-              cefrLevel = 'B2';
-              break;
-            default:
-              cefrLevel = 'B1'; // fallback
-          }
-        }
-        
-        console.log(`User ${chatId} survey level: ${surveyLevel}, mapped to CEFR: ${cefrLevel}`);
-        
-        // Create initial user profile record with level from survey
+        // Create initial user profile record (without eng_level since we'll use survey data)
         const startAt = new Date().toISOString();
         await db.prepare(
-          `INSERT INTO user_profiles (telegram_id, eng_level, start_test_at)
-           VALUES (?, ?, ?)
+          `INSERT INTO user_profiles (telegram_id, start_test_at)
+           VALUES (?, ?)
            ON CONFLICT(telegram_id) DO UPDATE
-             SET eng_level = COALESCE(excluded.eng_level, eng_level),
-                 start_test_at = COALESCE(excluded.start_test_at, start_test_at)`
+             SET start_test_at = COALESCE(excluded.start_test_at, start_test_at)`
         )
-        .bind(parseInt(chatId, 10), cefrLevel, startAt)
+        .bind(parseInt(chatId, 10), startAt)
         .run();
         
         // Forward to lesson0 for free lesson

@@ -18,13 +18,13 @@ export default {
       
       do {
         // Query user profiles from D1 database
-        // Get users with either an active subscription or who have completed the test
+        // Get users who have completed the survey (instead of eng_level)
         const query = `
-          SELECT telegram_id, eng_level, subscription_expired_at, 
-                 next_lesson_access_at, lessons_in_row, daily_lesson_pass_at
-          FROM user_profiles
-          WHERE eng_level IS NOT NULL
-          AND (is_active IS NULL OR is_active = 1)
+          SELECT up.telegram_id, up.subscription_expired_at, 
+                 up.next_lesson_access_at, up.lessons_in_row, up.daily_lesson_pass_at
+          FROM user_profiles up
+          INNER JOIN user_survey us ON up.telegram_id = us.telegram_id
+          WHERE (up.is_active IS NULL OR up.is_active = 1)
           LIMIT ? ${cursor ? 'OFFSET ?' : ''}
         `;
         
@@ -43,8 +43,8 @@ export default {
         const promises = results.map(async (user) => {
           processedCount++;
           
-          // Skip users who haven't completed the test (shouldn't happen with our query but just in case)
-          if (!user.eng_level) return;
+          // Skip users who haven't completed the survey (shouldn't happen with our query but just in case)
+          if (!user.telegram_id) return;
           
           // Check streak maintenance - regardless of subscription status
           // This ensures we maintain accurate streaks for all users
