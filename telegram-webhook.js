@@ -119,8 +119,13 @@ if (update.message?.text) {
           console.error(`❌ [${chatId}] MAIN_LESSON worker is undefined, cannot forward /talk command`);
           console.error(`❌ [${chatId}] Available env services:`, Object.keys(env).filter(key => key.includes('LESSON') || key.includes('TEST')));
           
-          // Check if user has completed the test
-          if (await hasCompletedTest(chatId, env)) {
+          // Check if user has completed the survey
+          const { results: surveyCheck } = await env.USER_DB
+            .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
+            .bind(parseInt(chatId, 10))
+            .all();
+          
+          if (surveyCheck.length > 0 && surveyCheck[0].completed_at) {
             // Get user subscription status
             const { results } = await env.USER_DB
               .prepare('SELECT subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
@@ -141,7 +146,7 @@ if (update.message?.text) {
           await sendTributeChannelLink(chatId, env);
             }
           } else {
-                      // If they haven't completed the test
+                      // If they haven't completed the survey
             await sendMessageViaTelegram(chatId, 
               "📝 *You need to complete the onboarding first.* Use /start to begin.", env, { parse_mode: 'Markdown' });
           }
@@ -230,74 +235,93 @@ return new Response('OK');
       
       // Handle /start command to check for welcome parameter
       if (update.message?.text?.startsWith('/start')) {
-        // Check if this is a return from subscription
-        const isWelcomeBack = update.message.text.includes('welcome');
+        console.log(`🚀 [${chatId}] Processing /start command`);
         
-        if (isWelcomeBack) {
-          // This is a user returning from subscribing
-          const { results } = await env.USER_DB
-            .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
-            .bind(parseInt(chatId, 10))
-            .all();
+        try {
+          // Check if this is a return from subscription
+          const isWelcomeBack = update.message.text.includes('welcome');
           
-          if (results.length > 0) {
-            const profile = results[0];
-            const now = new Date();
+          if (isWelcomeBack) {
+            console.log(`👋 [${chatId}] Welcome back from subscription detected`);
+            // This is a user returning from subscribing
+            const { results } = await env.USER_DB
+              .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
+              .bind(parseInt(chatId, 10))
+              .all();
             
-            // Check if subscription is active
-            const hasActiveSubscription = profile.subscription_expired_at && 
-                                        (new Date(profile.subscription_expired_at) > now);
-            
-            if (hasActiveSubscription) {
-              // Subscription is active, check if lesson is available
-              if (profile.next_lesson_access_at && (new Date(profile.next_lesson_access_at) <= now)) {
-                // Lesson is available, offer to start it
-                await sendMessageViaTelegram(chatId,
-                  "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
-                  env,
-                  { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
-                return new Response('OK');
-              }
-            } else {
-              // Subscription inactive or expired, offer to subscribe
-              const channelLink = env.TRIBUTE_CHANNEL_LINK;
-              if (channelLink) {
-                await sendTributeChannelLink(chatId, env);
-                return new Response('OK');
+            if (results.length > 0) {
+              const profile = results[0];
+              const now = new Date();
+              
+              // Check if subscription is active
+              const hasActiveSubscription = profile.subscription_expired_at && 
+                                          (new Date(profile.subscription_expired_at) > now);
+              
+              if (hasActiveSubscription) {
+                // Subscription is active, check if lesson is available
+                if (profile.next_lesson_access_at && (new Date(profile.next_lesson_access_at) <= now)) {
+                  // Lesson is available, offer to start it
+                  await sendMessageViaTelegram(chatId,
+                    "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
+                    env,
+                    { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
+                  return new Response('OK');
+                }
+              } else {
+                // Subscription inactive or expired, offer to subscribe
+                const channelLink = env.TRIBUTE_CHANNEL_LINK;
+                if (channelLink) {
+                  await sendTributeChannelLink(chatId, env);
+                  return new Response('OK');
+                }
               }
             }
           }
-        }
-        
-        // Check if user has completed the FULL onboarding (survey)
-        const { results: surveyResults } = await env.USER_DB
-          .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
-          .bind(parseInt(chatId, 10))
-          .all();
-
-        if (surveyResults.length === 0 || !surveyResults[0].completed_at) {
-          // User has NOT completed onboarding, or hasn't even started.
-          // Route to newbies-funnel.
-          console.log(`User ${chatId} has not completed onboarding, routing to NEWBIES_FUNNEL.`);
           
-          if (!env.NEWBIES_FUNNEL) {
-            console.error(`NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);
-            await sendMessageViaTelegram(chatId, 
-              "Sorry, the onboarding service is temporarily unavailable. Please try again later.", 
-              env);
-            return new Response('OK');
-          }
+          console.log(`🔍 [${chatId}] Checking if user has completed onboarding survey`);
+          // Check if user has completed the FULL onboarding (survey)
+          const { results: surveyResults } = await env.USER_DB
+            .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
+            .bind(parseInt(chatId, 10))
+            .all();
 
-          return forward(env.NEWBIES_FUNNEL, {
-            user_id: chatId,
-            action: 'start_onboarding'
-          });
+          console.log(`📊 [${chatId}] Survey check results:`, surveyResults.length > 0 ? 'Found survey record' : 'No survey record');
+
+          if (surveyResults.length === 0 || !surveyResults[0].completed_at) {
+            // User has NOT completed onboarding, or hasn't even started.
+            // Route to newbies-funnel.
+            console.log(`🔄 [${chatId}] User has not completed onboarding, routing to NEWBIES_FUNNEL`);
+            
+            if (!env.NEWBIES_FUNNEL) {
+              console.error(`❌ [${chatId}] NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);
+              await sendMessageViaTelegram(chatId, 
+                "Sorry, the onboarding service is temporarily unavailable. Please try again later.", 
+                env);
+              return new Response('OK');
+            }
+
+            console.log(`📤 [${chatId}] Forwarding to NEWBIES_FUNNEL with start_onboarding action`);
+            return forward(env.NEWBIES_FUNNEL, {
+              user_id: chatId,
+              action: 'start_onboarding'
+            });
+          }
+          
+          // User has completed onboarding - show lesson options
+          console.log(`✅ [${chatId}] User has completed onboarding, calling handleLessonCommand`);
+          await handleLessonCommand(chatId, env);
+          return new Response('OK');
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error processing /start command:`, error);
+          console.error(`❌ [${chatId}] Error stack:`, error.stack);
+          
+          // Send fallback message to user
+          await sendMessageViaTelegram(chatId, 
+            "👋 Welcome to LinguaPulse! There was a technical issue, but let's get you started. Please wait a moment and try again.", 
+            env);
+          return new Response('OK');
         }
-        
-        // User has completed onboarding - show lesson options
-        console.log(`User ${chatId} has completed onboarding, calling handleLessonCommand.`);
-        await handleLessonCommand(chatId, env);
-        return new Response('OK');
       }
 
       // Handle voice messages with improved routing
