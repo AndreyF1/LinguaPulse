@@ -372,7 +372,7 @@ async function handleLessonStart(chatId, env, db, kv) {
   if (!results.length) {
     await sendText(
       chatId, 
-      "You need to take the placement test first. Use /start to begin.",
+      "You need to complete the onboarding first. Use /start to begin.",
       env
     );
     return new Response('OK');

@@ -17,7 +17,7 @@ export default {
 
       // A) Start free lesson trigger
       if (raw.action === 'start_free') {
-        // First, check if the user has already completed the free lesson AND has eng_level
+        // Check if the user has already completed the free lesson
         const { results } = await db.prepare(
           `SELECT eng_level, pass_lesson0_at FROM user_profiles 
            WHERE telegram_id = ?`
@@ -25,19 +25,8 @@ export default {
         .bind(parseInt(chatId, 10))
         .all();
         
-        // КРИТИЧЕСКАЯ ПРОВЕРКА: Пользователь должен сначала пройти placement test
-        if (results.length === 0 || !results[0].eng_level) {
-          console.log(`User ${chatId} hasn't completed placement test, redirecting to test`);
-          await sendText(
-            chatId, 
-            "You need to complete the placement test first to determine your English level. Please type /start to begin the test.",
-            env
-          );
-          return new Response('OK');
-        }
-        
         // If user already completed the lesson, show subscription offer instead
-        if (results[0].pass_lesson0_at) {
+        if (results.length > 0 && results[0].pass_lesson0_at) {
           await sendText(
             chatId, 
             "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just €2 per week. This gives you access to one extended lesson every day with personalized feedback.",

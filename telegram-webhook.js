@@ -80,7 +80,7 @@ if (update.message?.text) {
       !supportedCommands.some(cmd => update.message.text.startsWith(cmd))) {
     
     const helpMessage = '🤖 *LinguaPulse Bot Commands:*\n\n' +
-      '*/start* - Begin the language placement test or see your profile\n' +
+      '*/start* - Begin the onboarding process or see your profile\n' +
       '*/profile* - View your language level and progress\n' +
       '*/lesson* - Access your lessons and subscription status\n' +
       '*/talk* - Start today\'s lesson (for subscribers)\n' +
@@ -141,8 +141,8 @@ if (update.message?.text) {
             }
           } else {
                       // If they haven't completed the test
-          await sendMessageViaTelegram(chatId, 
-            "📝 *You need to complete the placement test first.* Use /start to begin.", env, { parse_mode: 'Markdown' });
+            await sendMessageViaTelegram(chatId, 
+              "📝 *You need to complete the onboarding first.* Use /start to begin.", env, { parse_mode: 'Markdown' });
           }
           return new Response('OK');
         }
@@ -172,35 +172,30 @@ if (update.message?.text) {
         
         const profile = results[0] || {};
         
-        if (!profile.eng_level) {
-          await sendMessageViaTelegram(chatId, 
-            '📝 *You haven\'t taken the placement test yet.* Use /start to begin.', env, { parse_mode: 'Markdown' });
-        } else {
-          // Basic profile info
-          const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
-          const lessonsTotal = profile.number_of_lessons || 0;
-          const lessonsStreak = profile.lessons_in_row || 0;
-          
-          // Check subscription status (simple version)
-          const now = new Date();
-          const hasActiveSubscription = profile.subscription_expired_at && 
-                                      (new Date(profile.subscription_expired_at) > now);
-          const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
-          
-          let message = `📊 *Your Language Profile*\n\n` +
-            `🎯 *Level:* ${profile.eng_level}\n` +
-            `💳 *Subscription:* ${subscriptionStatus}\n` +
-            `📚 *Total lessons:* ${lessonsTotal}\n` +
-            `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
-          
-                  // Show profile with appropriate options based on subscription status
+        // Basic profile info
+        const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
+        const lessonsTotal = profile.number_of_lessons || 0;
+        const lessonsStreak = profile.lessons_in_row || 0;
+        
+        // Check subscription status (simple version)
+        const now = new Date();
+        const hasActiveSubscription = profile.subscription_expired_at && 
+                                    (new Date(profile.subscription_expired_at) > now);
+        const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
+        
+        let message = `📊 *Your Language Profile*\n\n` +
+          `🎯 *Level:* ${profile.eng_level || 'B1 (default)'}\n` +
+          `💳 *Subscription:* ${subscriptionStatus}\n` +
+          `📚 *Total lessons:* ${lessonsTotal}\n` +
+          `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
+        
+        // Show profile with appropriate options based on subscription status
         if (hasActiveSubscription) {
           // For subscribed users, don't show subscription buttons
           await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
         } else {
           // For non-subscribed users, show subscription options
           await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
-        }
         }
         
         return new Response('OK');
@@ -312,12 +307,12 @@ return new Response('OK');
           // выполнил ли пользователь бесплатный урок, чтобы понять какое действие выполнить
           try {
             const { results } = await env.USER_DB
-              .prepare('SELECT eng_level, pass_lesson0_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
+              .prepare('SELECT pass_lesson0_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
               .bind(parseInt(chatId, 10))
               .all();
             
             if (results.length > 0) {
-              console.log(`User found in database, eng_level: ${!!results[0].eng_level}, pass_lesson0_at: ${!!results[0].pass_lesson0_at}`);
+              console.log(`User found in database, pass_lesson0_at: ${!!results[0].pass_lesson0_at}, subscription_expired_at: ${!!results[0].subscription_expired_at}`);
               
               // Если у пользователя уже пройден бесплатный урок
               if (results[0].pass_lesson0_at) {
@@ -391,7 +386,7 @@ return new Response('OK');
         // If no active session, provide info about next lesson or subscription
         if (!activeSession) {
           const { results } = await env.USER_DB
-            .prepare('SELECT subscription_expired_at, next_lesson_access_at, eng_level FROM user_profiles WHERE telegram_id = ?')
+            .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
             .bind(parseInt(chatId, 10))
             .all();
           
@@ -557,7 +552,7 @@ return new Response('OK');
         
         if (!results.length) {
           await sendMessageViaTelegram(chatId, 
-            'You need to take the placement test first. Use /start to begin.', env);
+            'You need to complete the onboarding first. Use /start to begin.', env);
           return new Response('OK');
         }
         
@@ -821,7 +816,7 @@ async function handleTributeWebhook(request, env) {
         
         if (results.length === 0) {
           console.error(`User ${userId} not found in database`);
-          return new Response(`User ${userId} not found in database. Please complete the placement test first.`, { 
+          return new Response(`User ${userId} not found in database. Please complete the onboarding first.`, { 
             status: 404, 
             headers: { 'Content-Type': 'text/plain' } 
           });
@@ -1421,7 +1416,7 @@ async function handleLessonCommand(chatId, env) {
     
     const profile = results[0];
     console.log(`User ${chatId} profile:`, {
-      eng_level: profile.eng_level,
+      eng_level: profile.eng_level || 'B1 (default)',
       pass_lesson0_at: !!profile.pass_lesson0_at,
       subscription_expired_at: profile.subscription_expired_at,
       next_lesson_access_at: profile.next_lesson_access_at
