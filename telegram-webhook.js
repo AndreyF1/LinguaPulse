@@ -280,22 +280,31 @@ return new Response('OK');
           
           console.log(`🔍 [${chatId}] Checking if user has completed onboarding survey`);
           // Check if user has completed the FULL onboarding (survey)
-          const { results: surveyResults } = await env.USER_DB
-            .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
-            .bind(parseInt(chatId, 10))
-            .all();
+          let surveyResults = [];
+          let surveyCheckFailed = false;
+          
+          try {
+            const { results } = await env.USER_DB
+              .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
+              .bind(parseInt(chatId, 10))
+              .all();
+            surveyResults = results;
+            console.log(`📊 [${chatId}] Survey check results:`, surveyResults.length > 0 ? 'Found survey record' : 'No survey record');
+          } catch (surveyError) {
+            console.error(`❌ [${chatId}] Error checking user_survey table:`, surveyError);
+            surveyCheckFailed = true;
+            // If survey check fails, assume user needs onboarding
+          }
 
-          console.log(`📊 [${chatId}] Survey check results:`, surveyResults.length > 0 ? 'Found survey record' : 'No survey record');
-
-          if (surveyResults.length === 0 || !surveyResults[0].completed_at) {
-            // User has NOT completed onboarding, or hasn't even started.
+          if (surveyCheckFailed || surveyResults.length === 0 || !surveyResults[0]?.completed_at) {
+            // User has NOT completed onboarding, or survey check failed.
             // Route to newbies-funnel.
-            console.log(`🔄 [${chatId}] User has not completed onboarding, routing to NEWBIES_FUNNEL`);
+            console.log(`🔄 [${chatId}] User has not completed onboarding (or survey check failed), routing to NEWBIES_FUNNEL`);
             
             if (!env.NEWBIES_FUNNEL) {
               console.error(`❌ [${chatId}] NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);
               await sendMessageViaTelegram(chatId, 
-                "Sorry, the onboarding service is temporarily unavailable. Please try again later.", 
+                "👋 Welcome to LinguaPulse! There was a technical issue with our onboarding service. Please try again in a moment.", 
                 env);
               return new Response('OK');
             }
@@ -316,7 +325,20 @@ return new Response('OK');
           console.error(`❌ [${chatId}] Error processing /start command:`, error);
           console.error(`❌ [${chatId}] Error stack:`, error.stack);
           
-          // Send fallback message to user
+          // Try to route to newbies-funnel as fallback
+          if (env.NEWBIES_FUNNEL) {
+            console.log(`🔄 [${chatId}] Error occurred, trying to route to NEWBIES_FUNNEL as fallback`);
+            try {
+              return forward(env.NEWBIES_FUNNEL, {
+                user_id: chatId,
+                action: 'start_onboarding'
+              });
+            } catch (forwardError) {
+              console.error(`❌ [${chatId}] Failed to forward to NEWBIES_FUNNEL:`, forwardError);
+            }
+          }
+          
+          // Send fallback message to user if all else fails
           await sendMessageViaTelegram(chatId, 
             "👋 Welcome to LinguaPulse! There was a technical issue, but let's get you started. Please wait a moment and try again.", 
             env);
