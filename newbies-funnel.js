@@ -297,11 +297,11 @@ const SURVEY_QUESTIONS = {
   telegram_preference: {
     ru: {
       question: "Нравится ли тебе идея заниматься в Телеграм?",
-      options: ["Да", "Предпочел бы приложение"]
+      options: ["Да", "Предпочёл бы app"]
     },
     en: {
       question: "Do you like the idea of studying in Telegram?",
-      options: ["Yes", "Would prefer an app"]
+      options: ["Yes", "Prefer app"]
     }
   },
   voice_usage: {
