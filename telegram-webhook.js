@@ -486,6 +486,24 @@ return new Response('OK');
         }
       }
 
+      // 1.5. handle language selection buttons (forward to newbies-funnel)
+      if (update.callback_query?.data?.startsWith('language:') ||
+          update.callback_query?.data?.startsWith('survey:')) {
+        
+        console.log(`🌍 LANGUAGE/SURVEY CALLBACK: "${update.callback_query.data}" from user ${chatId}`);
+        
+        if (!env.NEWBIES_FUNNEL) {
+          console.error(`❌ [${chatId}] NEWBIES_FUNNEL worker is undefined for language selection`);
+          await sendMessageViaTelegram(chatId, 
+            "❌ *Sorry, the language selection service is temporarily unavailable.* Please try again later.", env, { parse_mode: 'Markdown' });
+          return new Response('OK');
+        }
+        
+        // Forward the entire update to newbies-funnel for processing
+        console.log(`📤 [${chatId}] Forwarding language/survey callback to NEWBIES_FUNNEL`);
+        return forward(env.NEWBIES_FUNNEL, update);
+      }
+
       // 2. handle lesson buttons
       if (update.callback_query?.data === 'lesson:free' || 
           update.callback_query?.data === 'lesson:start') {

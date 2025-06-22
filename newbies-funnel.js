@@ -60,9 +60,9 @@ export default {
         // If nothing else, they are a brand new user. Send language selection.
         console.log(`User ${chatId} is brand new. Sending language selection.`);
         const welcomeMessage = 
-          "👋 Привет! Я LinguaPulse, AI учитель, созданный для помощи в изучении английского языка.\n\n" +
-          "Hello! I'm LinguaPulse, an AI teacher created to help you learn English.\n\n" +
-          "🌍 На каком языке оставить интерфейс? / What language should I use for the interface?";
+          "👋 Hello! I'm LinguaPulse, an AI teacher created to help you learn English.\n\n" +
+          "Привет! Я LinguaPulse, AI учитель, созданный для помощи в изучении английского языка.\n\n" +
+          "🌍 What language should I use for the interface? / На каком языке оставить интерфейс?";
         
         await sendText(chatId, welcomeMessage, env, [
           [
