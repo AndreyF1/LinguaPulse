@@ -22,11 +22,11 @@ jobs:
         run: npm install
         
       # Deploy worker components first (without service bindings)
-      - name: Deploy dev-test-bot
+      - name: Deploy dev-newbies-funnel
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: deploy --env dev-test-bot
+          command: deploy --env dev-newbies-funnel
           
       - name: Deploy dev-lesson0
         uses: cloudflare/wrangler-action@v3
@@ -63,7 +63,7 @@ jobs:
           # Set dev bot token for all workers that need it
           if [ ! -z "${{ secrets.DEV_BOT_TOKEN }}" ]; then
             echo "Setting DEV_BOT_TOKEN for dev workers..."
-            echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-test-bot
+            echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-newbies-funnel
             echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-lesson0
             echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-webhook
             echo "${{ secrets.DEV_BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN --env dev-main-lesson
@@ -125,7 +125,7 @@ jobs:
           echo ""
           echo "🔗 Dev workers deployed:"
           echo "- dev-telegram-webhook: https://dev-telegram-webhook.andreykatkov13.workers.dev"
-          echo "- dev-linguapulse-test-bot"  
+          echo "- dev-linguapulse-newbies-funnel"  
           echo "- dev-linguapulse-lesson0-bot"
           echo "- dev-main-lesson"
           echo "- dev-reminder"

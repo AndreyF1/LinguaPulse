@@ -1,5 +1,5 @@
 // telegram-webhook/worker.js with Tribute.tg integration
-// Receives every Telegram update on /tg and routes it to TEST or LESSON0
+// Receives every Telegram update on /tg and routes it to NEWBIES_FUNNEL or LESSON0
 
 export default {
   async fetch(request, env, ctx) {
@@ -12,7 +12,7 @@ export default {
     // Удаляем глобальную переменную и просто логируем сервисы
     console.log(`[DEBUG] Available services in env:`, 
                 Object.keys(env || {})
-                .filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON'].includes(key))
+                .filter(key => ['NEWBIES_FUNNEL', 'LESSON0', 'MAIN_LESSON'].includes(key))
                 .join(', '));
     
     try {
@@ -273,29 +273,48 @@ return new Response('OK');
           return new Response('OK');
         }
         
-        // Check if user is new or needs to register first
-        const { results } = await env.USER_DB
-          .prepare('SELECT telegram_id FROM user_profiles WHERE telegram_id = ?')
+        // Check if user has completed onboarding
+        const { results: onboardingResults } = await env.USER_DB
+          .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
           .bind(parseInt(chatId, 10))
           .all();
         
-        if (results.length === 0) {
-          // New user - create initial record in database
-          const startAt = new Date().toISOString();
-          await env.USER_DB
-            .prepare(
-              `INSERT INTO user_profiles (telegram_id, start_test_at)
-               VALUES (?, ?)
-               ON CONFLICT(telegram_id) DO UPDATE
-                 SET start_test_at = excluded.start_test_at`
-            )
-            .bind(parseInt(chatId, 10), startAt)
-            .run();
+        if (onboardingResults.length === 0) {
+          // New user - start onboarding funnel
+          console.log(`New user ${chatId}, starting onboarding funnel`);
+          
+          // Check if NEWBIES_FUNNEL worker is available
+          if (!env.NEWBIES_FUNNEL) {
+            console.error(`NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);
+            await sendMessageViaTelegram(chatId, 
+              "Sorry, the onboarding service is temporarily unavailable. Please try again later.", 
+              env);
+            return new Response('OK');
+          }
+          
+          // Forward to NEWBIES_FUNNEL for onboarding
+          console.log("Forwarding to NEWBIES_FUNNEL for onboarding");
+          return forward(env.NEWBIES_FUNNEL, {
+            user_id: chatId,
+            action: 'start_onboarding'
+          });
         }
         
-        // Forward to TEST bot for test generation and question flow
-        console.log("Forwarding /start command to TEST bot");
-        return forward(env.TEST, update);
+        // User has completed onboarding but not test - start test
+        console.log(`User ${chatId} completed onboarding, starting test`);
+        
+        // Check if NEWBIES_FUNNEL worker is available for test
+        if (!env.NEWBIES_FUNNEL) {
+          console.error(`NEWBIES_FUNNEL worker is undefined, cannot start test`);
+          await sendMessageViaTelegram(chatId, 
+            "Sorry, the test service is temporarily unavailable. Please try again later.", 
+            env);
+          return new Response('OK');
+        }
+        
+        // Forward to NEWBIES_FUNNEL for test
+        console.log("Forwarding to NEWBIES_FUNNEL for test");
+        return forward(env.NEWBIES_FUNNEL, update);
       }
 
       // Handle voice messages with improved routing
@@ -303,7 +322,7 @@ return new Response('OK');
         try {
           console.log(`=== VOICE MESSAGE HANDLING START ===`);
           console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
-          console.log(`Available services:`, Object.keys(env).filter(key => ['TEST', 'LESSON0', 'MAIN_LESSON'].includes(key)));
+          console.log(`Available services:`, Object.keys(env).filter(key => ['NEWBIES_FUNNEL', 'LESSON0', 'MAIN_LESSON'].includes(key)));
           
           // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем доступность CHAT_KV
           if (!env.CHAT_KV) {
@@ -792,9 +811,9 @@ return new Response('OK');
         return new Response('OK');
       }
 
-      // 5. everything else goes to test-bot
-      console.log("Forwarding to TEST bot as default action");
-      return forward(env.TEST, update);
+      // 5. everything else goes to newbies-funnel (replacing test-bot)
+      console.log("Forwarding to NEWBIES_FUNNEL as default action");
+      return forward(env.NEWBIES_FUNNEL, update);
     } catch (error) {
       console.error("Unhandled error in telegram-webhook:", error);
       // Always return 200 OK to Telegram webhook to avoid retries

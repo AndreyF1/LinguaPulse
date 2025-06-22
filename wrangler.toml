@@ -42,6 +42,28 @@ id = "ff3bf4d1633d45cd92e95d193b7d250f"
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
+# Newbies Funnel Environment (replaces test-bot functionality)
+[env.newbies-funnel]
+name = "linguapulse-newbies-funnel"
+main = "newbies-funnel.js"
+keep_vars = true
+
+# Enable logs specifically for this environment
+[env.newbies-funnel.observability]
+  [env.newbies-funnel.observability.logs]
+  enabled = true
+
+# Переменные окружения настраиваются через CI/CD или Dashboard
+# НЕ ОПРЕДЕЛЯЙТЕ переменные с пустыми значениями, это затирает их значения!
+
+[[env.newbies-funnel.kv_namespaces]]
+binding = "CHAT_KV"
+id = "ff3bf4d1633d45cd92e95d193b7d250f"
+
+[[env.newbies-funnel.d1_databases]]
+binding = "USER_DB"
+database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
+
 # Webhook Environment  
 [env.webhook]
 name = "telegram-webhook"
@@ -70,8 +92,8 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
 # Сервисные привязки для окружения webhook
 [[env.webhook.services]]
-binding = "TEST"
-service = "linguapulse-test-bot"
+binding = "NEWBIES_FUNNEL"
+service = "linguapulse-newbies-funnel"
 
 [[env.webhook.services]]
 binding = "LESSON0"
@@ -80,8 +102,6 @@ service = "linguapulse-lesson0-bot"
 [[env.webhook.services]]
 binding = "MAIN_LESSON"
 service = "main-lesson"
-
-
 
 # Lesson0 Environment
 [env.lesson0]
@@ -139,8 +159,6 @@ id = "ff3bf4d1633d45cd92e95d193b7d250f"
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
-
-
 # Reminder Environment
 [env.reminder]
 name = "reminder"
@@ -178,6 +196,24 @@ id = "cc6437f9f5b647a4bf4d8a61fb1d950d"
 binding = "USER_DB"
 database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
 
+# Dev Newbies Funnel Environment
+[env.dev-newbies-funnel]
+name = "dev-linguapulse-newbies-funnel"
+main = "newbies-funnel.js"
+keep_vars = true
+
+[env.dev-newbies-funnel.observability]
+  [env.dev-newbies-funnel.observability.logs]
+  enabled = true
+
+[[env.dev-newbies-funnel.kv_namespaces]]
+binding = "CHAT_KV"
+id = "cc6437f9f5b647a4bf4d8a61fb1d950d"
+
+[[env.dev-newbies-funnel.d1_databases]]
+binding = "USER_DB"
+database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
+
 # Dev Webhook Environment  
 [env.dev-webhook]
 name = "dev-telegram-webhook"
@@ -202,8 +238,8 @@ database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
 
 # Dev service bindings
 [[env.dev-webhook.services]]
-binding = "TEST"
-service = "dev-linguapulse-test-bot"
+binding = "NEWBIES_FUNNEL"
+service = "dev-linguapulse-newbies-funnel"
 
 [[env.dev-webhook.services]]
 binding = "LESSON0"
