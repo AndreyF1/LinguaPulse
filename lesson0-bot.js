@@ -10,6 +10,7 @@ const TEXTS = {
     alreadyCompleted: "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just €2 per week. This gives you access to one extended lesson every day with personalized feedback.",
     subscribeWeekly: "Subscribe for €2/week",
     welcomeMessage: "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.",
+    voiceInstructions: "🎤 *How to send voice messages:*\n\n• In the bottom right corner of your screen, find the rightmost icon – this could be a circle in a square (for video messages) or a microphone.\n• If you see a circle in a square, tap it once briefly to switch the icon to a microphone.\n• Now press and hold the microphone icon to start recording.\n• Speak clearly and calmly.\n• When you finish speaking, release the icon. Your message will be sent automatically.",
     startingLesson: "Starting free audio lesson…",
     historyError: "I couldn't retrieve your conversation history. Please use /lesson to start a new practice session.",
     processingError: "There was an error processing your lesson. Please use /lesson to start a new practice session.",
@@ -29,6 +30,7 @@ const TEXTS = {
     alreadyCompleted: "Вы уже прошли бесплатный пробный урок. Если хотите продолжить изучение английского, вы можете подписаться всего за €2 в неделю. Это даст вам доступ к одному расширенному уроку каждый день с персональной обратной связью.",
     subscribeWeekly: "Подписаться за €2/неделю",
     welcomeMessage: "🎧 *Добро пожаловать на бесплатную практику английского разговора!* Пожалуйста, прослушайте аудио и ответьте голосовым сообщением.",
+    voiceInstructions: "🎤 *Как отправлять голосовые сообщения:*\n\n• В правом нижнем углу экрана найдите самую правую иконку – это может быть кружочек в квадрате (для видеосообщений) или микрофон.\n• Если вы видите кружочек в квадрате, коротко нажмите на нее один раз, чтобы иконка переключилась на микрофон.\n• Теперь нажмите и удерживайте иконку микрофона, чтобы начать запись.\n• Говорите четко и спокойно.\n• Когда закончите говорить, отпустите иконку. Ваше сообщение будет автоматически отправлено.",
     startingLesson: "Начинаем бесплатный аудио урок…",
     historyError: "Не удалось получить историю разговора. Пожалуйста, используйте /lesson чтобы начать новую практику.",
     processingError: "Произошла ошибка при обработке урока. Пожалуйста, используйте /lesson чтобы начать новую практику.",
@@ -107,6 +109,20 @@ export default {
         // ИСПРАВЛЕНИЕ ПОРЯДКА: Сначала отправляем приветствие, затем начинаем урок
         // Отправляем сообщение о начале урока
         await sendText(chatId, getText(userLang, 'welcomeMessage'), env);
+        
+        // Send voice instructions with GIF
+        try {
+          await sendGif(
+            chatId, 
+            "https://i.gifer.com/3OxNa.gif", 
+            getText(userLang, 'voiceInstructions'), 
+            env
+          );
+        } catch (gifError) {
+          console.error("Failed to send GIF, sending text instructions only:", gifError);
+          // Fallback to text-only instructions if GIF fails
+          await sendText(chatId, getText(userLang, 'voiceInstructions'), env);
+        }
         
         // Record lesson start in database
         const now = new Date().toISOString();
@@ -971,6 +987,30 @@ async function sendText(chatId, text, env, keyboard) {
   if (!res.ok) {
     const errorText = await res.text();
     throw new Error(`Telegram sendMessage error: ${errorText}`);
+  }
+}
+
+// Send GIF via Telegram
+async function sendGif(chatId, gifUrl, caption, env) {
+  const body = { 
+    chat_id: String(chatId), 
+    animation: gifUrl,
+    caption: caption,
+    parse_mode: 'Markdown'
+  };
+  
+  const res = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendAnimation`,
+    { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(body) 
+    }
+  );
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Telegram sendAnimation error: ${errorText}`);
   }
 }
 
