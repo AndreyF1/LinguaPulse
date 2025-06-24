@@ -4,6 +4,69 @@
 // - KV binding for conversation history: CHAT_KV
 // - Env vars: OPENAI_KEY, BOT_TOKEN, TRANSLOADIT_KEY, TRANSLOADIT_TPL, SYSTEM_PROMPT
 
+// Localization texts
+const TEXTS = {
+  en: {
+    alreadyCompleted: "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just €2 per week. This gives you access to one extended lesson every day with personalized feedback.",
+    subscribeWeekly: "Subscribe for €2/week",
+    welcomeMessage: "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.",
+    startingLesson: "Starting free audio lesson…",
+    historyError: "I couldn't retrieve your conversation history. Please use /lesson to start a new practice session.",
+    processingError: "There was an error processing your lesson. Please use /lesson to start a new practice session.",
+    sessionEnded: "It seems your previous lesson has ended. Please use /lesson to start a new practice session.",
+    farewellMessage: "That concludes our English practice session for today. You've done really well! I'll analyze your speaking and provide feedback now. Thank you for practicing with me!",
+    analyzingSpeaking: "🔍 *Analyzing your speaking...*",
+    feedbackTitle: "📝 *Your Language Feedback*\n\nHere's a detailed analysis of your speaking during our conversation:",
+    overallAssessment: "🌟 *Overall Assessment*\n\nYou demonstrated good effort in communicating in English. With continued practice, you'll see significant improvements in fluency, grammar accuracy, and vocabulary usage. I recommend practicing daily conversations like this to build confidence and speaking skills.",
+    subscriptionOffer: "To unlock daily personalized audio lessons, you can subscribe for just €2 per week.",
+    fallbackResponse: "I didn't quite catch that. Could you please repeat?",
+    fallbackGreeting: "Hi there! I'm your English practice partner today. How are you feeling, and what would you like to talk about?",
+    chatGptFallback: "I'd love to hear more about that. Could you tell me more?",
+    analysisError: "Sorry, I couldn't analyze this particular response.",
+    technicalError: "⚙️ Sorry, a technical error occurred during the free lesson. Please use /start to try again."
+  },
+  ru: {
+    alreadyCompleted: "Вы уже прошли бесплатный пробный урок. Если хотите продолжить изучение английского, вы можете подписаться всего за €2 в неделю. Это даст вам доступ к одному расширенному уроку каждый день с персональной обратной связью.",
+    subscribeWeekly: "Подписаться за €2/неделю",
+    welcomeMessage: "🎧 *Добро пожаловать на бесплатную практику английского разговора!* Пожалуйста, прослушайте аудио и ответьте голосовым сообщением.",
+    startingLesson: "Начинаем бесплатный аудио урок…",
+    historyError: "Не удалось получить историю разговора. Пожалуйста, используйте /lesson чтобы начать новую практику.",
+    processingError: "Произошла ошибка при обработке урока. Пожалуйста, используйте /lesson чтобы начать новую практику.",
+    sessionEnded: "Кажется, ваш предыдущий урок завершился. Пожалуйста, используйте /lesson чтобы начать новую практику.",
+    farewellMessage: "На этом наша практика английского языка на сегодня завершается. Вы очень хорошо поработали! Сейчас я проанализирую вашу речь и дам обратную связь. Спасибо за практику со мной!",
+    analyzingSpeaking: "🔍 *Анализирую вашу речь...*",
+    feedbackTitle: "📝 *Обратная связь по языку*\n\nВот подробный анализ вашей речи во время нашего разговора:",
+    overallAssessment: "🌟 *Общая оценка*\n\nВы продемонстрировали хорошие усилия в общении на английском языке. При продолжении практики вы увидите значительные улучшения в беглости, грамматической точности и использовании словарного запаса. Рекомендую практиковать ежедневные разговоры, подобные этому, чтобы развить уверенность и навыки говорения.",
+    subscriptionOffer: "Чтобы получить доступ к ежедневным персонализированным аудио урокам, вы можете подписаться всего за €2 в неделю.",
+    fallbackResponse: "Я не совсем понял. Не могли бы вы повторить?",
+    fallbackGreeting: "Привет! Я ваш партнер по практике английского на сегодня. Как дела, и о чем бы вы хотели поговорить?",
+    chatGptFallback: "Мне бы хотелось услышать об этом больше. Не могли бы вы рассказать подробнее?",
+    analysisError: "Извините, я не смог проанализировать этот конкретный ответ.",
+    technicalError: "⚙️ Извините, произошла техническая ошибка во время бесплатного урока. Пожалуйста, используйте /start чтобы попробовать снова."
+  }
+};
+
+// Function to get user's interface language
+async function getUserLanguage(chatId, db) {
+  try {
+    const { results } = await db.prepare(
+      `SELECT interface_language FROM user_preferences WHERE telegram_id = ?`
+    )
+    .bind(parseInt(chatId, 10))
+    .all();
+    
+    return results.length > 0 ? results[0].interface_language : 'en';
+  } catch (error) {
+    console.error('Error getting user language:', error);
+    return 'en'; // Default to English
+  }
+}
+
+// Function to get localized text
+function getText(language, key) {
+  return TEXTS[language] && TEXTS[language][key] ? TEXTS[language][key] : TEXTS['en'][key];
+}
+
 export default {
   async fetch(request, env, ctx) {
     let raw; // Declared here to be accessible in the final catch block
@@ -15,6 +78,10 @@ export default {
 
       const db = env.USER_DB;
       const kv = env.CHAT_KV;
+      
+      // Get user's interface language
+      const userLang = await getUserLanguage(chatId, db);
+      console.log(`User ${chatId} interface language: ${userLang}`);
 
       // A) Start free lesson trigger
       if (raw.action === 'start_free') {
@@ -30,16 +97,16 @@ export default {
         if (results.length > 0 && results[0].pass_lesson0_at) {
           await sendText(
             chatId, 
-            "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just €2 per week. This gives you access to one extended lesson every day with personalized feedback.",
+            getText(userLang, 'alreadyCompleted'),
             env,
-            [[{ text: "Subscribe for €2/week", callback_data: "subscribe:weekly" }]]
+            [[{ text: getText(userLang, 'subscribeWeekly'), callback_data: "subscribe:weekly" }]]
           );
           return new Response('OK');
         }
         
         // ИСПРАВЛЕНИЕ ПОРЯДКА: Сначала отправляем приветствие, затем начинаем урок
         // Отправляем сообщение о начале урока
-        await sendText(chatId, "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.", env);
+        await sendText(chatId, getText(userLang, 'welcomeMessage'), env);
         
         // Record lesson start in database
         const now = new Date().toISOString();
@@ -59,10 +126,10 @@ export default {
         await safeKvPut(kv, `session:${chatId}`, sessionId);
         
         // Затем отправляем "Starting free audio lesson..." и генерируем первое приветствие
-        await sendText(chatId, "Starting free audio lesson…", env);
+        await sendText(chatId, getText(userLang, 'startingLesson'), env);
         
         // Generate first GPT greeting
-        await sendFirstGreeting(chatId, history, env, kv);
+        await sendFirstGreeting(chatId, history, env, kv, userLang);
         return new Response('OK');
       }
 
@@ -94,7 +161,7 @@ export default {
           // Проверка на валидность истории
           if (!Array.isArray(hist) || hist.length === 0) {
             console.log("Invalid or empty history found, resetting session");
-            await sendText(chatId, "I couldn't retrieve your conversation history. Please use /lesson to start a new practice session.", env);
+            await sendText(chatId, getText(userLang, 'historyError'), env);
             
             // Очистить данные сессии
             await safeKvDelete(kv, histKey);
@@ -103,7 +170,7 @@ export default {
           }
         } catch (parseError) {
           console.error("Error parsing history:", parseError);
-          await sendText(chatId, "There was an error processing your lesson. Please use /lesson to start a new practice session.", env);
+          await sendText(chatId, getText(userLang, 'processingError'), env);
             
           // Очистить данные сессии
           await safeKvDelete(kv, histKey);
@@ -116,7 +183,7 @@ export default {
         const currentSession = await safeKvGet(kv, sessionKey);
         if (!currentSession) {
           console.log("No active session found, message might be from an old test session");
-          await sendText(chatId, "It seems your previous lesson has ended. Please use /lesson to start a new practice session.", env);
+          await sendText(chatId, getText(userLang, 'sessionEnded'), env);
           return new Response('OK');
         }
         
@@ -189,25 +256,25 @@ export default {
             console.log(`Full history at completion: ${JSON.stringify(hist)}`);
             
             // Farewell message
-            const bye = "That concludes our English practice session for today. You've done really well! I'll analyze your speaking and provide feedback now. Thank you for practicing with me!";
+            const bye = getText(userLang, 'farewellMessage');
             hist.push({ role: 'assistant', content: bye });
             await safeKvPut(kv, histKey, JSON.stringify(hist));
             await safeSendTTS(chatId, bye, env);
 
             // Send a transition message
-            await sendText(chatId, "🔍 *Analyzing your speaking...*", env);
+            await sendText(chatId, getText(userLang, 'analyzingSpeaking'), env);
             console.log(`=== FREE LESSON FEEDBACK PHASE START ===`);
             
             // Grammar analysis of all user utterances
             const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
             console.log(`Analyzing user utterances: ${JSON.stringify(userUtterances)}`);
-            const analyses = await analyzeLanguage(userUtterances, env);
+            const analyses = await analyzeLanguage(userUtterances, env, userLang);
             
             // First, send an introduction message
             if (analyses.length > 0) {
               await sendText(
                 chatId, 
-                "📝 *Your Language Feedback*\n\nHere's a detailed analysis of your speaking during our conversation:", 
+                getText(userLang, 'feedbackTitle'), 
                 env
               );
               
@@ -216,7 +283,7 @@ export default {
                 const analysis = analyses[i];
                 await sendText(
                   chatId,
-                  `*Utterance ${i+1}:* "${analysis.utterance}"\n\n${analysis.feedback}`,
+                  `*${userLang === 'ru' ? 'Высказывание' : 'Utterance'} ${i+1}:* "${analysis.utterance}"\n\n${analysis.feedback}`,
                   env
                 );
                 
@@ -227,7 +294,7 @@ export default {
               // Overall assessment based on all utterances
               await sendText(
                 chatId,
-                "🌟 *Overall Assessment*\n\nYou demonstrated good effort in communicating in English. With continued practice, you'll see significant improvements in fluency, grammar accuracy, and vocabulary usage. I recommend practicing daily conversations like this to build confidence and speaking skills.",
+                getText(userLang, 'overallAssessment'),
                 env
               );
             }
@@ -237,9 +304,9 @@ export default {
             await new Promise(resolve => setTimeout(resolve, 1000));
             await sendText(
               chatId,
-              "To unlock daily personalized audio lessons, you can subscribe for just €2 per week.",
+              getText(userLang, 'subscriptionOffer'),
               env,
-              [[{ text: "Subscribe for €2/week", callback_data: "subscribe:weekly" }]]
+              [[{ text: getText(userLang, 'subscribeWeekly'), callback_data: "subscribe:weekly" }]]
             );
 
             // Record lesson completion in database
@@ -277,8 +344,8 @@ export default {
             console.log(`This is user message #${userTurns}, will continue conversation`);
             
             // Generate GPT reply based on conversation history
-            const reply = await chatGPT(hist, env);
-            const safeReply = reply.trim() || "I didn't quite catch that. Could you please repeat?";
+            const reply = await chatGPT(hist, env, userLang);
+            const safeReply = reply.trim() || getText(userLang, 'fallbackResponse');
             
             console.log(`Generated bot reply: ${safeReply}`);
             
@@ -306,9 +373,10 @@ export default {
       try {
         const chatId = raw.user_id || raw.message?.chat?.id;
         if (chatId) {
+          const userLang = await getUserLanguage(chatId, env.USER_DB);
           await sendText(
             chatId,
-            '⚙️ Sorry, a technical error occurred during the free lesson. Please use /start to try again.',
+            getText(userLang, 'technicalError'),
             env
           );
         }
@@ -380,13 +448,14 @@ async function safeKvDelete(kv, key) {
 }
 
 // Generate first greeting using GPT
-async function sendFirstGreeting(chatId, history, env, kv) {
+async function sendFirstGreeting(chatId, history, env, kv, language) {
   try {
     console.log(`=== GENERATING FIRST GREETING ===`);
     console.log(`Starting sendFirstGreeting for user ${chatId}`);
     console.log(`Initial history state:`, JSON.stringify(history));
     
     // ИСПРАВЛЕНИЕ ДЛИНЫ: Модифицируем промпт для более короткого приветствия
+    // Приветствие всегда генерируется на английском языке, так как это урок английского
     const prompt = `
 Generate a brief, friendly greeting for an English language practice session. 
 Your greeting should:
@@ -397,6 +466,7 @@ Your greeting should:
 
 Keep your greeting very concise - no more than 2-3 short sentences total.
 Make it simple enough for even beginner English learners to understand.
+IMPORTANT: Always respond in English, as this is an English practice session.
 `;
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -454,7 +524,7 @@ Make it simple enough for even beginner English learners to understand.
     console.error("Error generating first greeting:", error);
     // Fallback to a simple greeting if GPT fails
     // ИСПРАВЛЕНИЕ ДЛИНЫ: Упрощаем запасное приветствие
-    const fallbackGreeting = "Hi there! I'm your English practice partner today. How are you feeling, and what would you like to talk about?";
+    const fallbackGreeting = getText(language, 'fallbackGreeting');
     
     console.log(`Using fallback greeting: "${fallbackGreeting}"`);
     
@@ -474,7 +544,7 @@ Make it simple enough for even beginner English learners to understand.
 }
 
 // Chat with GPT based on conversation history
-async function chatGPT(history, env) {
+async function chatGPT(history, env, language) {
   try {
     // Get system prompt from environment with added instruction for varied responses
     const systemPrompt = env.SYSTEM_PROMPT || 
@@ -532,12 +602,12 @@ IMPORTANT:
     return response;
   } catch (error) {
     console.error("Error in chatGPT function:", error);
-    return "I'd love to hear more about that. Could you tell me more?";
+    return getText(language, 'chatGptFallback');
   }
 }
 
 // Analyze user language for grammar and vocabulary feedback
-async function analyzeLanguage(utterances, env) {
+async function analyzeLanguage(utterances, env, language) {
   if (!utterances.length) return "Not enough conversation data to analyze.";
   
   // Instead of analyzing all utterances together, analyze each one separately
@@ -546,7 +616,24 @@ async function analyzeLanguage(utterances, env) {
   for (const utterance of utterances) {
     if (!utterance.trim()) continue; // Skip empty utterances
     
-    const prompt = `
+    const prompt = language === 'ru' ? `
+Как эксперт-преподаватель английского языка, предоставьте детальный, но полезный анализ языка для этого конкретного высказывания студента:
+"${utterance}"
+
+Ваш анализ должен включать:
+1. Положительную заметку о том, что студент сделал хорошо (беглость, использование словаря и т.д.)
+2. Одну конкретную грамматическую коррекцию, если необходимо (кратко объясните правило)
+3. Предложения по улучшению словарного запаса (1-2 более продвинутые или естественные альтернативы)
+4. Руководство по произношению, если применимо (основанное на вероятных проблемах произношения для не носителей языка)
+5. Как носитель языка мог бы выразить ту же идею более естественно
+
+ФОРМАТ:
+- Делайте обратную связь конструктивной и поддерживающей
+- Используйте четкие пункты
+- Держите общий ответ в пределах 200 слов
+- Начните с краткого положительного комментария
+- ВАЖНО: Отвечайте на русском языке
+` : `
 As an expert English language teacher, provide a detailed yet helpful language analysis for this specific student utterance:
 "${utterance}"
 
@@ -562,6 +649,7 @@ FORMAT:
 - Use clear bullet points 
 - Keep total response under 200 words
 - Start with a brief positive comment
+- IMPORTANT: Respond in English
 `;
     
     try {
@@ -594,7 +682,7 @@ FORMAT:
       console.error(`Analysis error for utterance "${utterance}":`, error);
       analyses.push({
         utterance: utterance,
-        feedback: "Sorry, I couldn't analyze this particular response."
+        feedback: getText(language, 'analysisError')
       });
     }
     
