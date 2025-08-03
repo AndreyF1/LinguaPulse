@@ -412,7 +412,7 @@ export default {
                 const suggestion = await generateSuggestedResponse(hist, env);
                 console.log(`Generated suggestion: "${suggestion}"`);
                 
-                const suggestionMessage = `${getText(userLang, 'suggestionText')}\n\n*${suggestion}*`;
+                const suggestionMessage = `${getText(userLang, 'suggestionText')}\n\n_${suggestion}_`;
                 console.log(`Full suggestion message: "${suggestionMessage}"`);
                 
                 await sendText(chatId, suggestionMessage, env);
@@ -587,6 +587,40 @@ IMPORTANT: Always respond in English, as this is an English practice session.
     console.log(`Sending TTS greeting...`);
     await safeSendTTS(chatId, greeting, env);
     console.log(`Greeting sent successfully`);
+    
+    // Send suggestion for beginners/intermediate after first greeting
+    try {
+      console.log(`=== FIRST GREETING SUGGESTION PHASE START ===`);
+      const userLevel = await getUserLanguageLevel(chatId, env.USER_DB);
+      console.log(`User ${chatId} language level: ${userLevel}`);
+      
+      // Send suggestion only for Beginner/Начинающий and Intermediate/Средний levels
+      const shouldShowSuggestion = userLevel && (
+        userLevel === 'Beginner' || userLevel === 'Начинающий' ||
+        userLevel === 'Intermediate' || userLevel === 'Средний'
+      );
+      
+      console.log(`Should show first greeting suggestion: ${shouldShowSuggestion} (level: ${userLevel})`);
+      
+      if (shouldShowSuggestion) {
+        console.log(`Generating first greeting suggestion for ${userLevel} level user`);
+        const suggestion = await generateSuggestedResponse(history, env);
+        console.log(`Generated first greeting suggestion: "${suggestion}"`);
+        
+        const userLang = language; // Use the language parameter passed to the function
+        const suggestionMessage = `${getText(userLang, 'suggestionText')}\n\n_${suggestion}_`;
+        console.log(`Full first greeting suggestion message: "${suggestionMessage}"`);
+        
+        await sendText(chatId, suggestionMessage, env);
+        console.log(`Successfully sent first greeting suggestion to ${userLevel} level user`);
+      } else {
+        console.log(`No first greeting suggestion needed for level: ${userLevel}`);
+      }
+    } catch (suggestionError) {
+      console.error('Error generating/sending first greeting suggestion:', suggestionError);
+      console.error('First greeting suggestion error stack:', suggestionError.stack);
+      // Don't fail the greeting if suggestion fails
+    }
   } catch (error) {
     console.error("Error generating first greeting:", error);
     // Fallback to a simple greeting if GPT fails
@@ -607,6 +641,40 @@ IMPORTANT: Always respond in English, as this is an English practice session.
     console.log(`Sending fallback TTS greeting...`);
     await safeSendTTS(chatId, fallbackGreeting, env);
     console.log(`Fallback greeting sent successfully`);
+    
+    // Send suggestion for beginners/intermediate after fallback greeting
+    try {
+      console.log(`=== FALLBACK GREETING SUGGESTION PHASE START ===`);
+      const userLevel = await getUserLanguageLevel(chatId, env.USER_DB);
+      console.log(`User ${chatId} language level: ${userLevel}`);
+      
+      // Send suggestion only for Beginner/Начинающий and Intermediate/Средний levels
+      const shouldShowSuggestion = userLevel && (
+        userLevel === 'Beginner' || userLevel === 'Начинающий' ||
+        userLevel === 'Intermediate' || userLevel === 'Средний'
+      );
+      
+      console.log(`Should show fallback greeting suggestion: ${shouldShowSuggestion} (level: ${userLevel})`);
+      
+      if (shouldShowSuggestion) {
+        console.log(`Generating fallback greeting suggestion for ${userLevel} level user`);
+        const suggestion = await generateSuggestedResponse(history, env);
+        console.log(`Generated fallback greeting suggestion: "${suggestion}"`);
+        
+        const userLang = language; // Use the language parameter passed to the function
+        const suggestionMessage = `${getText(userLang, 'suggestionText')}\n\n_${suggestion}_`;
+        console.log(`Full fallback greeting suggestion message: "${suggestionMessage}"`);
+        
+        await sendText(chatId, suggestionMessage, env);
+        console.log(`Successfully sent fallback greeting suggestion to ${userLevel} level user`);
+      } else {
+        console.log(`No fallback greeting suggestion needed for level: ${userLevel}`);
+      }
+    } catch (suggestionError) {
+      console.error('Error generating/sending fallback greeting suggestion:', suggestionError);
+      console.error('Fallback greeting suggestion error stack:', suggestionError.stack);
+      // Don't fail the greeting if suggestion fails
+    }
   }
 }
 
