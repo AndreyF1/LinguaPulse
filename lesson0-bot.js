@@ -125,10 +125,13 @@ export default {
         }
         
         // ИСПРАВЛЕНИЕ ПОРЯДКА: Сначала отправляем приветствие, затем начинаем урок
-        // Отправляем сообщение о начале урока
+        // 1. Отправляем сообщение о начале урока
         await sendText(chatId, getText(userLang, 'welcomeMessage'), env);
         
-        // Send voice instructions with GIF
+        // 2-second delay before voice instructions
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // 2. Send voice instructions with GIF
         try {
           await sendGif(
             chatId, 
@@ -159,7 +162,10 @@ export default {
         await safeKvPut(kv, `hist:${chatId}`, JSON.stringify(history));
         await safeKvPut(kv, `session:${chatId}`, sessionId);
         
-        // Затем отправляем "Starting free audio lesson..." и генерируем первое приветствие
+        // 5-second delay before starting lesson message
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // 3. Затем отправляем "Starting free audio lesson..." и генерируем первое приветствие
         await sendText(chatId, getText(userLang, 'startingLesson'), env);
         
         // Generate first GPT greeting
