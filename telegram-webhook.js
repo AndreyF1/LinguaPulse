@@ -402,10 +402,30 @@ return new Response('OK');
           console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
           console.log(`Available services:`, Object.keys(env).filter(key => ['NEWBIES_FUNNEL', 'LESSON0', 'MAIN_LESSON'].includes(key)));
           
+          // FIRST: Check for active lesson0 session
+          console.log(`=== CHECKING ACTIVE SESSIONS ===`);
+          let hasActiveLesson0Session = false;
+          
+          if (env.CHAT_KV) {
+            const lesson0Session = await env.CHAT_KV.get(`session:${chatId}`);
+            const lesson0History = await env.CHAT_KV.get(`hist:${chatId}`);
+            
+            console.log(`Lesson0 session exists: ${!!lesson0Session}`);
+            console.log(`Lesson0 history exists: ${!!lesson0History}`);
+            
+            if (lesson0Session || lesson0History) {
+              hasActiveLesson0Session = true;
+              console.log(`✅ Active lesson0 session found, forwarding voice message to LESSON0`);
+              
+              // Forward voice message to lesson0-bot
+              return forward(env.LESSON0, update);
+            }
+          }
+          
+          console.log(`❌ No active lesson0 session found`);
+          
           // If no active session, check user status in database
           console.log(`=== CHECKING USER STATUS IN DATABASE ===`);
-          // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Если нет активной сессии, проверим в базе данных,
-          // выполнил ли пользователь бесплатный урок, чтобы понять какое действие выполнить
           try {
             const { results } = await env.USER_DB
               .prepare('SELECT pass_lesson0_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
