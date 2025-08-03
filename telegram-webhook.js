@@ -1609,6 +1609,68 @@ async function handleLessonCommand(chatId, env) {
   try {
     console.log(`handleLessonCommand started for user ${chatId}`);
     
+    // Helper function for localization
+    async function getUserLanguageForLessons() {
+      try {
+        const { results } = await env.USER_DB
+          .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+          .bind(parseInt(chatId, 10))
+          .all();
+        return results.length > 0 ? results[0].interface_language : 'en';
+      } catch (error) {
+        console.error('Error getting user language for lessons:', error);
+        return 'en';
+      }
+    }
+    
+    const lessonTexts = {
+      en: {
+        profileTitle: '📊 *Your Language Profile*',
+        levelLabel: '🎯 *Level:*',
+        subscriptionLabel: '💳 *Subscription:*',
+        totalLessonsLabel: '📚 *Total lessons:*',
+        currentStreakLabel: '🔥 *Current streak:*',
+        days: 'days',
+        subscriptionActive: 'Active',
+        subscriptionInactive: 'Inactive - Subscribe to continue learning',
+        welcomeMessage: 'Welcome! Let\'s start with a quick setup. Use /start to begin.',
+        freeLessonOffer: 'You haven\'t taken your free introductory lesson yet.',
+        freeLessonButton: 'Free audio lesson',
+        subscriptionExpired: 'Your subscription has expired or you haven\'t subscribed yet.',
+        nextLessonWait: 'Your next lesson will be available in *{time}*.',
+        lessonAvailable: '*Your next lesson is available now!*',
+        startLessonButton: 'Start lesson',
+        errorMessage: 'Sorry, there was an error processing your command. Please try again later or contact support.'
+      },
+      ru: {
+        profileTitle: '📊 *Ваш языковой профиль*',
+        levelLabel: '🎯 *Уровень:*',
+        subscriptionLabel: '💳 *Подписка:*',
+        totalLessonsLabel: '📚 *Всего уроков:*',
+        currentStreakLabel: '🔥 *Текущая серия:*',
+        days: 'дней',
+        subscriptionActive: 'Активна',
+        subscriptionInactive: 'Неактивна - Подпишитесь для продолжения обучения',
+        welcomeMessage: 'Добро пожаловать! Давайте начнем с быстрой настройки. Используйте /start для начала.',
+        freeLessonOffer: 'Вы еще не прошли бесплатный вводный урок.',
+        freeLessonButton: 'Бесплатный аудио урок',
+        subscriptionExpired: 'Ваша подписка истекла или вы еще не подписались.',
+        nextLessonWait: 'Ваш следующий урок будет доступен через *{time}*.',
+        lessonAvailable: '*Ваш следующий урок доступен прямо сейчас!*',
+        startLessonButton: 'Начать урок',
+        errorMessage: 'Извините, произошла ошибка при обработке команды. Попробуйте позже или обратитесь в поддержку.'
+      }
+    };
+    
+    function getLessonText(lang, key, replacements = {}) {
+      let text = lessonTexts[lang]?.[key] || lessonTexts.en[key] || key;
+      // Handle replacements like {time}
+      Object.keys(replacements).forEach(replaceKey => {
+        text = text.replace(`{${replaceKey}}`, replacements[replaceKey]);
+      });
+      return text;
+    }
+    
     // Get user profile with all necessary fields
     console.log(`Querying database for user ${chatId}`);
     const { results } = await env.USER_DB
@@ -1620,8 +1682,9 @@ async function handleLessonCommand(chatId, env) {
     
     if (!results.length) {
       console.log(`User ${chatId} not found, sending onboarding message`);
+      const userLang = await getUserLanguageForLessons();
       await sendMessageViaTelegram(chatId, 
-        'Welcome! Let\'s start with a quick setup. Use /start to begin.', env);
+        getLessonText(userLang, 'welcomeMessage'), env);
       return;
     }
     
@@ -1650,13 +1713,17 @@ async function handleLessonCommand(chatId, env) {
     const now = new Date();
     const hasActiveSubscription = profile.subscription_expired_at && 
                                 (new Date(profile.subscription_expired_at) > now);
-    const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
     
-    let message = `📊 *Your Language Profile*\n\n` +
-      `🎯 *Level:* ${userLevel}\n` +
-      `💳 *Subscription:* ${subscriptionStatus}\n` +
-      `📚 *Total lessons:* ${lessonsTotal}\n` +
-      `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
+    const userLang = await getUserLanguageForLessons();
+    const subscriptionStatus = hasActiveSubscription ? 
+      getLessonText(userLang, 'subscriptionActive') : 
+      getLessonText(userLang, 'subscriptionInactive');
+    
+    let message = `${getLessonText(userLang, 'profileTitle')}\n\n` +
+      `${getLessonText(userLang, 'levelLabel')} ${userLevel}\n` +
+      `${getLessonText(userLang, 'subscriptionLabel')} ${subscriptionStatus}\n` +
+      `${getLessonText(userLang, 'totalLessonsLabel')} ${lessonsTotal}\n` +
+      `${getLessonText(userLang, 'currentStreakLabel')} ${lessonsStreak} ${getLessonText(userLang, 'days')}\n\n`;
     
     // Check pass_lesson0_at first
     if (!profile.pass_lesson0_at) {
@@ -1664,11 +1731,11 @@ async function handleLessonCommand(chatId, env) {
       
       // Free lesson not taken yet - show button
       console.log(`User ${chatId} has completed onboarding, showing free lesson button`);
-      message += 'You haven\'t taken your free introductory lesson yet.';
+      message += getLessonText(userLang, 'freeLessonOffer');
       await sendMessageViaTelegram(chatId, message, env, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [[{ text: 'Free audio lesson', callback_data: 'lesson:free' }]]
+          inline_keyboard: [[{ text: getLessonText(userLang, 'freeLessonButton'), callback_data: 'lesson:free' }]]
         }
       });
       return;
@@ -1680,7 +1747,7 @@ async function handleLessonCommand(chatId, env) {
     if (!subExpiredAt || subExpiredAt.getTime() < now.getTime()) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
       // No active subscription or it's expired - show subscribe button to Tribute channel
-      message += 'Your subscription has expired or you haven\'t subscribed yet.';
+      message += getLessonText(userLang, 'subscriptionExpired');
       await sendTributeChannelLink(chatId, env);
       return;
     }
@@ -1692,7 +1759,7 @@ async function handleLessonCommand(chatId, env) {
       console.log(`User ${chatId} lesson not yet available, showing wait message`);
       // Format the time until next lesson
       const timeUntil = formatTimeUntil(nextLessonAt);
-      message += `Your next lesson will be available in *${timeUntil}*.`;
+      message += getLessonText(userLang, 'nextLessonWait', { time: timeUntil });
       // CRITICAL FIX: Use sendMessageViaTelegram because user already has active subscription
       await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
       return;
@@ -1700,7 +1767,7 @@ async function handleLessonCommand(chatId, env) {
     
     console.log(`User ${chatId} lesson available now, showing start lesson button`);
     // Lesson is available now
-    message += '*Your next lesson is available now!*';
+    message += getLessonText(userLang, 'lessonAvailable');
     
     console.log(`🎯 [${chatId}] About to send "Start lesson" button with callback_data: "lesson:start"`);
     // CRITICAL FIX: Use sendMessageViaTelegram instead of sendMessageWithSubscriptionCheck
@@ -1708,7 +1775,7 @@ async function handleLessonCommand(chatId, env) {
     await sendMessageViaTelegram(chatId, message, env, {
       parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: [[{ text: 'Start lesson', callback_data: 'lesson:start' }]]
+        inline_keyboard: [[{ text: getLessonText(userLang, 'startLessonButton'), callback_data: 'lesson:start' }]]
       }
     });
     console.log(`✅ [${chatId}] "Start lesson" button sent successfully`);
@@ -1718,11 +1785,20 @@ async function handleLessonCommand(chatId, env) {
     console.error(`Error in handleLessonCommand for user ${chatId}:`, error);
     // Try to send a fallback message
     try {
+      const userLang = await getUserLanguageForLessons();
       await sendMessageViaTelegram(chatId, 
-        "Sorry, there was an error processing your command. Please try again later or contact support.", 
+        getLessonText(userLang, 'errorMessage'), 
         env);
     } catch (sendError) {
       console.error("Failed to send error message:", sendError);
+      // Absolute fallback in English
+      try {
+        await sendMessageViaTelegram(chatId, 
+          "Sorry, there was an error processing your command. Please try again later or contact support.", 
+          env);
+      } catch (finalError) {
+        console.error("Final fallback also failed:", finalError);
+      }
     }
   }
 }
