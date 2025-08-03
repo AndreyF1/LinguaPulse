@@ -1227,6 +1227,43 @@ function calculateDuration(buf) {
 async function sendSubscriptionMessage(chatId, env) {
   console.log(`[DEBUG] sendSubscriptionMessage called for user ${chatId}`);
   
+  // Helper function for localization in sendSubscriptionMessage
+  async function getUserLanguageForSubscription() {
+    try {
+      const { results } = await env.USER_DB
+        .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+        .bind(parseInt(chatId, 10))
+        .all();
+      return results.length > 0 ? results[0].interface_language : 'en';
+    } catch (error) {
+      console.error('Error getting user language for subscription:', error);
+      return 'en';
+    }
+  }
+
+  const subscriptionTexts = {
+    en: {
+      title: "🔑 *To unlock premium lessons, please subscribe:*",
+      step1: "1️⃣ Click the button below to open the subscription page",
+      step2: "2️⃣ Complete the payment process",
+      step3: "3️⃣ After payment, you'll receive a confirmation message from the bot",
+      benefit: "🎯 *Your subscription will give you access to daily personalized English lessons!*",
+      subscribeButton: "Subscribe for 600₽/month"
+    },
+    ru: {
+      title: "🔑 *Для доступа к премиум урокам, пожалуйста, подпишитесь:*",
+      step1: "1️⃣ Нажмите кнопку ниже, чтобы открыть страницу подписки",
+      step2: "2️⃣ Завершите процесс оплаты",
+      step3: "3️⃣ После оплаты вы получите подтверждающее сообщение от бота",
+      benefit: "🎯 *Ваша подписка даст вам доступ к ежедневным персонализированным урокам английского!*",
+      subscribeButton: "Подписаться за 600₽/месяц"
+    }
+  };
+
+  function getSubscriptionText(lang, key) {
+    return subscriptionTexts[lang]?.[key] || subscriptionTexts.en[key] || key;
+  }
+  
   // Используем точно такую же логику, как в sendTributeChannelLink из telegram-webhook.js
   // Сначала проверяем специальную ссылку на приложение Tribute
   let tributeAppLink = env.TRIBUTE_APP_LINK;
@@ -1251,17 +1288,18 @@ async function sendSubscriptionMessage(chatId, env) {
 
   console.log(`[DEBUG] Using tribute link: ${tributeAppLink}`);
 
-  const message = "🔑 *To unlock premium lessons, please subscribe:*\n\n" +
-                 "1️⃣ Click the button below to open the subscription page\n" +
-                 "2️⃣ Complete the payment process *(€2/week)*\n" +
-                 "3️⃣ After payment, you'll receive a confirmation message from the bot\n\n" +
-                 "🎯 *Your subscription will give you access to daily personalized English lessons!*";
+  const userLang = await getUserLanguageForSubscription();
+  const message = `${getSubscriptionText(userLang, 'title')}\n\n` +
+                 `${getSubscriptionText(userLang, 'step1')}\n` +
+                 `${getSubscriptionText(userLang, 'step2')}\n` +
+                 `${getSubscriptionText(userLang, 'step3')}\n\n` +
+                 `${getSubscriptionText(userLang, 'benefit')}`;
   
   await sendText(
     chatId,
     message,
     env,
-    [[{ text: "Subscribe for €2/week", url: tributeAppLink }]]
+    [[{ text: getSubscriptionText(userLang, 'subscribeButton'), url: tributeAppLink }]]
   );
 }
 
