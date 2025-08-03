@@ -192,9 +192,9 @@ export default {
         try {
           hist = JSON.parse(stored);
           
-          // Проверка на валидность истории
-          if (!Array.isArray(hist) || hist.length === 0) {
-            console.log("Invalid or empty history found, resetting session");
+          // Проверка на валидность истории (но пустая история в начале урока - это нормально)
+          if (!Array.isArray(hist)) {
+            console.log("Invalid history found (not an array), resetting session");
             await sendText(chatId, getText(userLang, 'historyError'), env);
             
             // Очистить данные сессии
@@ -1026,15 +1026,18 @@ async function telegramSendVoice(chatId, buf, dur, env) {
     throw new Error("Cannot send empty audio buffer");
   }
   
+  // Use correct token based on environment
+  const botToken = env.DEV_MODE === 'true' ? env.DEV_BOT_TOKEN : env.BOT_TOKEN;
+  
   const fd = new FormData();
   fd.append('chat_id', String(chatId));
   fd.append('duration', dur);
   fd.append('voice', new File([buf], 'voice.ogg', { type: 'audio/ogg; codecs=opus' }));
   
   try {
-    console.log(`Sending voice message to Telegram API, token length: ${env.BOT_TOKEN ? env.BOT_TOKEN.length : 0}`);
+    console.log(`Sending voice message to Telegram API, token length: ${botToken ? botToken.length : 0}`);
   const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
+    `https://api.telegram.org/bot${botToken}/sendVoice`, 
     { method: 'POST', body: fd }
   );
   
@@ -1055,6 +1058,9 @@ async function telegramSendVoice(chatId, buf, dur, env) {
 
 // Send text message via Telegram
 async function sendText(chatId, text, env, keyboard) {
+  // Use correct token based on environment
+  const botToken = env.DEV_MODE === 'true' ? env.DEV_BOT_TOKEN : env.BOT_TOKEN;
+  
   const body = { 
     chat_id: String(chatId), 
     text,
@@ -1066,7 +1072,7 @@ async function sendText(chatId, text, env, keyboard) {
   }
   
   const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`,
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
     { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
@@ -1082,6 +1088,9 @@ async function sendText(chatId, text, env, keyboard) {
 
 // Send GIF via Telegram
 async function sendGif(chatId, gifUrl, caption, env) {
+  // Use correct token based on environment
+  const botToken = env.DEV_MODE === 'true' ? env.DEV_BOT_TOKEN : env.BOT_TOKEN;
+  
   const body = { 
     chat_id: String(chatId), 
     animation: gifUrl,
@@ -1090,7 +1099,7 @@ async function sendGif(chatId, gifUrl, caption, env) {
   };
   
   const res = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendAnimation`,
+    `https://api.telegram.org/bot${botToken}/sendAnimation`,
     { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
@@ -1106,9 +1115,12 @@ async function sendGif(chatId, gifUrl, caption, env) {
 
 // Transcribe voice message using Whisper
 async function transcribeVoice(fileId, env) {
+  // Use correct token based on environment
+  const botToken = env.DEV_MODE === 'true' ? env.DEV_BOT_TOKEN : env.BOT_TOKEN;
+  
   // Get file path from Telegram
   const fileRes = await fetch(
-    `https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${fileId}`
+    `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`
   );
   
   if (!fileRes.ok) {
@@ -1119,7 +1131,7 @@ async function transcribeVoice(fileId, env) {
   const filePath = info.result.file_path;
   
   // Download voice file
-  const fileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${filePath}`;
+  const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
   const fileData = await fetch(fileUrl).then(r => r.arrayBuffer());
   
   // Prepare form data for OpenAI API
