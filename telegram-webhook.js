@@ -171,6 +171,20 @@ if (update.message?.text) {
 
       // Handle /profile command - show user-friendly profile data
       if (update.message?.text === '/profile') {
+        // Get user's interface language for localization
+        let userLang = 'en'; // Default to English
+        try {
+          const { results: langResults } = await env.USER_DB
+            .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+            .bind(parseInt(chatId, 10))
+            .all();
+          if (langResults.length > 0) {
+            userLang = langResults[0].interface_language;
+          }
+        } catch (error) {
+          console.error('Error getting user language:', error);
+        }
+        
         // Get user profile and survey data
         const { results: profileResults } = await env.USER_DB
           .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
@@ -194,21 +208,56 @@ if (update.message?.text) {
         const now = new Date();
         const hasActiveSubscription = profile.subscription_expired_at && 
                                     (new Date(profile.subscription_expired_at) > now);
-        const subscriptionStatus = hasActiveSubscription ? 'Active' : 'Inactive - Subscribe to continue learning';
         
-        let message = `📊 *Your Language Profile*\n\n` +
-          `🎯 *Level:* ${surveyLevel}\n` +
-          `💳 *Subscription:* ${subscriptionStatus}\n` +
-          `📚 *Total lessons:* ${lessonsTotal}\n` +
-          `🔥 *Current streak:* ${lessonsStreak} days\n\n`;
+        // Localized texts based on user's interface language
+        const texts = userLang === 'ru' ? {
+          profileTitle: '📊 *Ваш языковой профиль*',
+          level: '🎯 *Уровень:*',
+          subscription: '💳 *Подписка:*',
+          totalLessons: '📚 *Всего уроков:*',
+          currentStreak: '🔥 *Текущая серия:*',
+          days: 'дней',
+          active: 'Активна',
+          inactive: 'Неактивна - Подпишитесь для продолжения обучения'
+        } : {
+          profileTitle: '📊 *Your Language Profile*',
+          level: '🎯 *Level:*',
+          subscription: '💳 *Subscription:*',
+          totalLessons: '📚 *Total lessons:*',
+          currentStreak: '🔥 *Current streak:*',
+          days: 'days',
+          active: 'Active',
+          inactive: 'Inactive - Subscribe to continue learning'
+        };
+        
+        const subscriptionStatus = hasActiveSubscription ? texts.active : texts.inactive;
+        
+        let message = `${texts.profileTitle}\n\n` +
+          `${texts.level} ${surveyLevel}\n` +
+          `${texts.subscription} ${subscriptionStatus}\n` +
+          `${texts.totalLessons} ${lessonsTotal}\n` +
+          `${texts.currentStreak} ${lessonsStreak} ${texts.days}\n\n`;
         
         // Show profile with appropriate options based on subscription status
         if (hasActiveSubscription) {
           // For subscribed users, don't show subscription buttons
           await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
         } else {
-          // For non-subscribed users, show subscription options
-          await sendMessageWithSubscriptionCheck(chatId, message, env, { parse_mode: 'Markdown' });
+          // For non-subscribed users, show localized subscription button
+          const subscribeButtonText = userLang === 'ru' ? 'Подписаться за 600₽/месяц' : 'Subscribe for 600₽/month';
+          
+          // Get tribute link
+          let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || "https://t.me/tribute/app?startapp=svwW";
+          if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+            tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
+          }
+          
+          await sendMessageViaTelegram(chatId, message, env, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[{ text: subscribeButtonText, url: tributeAppLink }]]
+            }
+          });
         }
         
         return new Response('OK');
