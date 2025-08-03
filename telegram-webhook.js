@@ -1218,7 +1218,7 @@ async function sendTributeChannelLink(chatId, env) {
   
   // Always add the real subscription button if link is available
   if (tributeAppLink) {
-    buttons.push([{ text: "Subscribe for €2/week", url: tributeAppLink }]);
+    buttons.push([{ text: "Subscribe for 600₽/month", url: tributeAppLink }]);
   }
   
   // Add test payment button ONLY in dev mode
@@ -1366,16 +1366,16 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
       if (!messageOptions.reply_markup) {
         // Нет кнопок - создаем новую клавиатуру
         messageOptions.reply_markup = {
-          inline_keyboard: [[{ text: "Subscribe for €2/week", url: tributeAppLink }]]
+          inline_keyboard: [[{ text: "Subscribe for 600₽/month", url: tributeAppLink }]]
         };
       } else {
         // Уже есть кнопки
         if (!messageOptions.reply_markup.inline_keyboard) {
           // Нет именно inline_keyboard, создаем ее
-          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for €2/week", url: tributeAppLink }]];
+          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for 600₽/month", url: tributeAppLink }]];
         } else {
           // Есть inline_keyboard, добавляем новую строку с кнопкой
-          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for €2/week", url: tributeAppLink }]);
+          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for 600₽/month", url: tributeAppLink }]);
         }
       }
       
