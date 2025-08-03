@@ -286,6 +286,41 @@ return new Response('OK');
       if (update.message?.text?.startsWith('/start')) {
         console.log(`🚀 [${chatId}] Processing /start command`);
         
+        // Helper functions for /start localization
+        async function getUserLanguageForStart() {
+          try {
+            const { results } = await env.USER_DB
+              .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+              .bind(parseInt(chatId, 10))
+              .all();
+            return results.length > 0 ? results[0].interface_language : 'en';
+          } catch (error) {
+            console.error('Error getting user language for /start:', error);
+            return 'en';
+          }
+        }
+        
+        const startTexts = {
+          en: {
+            welcomeBack: "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
+            startLessonButton: "Start Lesson",
+            subscriptionInactive: "🔔 Welcome back! Your subscription has expired. Would you like to renew it to continue learning?",
+            renewButton: "Renew Subscription",
+            generalError: "⚙️ Sorry, a technical error occurred. Please try your request again in a moment. If the problem persists, you can use /start to begin again."
+          },
+          ru: {
+            welcomeBack: "🎉 Добро пожаловать! Ваша подписка активна и урок готов. Хотите начать сейчас?",
+            startLessonButton: "Начать урок",
+            subscriptionInactive: "🔔 Добро пожаловать! Ваша подписка истекла. Хотите продлить её для продолжения обучения?",
+            renewButton: "Продлить подписку",
+            generalError: "⚙️ Извините, произошла техническая ошибка. Попробуйте повторить запрос через минуту. Если проблема повторится, используйте /start для начала."
+          }
+        };
+        
+        function getStartText(lang, key) {
+          return startTexts[lang]?.[key] || startTexts.en[key] || key;
+        }
+        
         try {
           // Check if this is a return from subscription
           const isWelcomeBack = update.message.text.includes('welcome');
@@ -310,10 +345,11 @@ return new Response('OK');
                 // Subscription is active, check if lesson is available
                 if (profile.next_lesson_access_at && (new Date(profile.next_lesson_access_at) <= now)) {
                   // Lesson is available, offer to start it
+                  const userLang = await getUserLanguageForStart();
                   await sendMessageViaTelegram(chatId,
-                    "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
+                    getStartText(userLang, 'welcomeBack'),
                     env,
-                    { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
+                    { reply_markup: { inline_keyboard: [[{ text: getStartText(userLang, 'startLessonButton'), callback_data: "lesson:start" }]] }});
                   return new Response('OK');
                 }
               } else {
@@ -388,9 +424,17 @@ return new Response('OK');
           }
           
           // Send fallback message to user if all else fails
-          await sendMessageViaTelegram(chatId, 
-            "👋 Welcome to LinguaPulse! There was a technical issue, but let's get you started. Please wait a moment and try again.", 
-            env);
+          try {
+            const userLang = await getUserLanguageForStart();
+            await sendMessageViaTelegram(chatId, 
+              getStartText(userLang, 'generalError'), 
+              env);
+          } catch (fallbackError) {
+            // If language detection fails, use English as absolute fallback
+            await sendMessageViaTelegram(chatId, 
+              "👋 Welcome to LinguaPulse! There was a technical issue, but let's get you started. Please wait a moment and try again.", 
+              env);
+          }
           return new Response('OK');
         }
       }
