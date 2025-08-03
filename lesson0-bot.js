@@ -395,6 +395,7 @@ export default {
             
             // Get user's language level and send suggestion for beginners/intermediate
             try {
+              console.log(`=== SUGGESTION GENERATION PHASE START ===`);
               const userLevel = await getUserLanguageLevel(chatId, db);
               console.log(`User ${chatId} language level: ${userLevel}`);
               
@@ -404,18 +405,24 @@ export default {
                 userLevel === 'Intermediate' || userLevel === 'Средний'
               );
               
+              console.log(`Should show suggestion: ${shouldShowSuggestion} (level: ${userLevel})`);
+              
               if (shouldShowSuggestion) {
                 console.log(`Generating suggestion for ${userLevel} level user`);
                 const suggestion = await generateSuggestedResponse(hist, env);
+                console.log(`Generated suggestion: "${suggestion}"`);
+                
                 const suggestionMessage = `${getText(userLang, 'suggestionText')}\n\n*${suggestion}*`;
+                console.log(`Full suggestion message: "${suggestionMessage}"`);
                 
                 await sendText(chatId, suggestionMessage, env);
-                console.log(`Sent suggestion to ${userLevel} level user: ${suggestion}`);
+                console.log(`Successfully sent suggestion to ${userLevel} level user`);
               } else {
                 console.log(`No suggestion needed for level: ${userLevel}`);
               }
             } catch (suggestionError) {
               console.error('Error generating/sending suggestion:', suggestionError);
+              console.error('Suggestion error stack:', suggestionError.stack);
               // Don't fail the whole lesson if suggestion fails
             }
           }
