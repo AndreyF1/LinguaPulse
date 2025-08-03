@@ -1240,7 +1240,7 @@ async function sendSubscriptionMessage(chatId, env) {
   // Если обе переменные отсутствуют, используем запасную ссылку
   if (!tributeAppLink || tributeAppLink.trim() === '') {
     console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
-    tributeAppLink = "https://t.me/tribute/app?startapp=svwW"; // Запасная ссылка на Tribute
+          tributeAppLink = "https://t.me/tribute/app?startapp=swvs"; // Запасная ссылка на Tribute
   }
   
   // Проверяем, что ссылка имеет корректный формат

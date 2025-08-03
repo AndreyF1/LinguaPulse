@@ -310,7 +310,7 @@ export default {
             console.log(`Analyzing user utterances: ${JSON.stringify(userUtterances)}`);
             const analyses = await analyzeLanguage(userUtterances, env, userLang);
             
-            // First, send an introduction message
+            // Send simplified feedback - single consolidated message
             if (analyses.length > 0) {
               await sendText(
                 chatId, 
@@ -318,23 +318,11 @@ export default {
                 env
               );
               
-              // Then send individual analysis for each utterance
-              for (let i = 0; i < analyses.length; i++) {
-                const analysis = analyses[i];
-                await sendText(
-                  chatId,
-                  `*${userLang === 'ru' ? 'Высказывание' : 'Utterance'} ${i+1}:* "${analysis.utterance}"\n\n${analysis.feedback}`,
-                  env
-                );
-                
-                // Add a short delay between messages to avoid flooding
-                await new Promise(resolve => setTimeout(resolve, 800));
-              }
-              
-              // Overall assessment based on all utterances
+              // Send single consolidated feedback
+              const analysis = analyses[0];
               await sendText(
                 chatId,
-                getText(userLang, 'overallAssessment'),
+                analysis.feedback,
                 env
               );
             }
@@ -793,91 +781,78 @@ Only provide the suggested response text, nothing else.`;
   }
 }
 
-// Analyze user language for grammar and vocabulary feedback
+// Analyze user language for grammar and vocabulary feedback - simplified version
 async function analyzeLanguage(utterances, env, language) {
-  if (!utterances.length) return "Not enough conversation data to analyze.";
+  if (!utterances.length) return [];
   
-  // Instead of analyzing all utterances together, analyze each one separately
-  const analyses = [];
+  // Join all utterances for comprehensive analysis
+  const allUtterances = utterances.join(' | ');
   
-  for (const utterance of utterances) {
-    if (!utterance.trim()) continue; // Skip empty utterances
-    
-    const prompt = language === 'ru' ? `
-Как эксперт-преподаватель английского языка, предоставьте детальный, но полезный анализ языка для этого конкретного высказывания студента:
-"${utterance}"
+  const prompt = language === 'ru' ? `
+Как эксперт-преподаватель английского языка, проанализируйте весь разговор студента и дайте максимум 3-4 самых важных замечания по приоритету:
 
-Ваш анализ должен включать:
-1. Положительную заметку о том, что студент сделал хорошо (беглость, использование словаря и т.д.)
-2. Одну конкретную грамматическую коррекцию, если необходимо (кратко объясните правило)
-3. Предложения по улучшению словарного запаса (1-2 более продвинутые или естественные альтернативы)
-4. Руководство по произношению, если применимо (основанное на вероятных проблемах произношения для не носителей языка)
-5. Как носитель языка мог бы выразить ту же идею более естественно
+Высказывания студента: "${allUtterances}"
+
+ПРИОРИТЕТ ЗАМЕЧАНИЙ:
+1. Грамматические ошибки (самые важные)
+2. Лексические улучшения 
+3. Произношение
+4. Разнообразие речи (только если остальное идеально)
 
 ФОРМАТ:
-- Делайте обратную связь конструктивной и поддерживающей
-- Используйте четкие пункты
-- Держите общий ответ в пределах 200 слов
-- Начните с краткого положительного комментария
+- Начните с краткого позитивного комментария
+- Дайте 2-4 конкретных замечания в порядке важности
+- Каждое замечание должно быть коротким и практичным
+- Общий ответ не более 300 слов
 - ВАЖНО: Отвечайте на русском языке
 ` : `
-As an expert English language teacher, provide a detailed yet helpful language analysis for this specific student utterance:
-"${utterance}"
+As an expert English language teacher, analyze the student's entire conversation and provide maximum 3-4 most important observations by priority:
 
-Your analysis should include:
-1. A positive note about what the student did well (fluency, vocabulary usage, etc.)
-2. One specific grammar correction if needed (explain the rule briefly)
-3. Vocabulary enhancement suggestions (1-2 more advanced or natural alternatives)
-4. Pronunciation guidance if applicable (based on likely pronunciation issues for non-native speakers)
-5. How a native speaker might express the same idea more naturally
+Student utterances: "${allUtterances}"
 
-FORMAT: 
-- Keep feedback constructive and supportive
-- Use clear bullet points 
-- Keep total response under 200 words
-- Start with a brief positive comment
+PRIORITY ORDER:
+1. Grammar errors (most important)
+2. Vocabulary improvements
+3. Pronunciation 
+4. Speech variety (only if everything else is perfect)
+
+FORMAT:
+- Start with brief positive comment
+- Give 2-4 specific observations in order of importance
+- Each observation should be short and practical
+- Total response under 300 words
 - IMPORTANT: Respond in English
 `;
+  
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        Authorization: `Bearer ${env.OPENAI_KEY}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({ 
+        model: 'gpt-4o-mini', 
+        messages: [{ role: 'system', content: prompt }], 
+        temperature: 0.3,
+        max_tokens: 400
+      })
+    });
     
-    try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 
-          Authorization: `Bearer ${env.OPENAI_KEY}`, 
-          'Content-Type': 'application/json' 
-        },
-        body: JSON.stringify({ 
-          model: 'gpt-4o-mini', 
-          messages: [
-            { role: 'system', content: prompt }
-          ], 
-          temperature: 0.3,
-          max_tokens: 400  // Increased token limit for more detailed feedback
-        })
-      });
-      
-      if (!res.ok) {
-        throw new Error(`OpenAI API error: ${await res.text()}`);
-      }
-      
-      const j = await res.json();
-      analyses.push({
-        utterance: utterance,
-        feedback: j.choices[0].message.content.trim()
-      });
-    } catch (error) {
-      console.error(`Analysis error for utterance "${utterance}":`, error);
-      analyses.push({
-        utterance: utterance,
-        feedback: getText(language, 'analysisError')
-      });
+    if (!res.ok) {
+      console.error("OpenAI API error in analyzeLanguage:", await res.text());
+      return [];
     }
     
-    // Add a small delay between API calls to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const j = await res.json();
+    const feedback = j.choices[0].message.content.trim();
+    
+    // Return single consolidated feedback
+    return [{ feedback }];
+  } catch (error) {
+    console.error("Error in comprehensive language analysis:", error);
+    return [];
   }
-  
-  return analyses;
 }
 
 // Send TTS audio message safely
