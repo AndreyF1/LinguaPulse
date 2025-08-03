@@ -110,6 +110,38 @@ if (update.message?.text) {
       // Handle /talk command - route to main-lesson
       if (update.message?.text === '/talk') {
         console.log(`🎯 [${chatId}] /talk command received`);
+        
+        // Helper functions for /talk localization
+        async function getUserLanguageForTalk() {
+          try {
+            const { results } = await env.USER_DB
+              .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+              .bind(parseInt(chatId, 10))
+              .all();
+            return results.length > 0 ? results[0].interface_language : 'en';
+          } catch (error) {
+            console.error('Error getting user language for /talk:', error);
+            return 'en';
+          }
+        }
+        
+        const talkTexts = {
+          en: {
+            needOnboarding: "📝 *You need to complete the onboarding first.* Use /start to begin.",
+            serviceUnavailable: "❌ *Sorry, the lesson service is temporarily unavailable.* Please try again later.",
+            errorStarting: "❌ *Sorry, there was an error starting your lesson.* Please try again."
+          },
+          ru: {
+            needOnboarding: "📝 *Сначала нужно пройти регистрацию.* Используйте /start для начала.",
+            serviceUnavailable: "❌ *Извините, сервис уроков временно недоступен.* Попробуйте позже.",
+            errorStarting: "❌ *Извините, произошла ошибка при запуске урока.* Попробуйте еще раз."
+          }
+        };
+        
+        function getTalkText(lang, key) {
+          return talkTexts[lang]?.[key] || talkTexts.en[key] || key;
+        }
+        
         console.log(`🔍 [${chatId}] Checking MAIN_LESSON worker availability...`);
         console.log(`🔍 [${chatId}] env.MAIN_LESSON exists:`, !!env.MAIN_LESSON);
         console.log(`🔍 [${chatId}] env.MAIN_LESSON type:`, typeof env.MAIN_LESSON);
@@ -139,16 +171,18 @@ if (update.message?.text) {
             
             if (hasActiveSubscription) {
                       // If they have an active subscription but worker is unavailable
-        await sendMessageViaTelegram(chatId, 
-          "❌ *Sorry, the lesson service is temporarily unavailable.* Please try again later.", env, { parse_mode: 'Markdown' });
+              const userLang = await getUserLanguageForTalk();
+              await sendMessageViaTelegram(chatId, 
+                getTalkText(userLang, 'serviceUnavailable'), env, { parse_mode: 'Markdown' });
             } else {
                         // If they don't have an active subscription, show subscription option
-          await sendTributeChannelLink(chatId, env);
+              await sendTributeChannelLink(chatId, env);
             }
           } else {
                       // If they haven't completed the survey
+            const userLang = await getUserLanguageForTalk();
             await sendMessageViaTelegram(chatId, 
-              "📝 *You need to complete the onboarding first.* Use /start to begin.", env, { parse_mode: 'Markdown' });
+              getTalkText(userLang, 'needOnboarding'), env, { parse_mode: 'Markdown' });
           }
           return new Response('OK');
         }
@@ -163,8 +197,9 @@ if (update.message?.text) {
           return forwardResult;
         } catch (forwardError) {
           console.error(`❌ [${chatId}] Error in forward function:`, forwardError);
+          const userLang = await getUserLanguageForTalk();
           await sendMessageViaTelegram(chatId, 
-            "❌ *Sorry, there was an error starting your lesson.* Please try again.", env, { parse_mode: 'Markdown' });
+            getTalkText(userLang, 'errorStarting'), env, { parse_mode: 'Markdown' });
           return new Response('OK');
         }
       }
@@ -1317,7 +1352,7 @@ async function sendTributeChannelLink(chatId, env) {
     en: {
       title: "🔑 *To unlock premium lessons, please subscribe:*",
       step1: "1️⃣ Click the button below to open the subscription page",
-      step2: "2️⃣ Complete the payment process *(€2/week)*",
+      step2: "2️⃣ Complete the payment process",
       step3: "3️⃣ After payment, you'll receive a confirmation message from the bot",
       benefit: "🎯 *Your subscription will give you access to daily personalized English lessons!*",
       subscribeButton: "Subscribe for 600₽/month",
@@ -1326,7 +1361,7 @@ async function sendTributeChannelLink(chatId, env) {
     ru: {
       title: "🔑 *Для доступа к премиум урокам, пожалуйста, подпишитесь:*",
       step1: "1️⃣ Нажмите кнопку ниже, чтобы открыть страницу подписки",
-      step2: "2️⃣ Завершите процесс оплаты *(€2/неделя)*",
+      step2: "2️⃣ Завершите процесс оплаты",
       step3: "3️⃣ После оплаты вы получите подтверждающее сообщение от бота",
       benefit: "🎯 *Ваша подписка даст вам доступ к ежедневным персонализированным урокам английского!*",
       subscribeButton: "Подписаться за 600₽/месяц",
