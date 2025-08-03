@@ -247,7 +247,7 @@ if (update.message?.text) {
           const subscribeButtonText = userLang === 'ru' ? 'Подписаться за 600₽/месяц' : 'Subscribe for 600₽/month';
           
           // Get tribute link
-          let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || "https://t.me/tribute/app?startapp=svwW";
+          let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || "https://t.me/tribute/app?startapp=swvs";
           if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
             tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
           }

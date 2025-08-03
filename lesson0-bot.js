@@ -7,7 +7,7 @@
 // Localization texts
 const TEXTS = {
   en: {
-    alreadyCompleted: "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just €2 per week. This gives you access to one extended lesson every day with personalized feedback.",
+    alreadyCompleted: "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just 600₽ per month. This gives you access to one extended lesson every day with personalized feedback.",
     subscribeWeekly: "Subscribe for 600₽/month",
     welcomeMessage: "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.",
     voiceInstructions: "🎤 *How to send voice messages:*\n\n• In the bottom right corner of your screen, find the rightmost icon – this could be a circle in a square (for video messages) or a microphone.\n• If you see a circle in a square, tap it once briefly to switch the icon to a microphone.\n• Now press and hold the microphone icon to start recording.\n• Speak clearly and calmly.\n• When you finish speaking, release the icon. Your message will be sent automatically.",
@@ -19,15 +19,16 @@ const TEXTS = {
     analyzingSpeaking: "🔍 *Analyzing your speaking...*",
     feedbackTitle: "📝 *Your Language Feedback*\n\nHere's a detailed analysis of your speaking during our conversation:",
     overallAssessment: "🌟 *Overall Assessment*\n\nYou demonstrated good effort in communicating in English. With continued practice, you'll see significant improvements in fluency, grammar accuracy, and vocabulary usage. I recommend practicing daily conversations like this to build confidence and speaking skills.",
-    subscriptionOffer: "To unlock daily personalized audio lessons, you can subscribe for just €2 per week.",
+    subscriptionOffer: "To unlock daily personalized audio lessons, you can subscribe for just 600₽ per month.",
     fallbackResponse: "I didn't quite catch that. Could you please repeat?",
     fallbackGreeting: "Hi there! I'm your English practice partner today. How are you feeling, and what would you like to talk about?",
     chatGptFallback: "I'd love to hear more about that. Could you tell me more?",
     analysisError: "Sorry, I couldn't analyze this particular response.",
-    technicalError: "⚙️ Sorry, a technical error occurred during the free lesson. Please use /start to try again."
+    technicalError: "⚙️ Sorry, a technical error occurred during the free lesson. Please use /start to try again.",
+    suggestionText: "You can use the following text below for your audio response. You can ignore it and come up with your own answer"
   },
   ru: {
-    alreadyCompleted: "Вы уже прошли бесплатный пробный урок. Если хотите продолжить изучение английского, вы можете подписаться всего за €2 в неделю. Это даст вам доступ к одному расширенному уроку каждый день с персональной обратной связью.",
+    alreadyCompleted: "Вы уже прошли бесплатный пробный урок. Если хотите продолжить изучение английского, вы можете подписаться всего за 600₽ в месяц. Это даст вам доступ к одному расширенному уроку каждый день с персональной обратной связью.",
     subscribeWeekly: "Подписаться за 600₽/месяц",
     welcomeMessage: "🎧 *Добро пожаловать на бесплатную практику английского разговора!* Пожалуйста, прослушайте аудио и ответьте голосовым сообщением.",
     voiceInstructions: "🎤 *Как отправлять голосовые сообщения:*\n\n• В правом нижнем углу экрана найдите самую правую иконку – это может быть кружочек в квадрате (для видеосообщений) или микрофон.\n• Если вы видите кружочек в квадрате, коротко нажмите на нее один раз, чтобы иконка переключилась на микрофон.\n• Теперь нажмите и удерживайте иконку микрофона, чтобы начать запись.\n• Говорите четко и спокойно.\n• Когда закончите говорить, отпустите иконку. Ваше сообщение будет автоматически отправлено.",
@@ -39,12 +40,13 @@ const TEXTS = {
     analyzingSpeaking: "🔍 *Анализирую вашу речь...*",
     feedbackTitle: "📝 *Обратная связь по языку*\n\nВот подробный анализ вашей речи во время нашего разговора:",
     overallAssessment: "🌟 *Общая оценка*\n\nВы продемонстрировали хорошие усилия в общении на английском языке. При продолжении практики вы увидите значительные улучшения в беглости, грамматической точности и использовании словарного запаса. Рекомендую практиковать ежедневные разговоры, подобные этому, чтобы развить уверенность и навыки говорения.",
-    subscriptionOffer: "Чтобы получить доступ к ежедневным персонализированным аудио урокам, вы можете подписаться всего за €2 в неделю.",
+    subscriptionOffer: "Чтобы получить доступ к ежедневным персонализированным аудио урокам, вы можете подписаться всего за 600₽ в месяц.",
     fallbackResponse: "Я не совсем понял. Не могли бы вы повторить?",
     fallbackGreeting: "Привет! Я ваш партнер по практике английского на сегодня. Как дела, и о чем бы вы хотели поговорить?",
     chatGptFallback: "Мне бы хотелось услышать об этом больше. Не могли бы вы рассказать подробнее?",
     analysisError: "Извините, я не смог проанализировать этот конкретный ответ.",
-    technicalError: "⚙️ Извините, произошла техническая ошибка во время бесплатного урока. Пожалуйста, используйте /start чтобы попробовать снова."
+    technicalError: "⚙️ Извините, произошла техническая ошибка во время бесплатного урока. Пожалуйста, используйте /start чтобы попробовать снова.",
+    suggestionText: "Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ"
   }
 };
 
@@ -61,6 +63,22 @@ async function getUserLanguage(chatId, db) {
   } catch (error) {
     console.error('Error getting user language:', error);
     return 'en'; // Default to English
+  }
+}
+
+// Function to get user's language level from survey
+async function getUserLanguageLevel(chatId, db) {
+  try {
+    const { results } = await db.prepare(
+      `SELECT language_level FROM user_survey WHERE telegram_id = ?`
+    )
+    .bind(parseInt(chatId, 10))
+    .all();
+    
+    return results.length > 0 ? results[0].language_level : null;
+  } catch (error) {
+    console.error('Error getting user language level:', error);
+    return null;
   }
 }
 
@@ -374,6 +392,32 @@ export default {
             // Send audio response
             await safeSendTTS(chatId, safeReply, env);
             console.log(`Sent audio response to user`);
+            
+            // Get user's language level and send suggestion for beginners/intermediate
+            try {
+              const userLevel = await getUserLanguageLevel(chatId, db);
+              console.log(`User ${chatId} language level: ${userLevel}`);
+              
+              // Send suggestion only for Beginner/Начинающий and Intermediate/Средний levels
+              const shouldShowSuggestion = userLevel && (
+                userLevel === 'Beginner' || userLevel === 'Начинающий' ||
+                userLevel === 'Intermediate' || userLevel === 'Средний'
+              );
+              
+              if (shouldShowSuggestion) {
+                console.log(`Generating suggestion for ${userLevel} level user`);
+                const suggestion = await generateSuggestedResponse(hist, env);
+                const suggestionMessage = `${getText(userLang, 'suggestionText')}\n\n*${suggestion}*`;
+                
+                await sendText(chatId, suggestionMessage, env);
+                console.log(`Sent suggestion to ${userLevel} level user: ${suggestion}`);
+              } else {
+                console.log(`No suggestion needed for level: ${userLevel}`);
+              }
+            } catch (suggestionError) {
+              console.error('Error generating/sending suggestion:', suggestionError);
+              // Don't fail the whole lesson if suggestion fails
+            }
           }
         } finally {
           // Clear processing flag
@@ -619,6 +663,52 @@ IMPORTANT:
   } catch (error) {
     console.error("Error in chatGPT function:", error);
     return getText(language, 'chatGptFallback');
+  }
+}
+
+// Generate suggested response for beginner/intermediate users
+async function generateSuggestedResponse(history, env) {
+  try {
+    const prompt = `
+Based on this conversation history, generate a short, natural response that a beginner/intermediate English learner could use to continue the conversation. 
+
+Conversation context:
+${history.slice(-3).map(h => `${h.role}: ${h.content}`).join('\n')}
+
+Your suggestion should:
+1. Be 1-2 sentences maximum
+2. Use simple vocabulary and grammar
+3. Be a natural continuation of the conversation
+4. Help the student practice speaking
+5. Include common conversational phrases
+
+Only provide the suggested response text, nothing else.`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        Authorization: `Bearer ${env.OPENAI_KEY}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({ 
+        model: 'gpt-4o-mini', 
+        messages: [{ role: 'system', content: prompt }], 
+        temperature: 0.8,
+        max_tokens: 100
+      })
+    });
+    
+    if (!res.ok) {
+      throw new Error(`OpenAI API error: ${await res.text()}`);
+    }
+    
+    const j = await res.json();
+    const suggestion = j.choices[0].message.content.trim();
+    console.log("Generated suggestion:", suggestion);
+    return suggestion;
+  } catch (error) {
+    console.error("Error generating suggested response:", error);
+    return "I think that's interesting. Can you tell me more about it?"; // Fallback suggestion
   }
 }
 
