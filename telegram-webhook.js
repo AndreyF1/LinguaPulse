@@ -1299,6 +1299,45 @@ async function handleTestSubscription(request, env) {
 async function sendTributeChannelLink(chatId, env) {
   console.log(`[DEBUG] sendTributeChannelLink called for user ${chatId}`);
   
+  // Helper function for localization in sendTributeChannelLink
+  async function getUserLanguageForTribute() {
+    try {
+      const { results } = await env.USER_DB
+        .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+        .bind(parseInt(chatId, 10))
+        .all();
+      return results.length > 0 ? results[0].interface_language : 'en';
+    } catch (error) {
+      console.error('Error getting user language for tribute:', error);
+      return 'en';
+    }
+  }
+
+  const tributeTexts = {
+    en: {
+      title: "🔑 *To unlock premium lessons, please subscribe:*",
+      step1: "1️⃣ Click the button below to open the subscription page",
+      step2: "2️⃣ Complete the payment process *(€2/week)*",
+      step3: "3️⃣ After payment, you'll receive a confirmation message from the bot",
+      benefit: "🎯 *Your subscription will give you access to daily personalized English lessons!*",
+      subscribeButton: "Subscribe for 600₽/month",
+      testButton: "🧪 TEST PAYMENT (Dev Only)"
+    },
+    ru: {
+      title: "🔑 *Для доступа к премиум урокам, пожалуйста, подпишитесь:*",
+      step1: "1️⃣ Нажмите кнопку ниже, чтобы открыть страницу подписки",
+      step2: "2️⃣ Завершите процесс оплаты *(€2/неделя)*",
+      step3: "3️⃣ После оплаты вы получите подтверждающее сообщение от бота",
+      benefit: "🎯 *Ваша подписка даст вам доступ к ежедневным персонализированным урокам английского!*",
+      subscribeButton: "Подписаться за 600₽/месяц",
+      testButton: "🧪 ТЕСТОВАЯ ОПЛАТА (Только разработка)"
+    }
+  };
+
+  function getTributeText(lang, key) {
+    return tributeTexts[lang]?.[key] || tributeTexts.en[key] || key;
+  }
+
   // Сначала проверяем специальную ссылку на приложение Tribute
   let tributeAppLink = env.TRIBUTE_APP_LINK;
   
@@ -1320,23 +1359,24 @@ async function sendTributeChannelLink(chatId, env) {
     tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
   }
 
-  const message = "🔑 *To unlock premium lessons, please subscribe:*\n\n" +
-                 "1️⃣ Click the button below to open the subscription page\n" +
-                 "2️⃣ Complete the payment process *(€2/week)*\n" +
-                 "3️⃣ After payment, you'll receive a confirmation message from the bot\n\n" +
-                 "🎯 *Your subscription will give you access to daily personalized English lessons!*";
+  const userLang = await getUserLanguageForTribute();
+  const message = `${getTributeText(userLang, 'title')}\n\n` +
+                 `${getTributeText(userLang, 'step1')}\n` +
+                 `${getTributeText(userLang, 'step2')}\n` +
+                 `${getTributeText(userLang, 'step3')}\n\n` +
+                 `${getTributeText(userLang, 'benefit')}`;
   
   // Prepare buttons array
   const buttons = [];
   
   // Always add the real subscription button if link is available
   if (tributeAppLink) {
-    buttons.push([{ text: "Subscribe for 600₽/month", url: tributeAppLink }]);
+    buttons.push([{ text: getTributeText(userLang, 'subscribeButton'), url: tributeAppLink }]);
   }
   
   // Add test payment button ONLY in dev mode
   if (env.DEV_MODE === 'true') {
-    buttons.push([{ text: "🧪 TEST PAYMENT (Dev Only)", callback_data: "test:payment" }]);
+    buttons.push([{ text: getTributeText(userLang, 'testButton'), callback_data: "test:payment" }]);
   }
   
   // Send message with appropriate buttons
