@@ -79,18 +79,59 @@ if (update.message?.text) {
   if (update.message.text === '/help' || 
       !supportedCommands.some(cmd => update.message.text.startsWith(cmd))) {
     
-    const helpMessage = '🤖 *LinguaPulse Bot Commands:*\n\n' +
-      '*/start* - Begin the onboarding process or see your profile\n' +
-      '*/profile* - View your language level and progress\n' +
-      '*/lesson* - Access your lessons and subscription status\n' +
-      '*/talk* - Start today\'s lesson (for subscribers)\n' +
-      '*/feedback* - Share your thoughts and suggestions\n' +
-      '*/help* - Show this help message\n\n' +
-      '💡 *Did you know?* Just 10-15 minutes of conversation practice daily can improve your English skills more than years of study without regular speaking practice!\n\n' +
-      '• Send voice messages during the lesson to practice speaking\n' +
-      '• The AI tutor may take a few seconds to think and respond\n' +
-      '• Lessons end automatically\n' +
-      '• You\'ll receive personalized grammar and vocabulary feedback after each lesson';
+    // Helper functions for /help localization
+    async function getUserLanguageForHelp() {
+      try {
+        const { results } = await env.USER_DB
+          .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+          .bind(parseInt(chatId, 10))
+          .all();
+        return results.length > 0 ? results[0].interface_language : 'en';
+      } catch (error) {
+        console.error('Error getting user language for /help:', error);
+        return 'en';
+      }
+    }
+
+    const helpTexts = {
+      en: {
+        title: '🤖 *LinguaPulse Bot Commands:*',
+        startDesc: '*/start* - Begin the onboarding process or see your profile',
+        profileDesc: '*/profile* - View your language level and progress',
+        lessonDesc: '*/lesson* - Access your lessons and subscription status',
+        talkDesc: '*/talk* - Start today\'s lesson (for subscribers)',
+        feedbackDesc: '*/feedback* - Share your thoughts and suggestions',
+        helpDesc: '*/help* - Show this help message',
+        tip: '💡 *Did you know?* Just 10-15 minutes of conversation practice daily can improve your English skills more than years of study without regular speaking practice!',
+        instructions: '• Send voice messages during the lesson to practice speaking\n• The AI tutor may take a few seconds to think and respond\n• Lessons end automatically\n• You\'ll receive personalized grammar and vocabulary feedback after each lesson'
+      },
+      ru: {
+        title: '🤖 *Команды бота LinguaPulse:*',
+        startDesc: '*/start* - Начать регистрацию или посмотреть профиль',
+        profileDesc: '*/profile* - Посмотреть уровень языка и прогресс',
+        lessonDesc: '*/lesson* - Доступ к урокам и статус подписки',
+        talkDesc: '*/talk* - Начать сегодняшний урок (для подписчиков)',
+        feedbackDesc: '*/feedback* - Поделиться мыслями и предложениями',
+        helpDesc: '*/help* - Показать это сообщение помощи',
+        tip: '💡 *Знаете ли вы?* Всего 10-15 минут ежедневной разговорной практики могут улучшить ваш английский больше, чем годы изучения без регулярной речевой практики!',
+        instructions: '• Отправляйте голосовые сообщения во время урока для практики речи\n• ИИ-преподаватель может подумать несколько секунд перед ответом\n• Уроки заканчиваются автоматически\n• После каждого урока вы получите персональную обратную связь по грамматике и словарному запасу'
+      }
+    };
+
+    function getHelpText(lang, key) {
+      return helpTexts[lang]?.[key] || helpTexts.en[key] || key;
+    }
+
+    const userLang = await getUserLanguageForHelp();
+    const helpMessage = `${getHelpText(userLang, 'title')}\n\n` +
+      `${getHelpText(userLang, 'startDesc')}\n` +
+      `${getHelpText(userLang, 'profileDesc')}\n` +
+      `${getHelpText(userLang, 'lessonDesc')}\n` +
+      `${getHelpText(userLang, 'talkDesc')}\n` +
+      `${getHelpText(userLang, 'feedbackDesc')}\n` +
+      `${getHelpText(userLang, 'helpDesc')}\n\n` +
+      `${getHelpText(userLang, 'tip')}\n\n` +
+      `${getHelpText(userLang, 'instructions')}`;
     
     // Check if user has active subscription
     const userHasActiveSubscription = await hasActiveSubscription(chatId, env);
