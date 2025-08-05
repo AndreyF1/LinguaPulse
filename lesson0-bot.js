@@ -91,6 +91,16 @@ export default {
   async fetch(request, env, ctx) {
     let raw; // Declared here to be accessible in the final catch block
     try {
+      // Handle GET requests (health checks, etc.)
+      if (request.method === 'GET') {
+        return new Response('Lesson0 bot is running', { status: 200 });
+      }
+      
+      // Only parse JSON for POST requests
+      if (request.method !== 'POST') {
+        return new Response('Method not allowed', { status: 405 });
+      }
+      
       raw = await request.json();
       console.log('Lesson0-bot raw update:', JSON.stringify(raw).substring(0, 500) + '...');
       const chatId = raw.user_id || raw.message?.chat?.id;
