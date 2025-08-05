@@ -61,14 +61,45 @@ const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help', '/
 
 // Handle /feedback command
 if (update.message?.text === '/feedback') {
+  // Helper functions for /feedback localization
+  async function getUserLanguageForFeedback() {
+    try {
+      const { results } = await env.USER_DB
+        .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+        .bind(parseInt(chatId, 10))
+        .all();
+      return results.length > 0 ? results[0].interface_language : 'en';
+    } catch (error) {
+      console.error('Error getting user language for /feedback:', error);
+      return 'en';
+    }
+  }
+
+  const feedbackTexts = {
+    en: {
+      title: "💬 *Join our feedback channel to share your thoughts and suggestions!*",
+      description: "Your feedback helps us improve LinguaPulse and make it better for everyone.",
+      button: "Join Feedback Channel"
+    },
+    ru: {
+      title: "💬 *Присоединяйтесь к нашему каналу обратной связи, чтобы поделиться мыслями и предложениями!*",
+      description: "Ваша обратная связь помогает нам улучшать LinguaPulse и делать его лучше для всех.",
+      button: "Присоединиться к каналу обратной связи"
+    }
+  };
+
+  function getFeedbackText(lang, key) {
+    return feedbackTexts[lang]?.[key] || feedbackTexts.en[key] || key;
+  }
+
+  const userLang = await getUserLanguageForFeedback();
   await sendMessageViaTelegram(chatId, 
-    "💬 *Join our feedback channel to share your thoughts and suggestions!*\n\n" +
-    "Your feedback helps us improve LinguaPulse and make it better for everyone.",
+    `${getFeedbackText(userLang, 'title')}\n\n${getFeedbackText(userLang, 'description')}`,
     env,
     { 
       parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: [[{ text: "Join Feedback Channel", url: "https://t.me/+sBmchJHjPKwyMDVi" }]]
+        inline_keyboard: [[{ text: getFeedbackText(userLang, 'button'), url: "https://t.me/+sBmchJHjPKwyMDVi" }]]
       }
     }
   );
