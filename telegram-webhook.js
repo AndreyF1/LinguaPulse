@@ -1558,6 +1558,20 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
     const isSubscribed = await hasActiveSubscription(chatId, env);
     console.log(`[DEBUG] User ${chatId} is subscribed: ${isSubscribed}`);
     
+    // Get user language for subscription button localization
+    let userLang = 'en';
+    try {
+      const { results } = await env.USER_DB
+        .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+        .bind(parseInt(chatId, 10))
+        .all();
+      userLang = results.length > 0 ? results[0].interface_language : 'en';
+    } catch (error) {
+      console.error('Error getting user language for subscription button:', error);
+    }
+    
+    const subscribeButtonText = userLang === 'ru' ? 'Подписаться за 600₽/месяц' : 'Subscribe for 600₽/month';
+    
     // Сначала проверяем специальную ссылку на приложение Tribute
     let tributeAppLink = env.TRIBUTE_APP_LINK;
     
@@ -1626,16 +1640,16 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
       if (!messageOptions.reply_markup) {
         // Нет кнопок - создаем новую клавиатуру
         messageOptions.reply_markup = {
-          inline_keyboard: [[{ text: "Subscribe for 600₽/month", url: tributeAppLink }]]
+          inline_keyboard: [[{ text: subscribeButtonText, url: tributeAppLink }]]
         };
       } else {
         // Уже есть кнопки
         if (!messageOptions.reply_markup.inline_keyboard) {
           // Нет именно inline_keyboard, создаем ее
-          messageOptions.reply_markup.inline_keyboard = [[{ text: "Subscribe for 600₽/month", url: tributeAppLink }]];
+          messageOptions.reply_markup.inline_keyboard = [[{ text: subscribeButtonText, url: tributeAppLink }]];
         } else {
           // Есть inline_keyboard, добавляем новую строку с кнопкой
-          messageOptions.reply_markup.inline_keyboard.push([{ text: "Subscribe for 600₽/month", url: tributeAppLink }]);
+          messageOptions.reply_markup.inline_keyboard.push([{ text: subscribeButtonText, url: tributeAppLink }]);
         }
       }
       
