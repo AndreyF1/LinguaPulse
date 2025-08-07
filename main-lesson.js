@@ -343,7 +343,13 @@ export default {
               const suggestion = await generateSuggestedResponse(hist, env);
               console.log(`Generated suggestion: "${suggestion}"`);
               
-              const suggestionMessage = `Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ\n\n_${suggestion}_`;
+              // Get user's interface language for localization
+              const userLang = await getUserLanguageForMain(chatId, env.USER_DB);
+              const suggestionText = userLang === 'ru' 
+                ? "Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ"
+                : "You can use the text below for your audio response. Feel free to ignore it and come up with your own answer";
+              
+              const suggestionMessage = `${suggestionText}\n\n_${suggestion}_`;
               console.log(`Full suggestion message: "${suggestionMessage}"`);
               
               await sendText(chatId, suggestionMessage, env);
@@ -591,6 +597,20 @@ async function safeKvDelete(kv, key) {
   }
 }
 
+// Helper function to get user's interface language for localization
+async function getUserLanguageForMain(chatId, db) {
+  try {
+    const { results } = await db
+      .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
+      .bind(parseInt(chatId, 10))
+      .all();
+    return results.length > 0 ? results[0].interface_language : 'en';
+  } catch (error) {
+    console.error('Error getting user language for main-lesson:', error);
+    return 'en';
+  }
+}
+
 // Generate first greeting using GPT - FIXED: Uses actual user level with attempt limiting
 async function sendFirstGreeting(chatId, history, env, kv, userLevel) {
   console.log(`👋 [${chatId}] Starting first greeting generation for level: ${userLevel}`);
@@ -716,7 +736,13 @@ Keep your greeting to 1-2 sentences maximum.`;
         const suggestion = await generateSuggestedResponse(history, env);
         console.log(`Generated suggestion: "${suggestion}"`);
         
-        const suggestionMessage = `Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ\n\n_${suggestion}_`;
+        // Get user's interface language for localization
+        const userLang = await getUserLanguageForMain(chatId, env.USER_DB);
+        const suggestionText = userLang === 'ru' 
+          ? "Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ"
+          : "You can use the text below for your audio response. Feel free to ignore it and come up with your own answer";
+        
+        const suggestionMessage = `${suggestionText}\n\n_${suggestion}_`;
         console.log(`Full suggestion message: "${suggestionMessage}"`);
         
         await sendText(chatId, suggestionMessage, env);
@@ -773,7 +799,13 @@ Keep your greeting to 1-2 sentences maximum.`;
         const suggestion = await generateSuggestedResponse(history, env);
         console.log(`Generated suggestion: "${suggestion}"`);
         
-        const suggestionMessage = `Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ\n\n_${suggestion}_`;
+        // Get user's interface language for localization
+        const userLang = await getUserLanguageForMain(chatId, env.USER_DB);
+        const suggestionText = userLang === 'ru' 
+          ? "Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ"
+          : "You can use the text below for your audio response. Feel free to ignore it and come up with your own answer";
+        
+        const suggestionMessage = `${suggestionText}\n\n_${suggestion}_`;
         console.log(`Full suggestion message: "${suggestionMessage}"`);
         
         await sendText(chatId, suggestionMessage, env);
