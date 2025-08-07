@@ -697,6 +697,39 @@ Keep your greeting to 1-2 sentences maximum.`;
       console.log(`⚠️ [${chatId}] First greeting sent but TTS failed (fallback to text used)`);
     }
     
+    // Generate and send suggestion for beginner/intermediate users
+    try {
+      console.log(`User level: ${userLevel}`);
+      
+      const shouldShowSuggestion = (
+        userLevel === 'Beginner' || 
+        userLevel === 'Intermediate' ||
+        userLevel === 'A1' ||
+        userLevel === 'A2' ||
+        userLevel === 'B1'
+      );
+      
+      console.log(`Should show suggestion: ${shouldShowSuggestion} (level: ${userLevel})`);
+      
+      if (shouldShowSuggestion) {
+        console.log(`Generating suggestion for ${userLevel} level user`);
+        const suggestion = await generateSuggestedResponse(history, env);
+        console.log(`Generated suggestion: "${suggestion}"`);
+        
+        const suggestionMessage = `Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ\n\n_${suggestion}_`;
+        console.log(`Full suggestion message: "${suggestionMessage}"`);
+        
+        await sendText(chatId, suggestionMessage, env);
+        console.log(`Successfully sent suggestion to ${userLevel} level user`);
+      } else {
+        console.log(`No suggestion needed for level: ${userLevel}`);
+      }
+    } catch (suggestionError) {
+      console.error('Error generating/sending suggestion:', suggestionError);
+      console.error('Suggestion error stack:', suggestionError.stack);
+      // Don't fail the whole lesson if suggestion fails
+    }
+    
   } catch (error) {
     console.error(`❌ [${chatId}] Error generating first greeting:`, error);
     
@@ -720,6 +753,39 @@ Keep your greeting to 1-2 sentences maximum.`;
     
     const fallbackResult = await safeSendTTS(chatId, fallbackGreeting, env);
     console.log(`🔄 [${chatId}] Fallback greeting ${fallbackResult ? 'sent successfully' : 'failed (text fallback used)'}`);
+    
+    // Generate and send suggestion for beginner/intermediate users (fallback case)
+    try {
+      console.log(`User level: ${userLevel}`);
+      
+      const shouldShowSuggestion = (
+        userLevel === 'Beginner' || 
+        userLevel === 'Intermediate' ||
+        userLevel === 'A1' ||
+        userLevel === 'A2' ||
+        userLevel === 'B1'
+      );
+      
+      console.log(`Should show suggestion: ${shouldShowSuggestion} (level: ${userLevel})`);
+      
+      if (shouldShowSuggestion) {
+        console.log(`Generating suggestion for ${userLevel} level user (fallback)`);
+        const suggestion = await generateSuggestedResponse(history, env);
+        console.log(`Generated suggestion: "${suggestion}"`);
+        
+        const suggestionMessage = `Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ\n\n_${suggestion}_`;
+        console.log(`Full suggestion message: "${suggestionMessage}"`);
+        
+        await sendText(chatId, suggestionMessage, env);
+        console.log(`Successfully sent suggestion to ${userLevel} level user (fallback)`);
+      } else {
+        console.log(`No suggestion needed for level: ${userLevel}`);
+      }
+    } catch (suggestionError) {
+      console.error('Error generating/sending suggestion (fallback):', suggestionError);
+      console.error('Suggestion error stack:', suggestionError.stack);
+      // Don't fail the whole lesson if suggestion fails
+    }
   }
 }
 
