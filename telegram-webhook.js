@@ -553,11 +553,11 @@ return new Response('OK');
           console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
           console.log(`Available services:`, Object.keys(env).filter(key => ['NEWBIES_FUNNEL', 'LESSON0', 'MAIN_LESSON'].includes(key)));
           
-          // FIRST: Check for active lesson0 session
+          // FIRST: Check for active lesson sessions
           console.log(`=== CHECKING ACTIVE SESSIONS ===`);
-          let hasActiveLesson0Session = false;
           
           if (env.CHAT_KV) {
+            // Check lesson0 session
             const lesson0Session = await env.CHAT_KV.get(`session:${chatId}`);
             const lesson0History = await env.CHAT_KV.get(`hist:${chatId}`);
             
@@ -565,15 +565,24 @@ return new Response('OK');
             console.log(`Lesson0 history exists: ${!!lesson0History}`);
             
             if (lesson0Session || lesson0History) {
-              hasActiveLesson0Session = true;
               console.log(`✅ Active lesson0 session found, forwarding voice message to LESSON0`);
-              
-              // Forward voice message to lesson0-bot
               return forward(env.LESSON0, update);
+            }
+            
+            // Check main_lesson session
+            const mainLessonSession = await env.CHAT_KV.get(`main_session:${chatId}`);
+            const mainLessonHistory = await env.CHAT_KV.get(`main_hist:${chatId}`);
+            
+            console.log(`Main lesson session exists: ${!!mainLessonSession}`);
+            console.log(`Main lesson history exists: ${!!mainLessonHistory}`);
+            
+            if (mainLessonSession || mainLessonHistory) {
+              console.log(`✅ Active main lesson session found, forwarding voice message to MAIN_LESSON`);
+              return forward(env.MAIN_LESSON, update);
             }
           }
           
-          console.log(`❌ No active lesson0 session found`);
+          console.log(`❌ No active lesson sessions found`);
           
           // If no active session, check user status in database
           console.log(`=== CHECKING USER STATUS IN DATABASE ===`);
@@ -787,8 +796,8 @@ return new Response('OK');
                 }
               }
               
-              // Set lock for 30 seconds
-              await kvStorage.put(lessonStartLockKey, Date.now().toString(), { expirationTtl: 30 });
+              // Set lock for 60 seconds
+              await kvStorage.put(lessonStartLockKey, Date.now().toString(), { expirationTtl: 60 });
               console.log(`🔒 [${chatId}] lesson:start lock set in telegram-webhook`);
             } catch (lockError) {
               console.error(`❌ [${chatId}] Error with lesson:start lock:`, lockError);
