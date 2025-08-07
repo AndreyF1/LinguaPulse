@@ -322,6 +322,40 @@ export default {
           
           // Send audio response
           await safeSendTTS(chatId, safeReply, env);
+          
+          // Generate and send suggestion for beginner/intermediate users
+          try {
+            const userLevel = await safeKvGet(kv, `main_user_level:${chatId}`) || "B1";
+            console.log(`User level: ${userLevel}`);
+            
+            const shouldShowSuggestion = (
+              userLevel === 'Beginner' || 
+              userLevel === 'Intermediate' ||
+              userLevel === 'A1' ||
+              userLevel === 'A2' ||
+              userLevel === 'B1'
+            );
+            
+            console.log(`Should show suggestion: ${shouldShowSuggestion} (level: ${userLevel})`);
+            
+            if (shouldShowSuggestion) {
+              console.log(`Generating suggestion for ${userLevel} level user`);
+              const suggestion = await generateSuggestedResponse(hist, env);
+              console.log(`Generated suggestion: "${suggestion}"`);
+              
+              const suggestionMessage = `Ты можешь использовать следующий текст ниже для аудио-ответа. Можешь проигнорировать и придумать свой ответ\n\n_${suggestion}_`;
+              console.log(`Full suggestion message: "${suggestionMessage}"`);
+              
+              await sendText(chatId, suggestionMessage, env);
+              console.log(`Successfully sent suggestion to ${userLevel} level user`);
+            } else {
+              console.log(`No suggestion needed for level: ${userLevel}`);
+            }
+          } catch (suggestionError) {
+            console.error('Error generating/sending suggestion:', suggestionError);
+            console.error('Suggestion error stack:', suggestionError.stack);
+            // Don't fail the whole lesson if suggestion fails
+          }
         } finally {
           // Clear processing flag
           await safeKvDelete(kv, processingKey);
@@ -771,6 +805,52 @@ async function chatGPT(history, env, userLevel = "B1", chatId = 'unknown') {
   
   // This should never be reached, but just in case
   return "I'm having technical difficulties. Please try again later.";
+}
+
+// Generate suggested response for beginner/intermediate users
+async function generateSuggestedResponse(history, env) {
+  try {
+    const prompt = `
+Based on this conversation history, generate a short, natural response that a beginner/intermediate English learner could use to continue the conversation. 
+
+Conversation context:
+${history.slice(-3).map(h => `${h.role}: ${h.content}`).join('\n')}
+
+Your suggestion should:
+1. Be 1-2 sentences maximum
+2. Use simple vocabulary and grammar
+3. Be a natural continuation of the conversation
+4. Help the student practice speaking
+5. Include common conversational phrases
+
+Only provide the suggested response text, nothing else.`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        Authorization: `Bearer ${env.OPENAI_KEY}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({ 
+        model: 'gpt-4o-mini', 
+        messages: [{ role: 'system', content: prompt }], 
+        temperature: 0.8,
+        max_tokens: 100
+      })
+    });
+    
+    if (!res.ok) {
+      throw new Error(`OpenAI API error: ${await res.text()}`);
+    }
+    
+    const j = await res.json();
+    const suggestion = j.choices[0].message.content.trim();
+    console.log("Generated suggestion:", suggestion);
+    return suggestion;
+  } catch (error) {
+    console.error("Error generating suggested response:", error);
+    return "I think that's interesting. Can you tell me more about it?"; // Fallback suggestion
+  }
 }
 
 // Analyze user language for grammar and vocabulary feedback - FIXED: Use actual user level and avoid redundant encouragement
