@@ -551,6 +551,23 @@ return new Response('OK');
         try {
           console.log(`=== VOICE MESSAGE HANDLING START ===`);
           console.log(`Received voice message from chat ${chatId}, message ID: ${update.message.message_id}`);
+          
+          // Check for duplicate message processing
+          const messageId = update.message.message_id;
+          const processingKey = `processing_msg:${chatId}:${messageId}`;
+          
+          if (env.CHAT_KV) {
+            const alreadyProcessed = await env.CHAT_KV.get(processingKey);
+            if (alreadyProcessed) {
+              console.log(`❌ Message ${messageId} already processed, skipping duplicate`);
+              return new Response('OK - duplicate message skipped');
+            }
+            
+            // Mark message as being processed (expire in 5 minutes)
+            await env.CHAT_KV.put(processingKey, Date.now().toString(), { expirationTtl: 300 });
+            console.log(`✅ Message ${messageId} marked as processing`);
+          }
+          
           console.log(`Available services:`, Object.keys(env).filter(key => ['NEWBIES_FUNNEL', 'LESSON0', 'MAIN_LESSON'].includes(key)));
           
           // FIRST: Check for active lesson sessions
