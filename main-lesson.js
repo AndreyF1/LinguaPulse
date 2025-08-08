@@ -177,55 +177,24 @@ export default {
             // Now send the farewell message
             await safeSendTTS(chatId, bye, env);
 
-            // Grammar analysis of all user utterances
+            // Grammar analysis of all user utterances (concise, localized)
             const userUtterances = hist.filter(h => h.role === 'user').map(h => h.content);
             
-            // Get user's actual level from KV storage
-            const userLevel = await safeKvGet(kv, `main_user_level:${chatId}`) || "B1";
-            const analyses = await analyzeLanguage(userUtterances, env, userLevel);
+            // Get user's interface language for localization
+            const userLangForFeedback = await getUserLanguageForMain(chatId, env.USER_DB);
             
-            // First, send an introduction message
-            if (analyses.utteranceAnalyses && analyses.utteranceAnalyses.length > 0) {
-              await sendText(
-                chatId, 
-                "📝 *Here's your language feedback from today's practice:*", 
-                env
-              );
+            // Generate single consolidated feedback (concise)
+            const consolidatedFeedback = await analyzeLanguageConsolidated(userUtterances, env, userLangForFeedback);
+            
+            if (consolidatedFeedback) {
+              const feedbackTitles = {
+                en: "📝 *Your Language Feedback*\n\nHere's a detailed analysis of your speaking during our conversation:",
+                ru: "📝 *Обратная связь по языку*\n\nВот подробный анализ вашей речи во время нашего разговора:"
+              };
+              const titleText = feedbackTitles[userLangForFeedback] || feedbackTitles.en;
               
-              // Then send individual analysis for each utterance
-              for (const analysis of analyses.utteranceAnalyses) {
-                // Type guard to ensure we're dealing with the correct structure
-                if (typeof analysis === 'object' && analysis !== null && 'utterance' in analysis && 'feedback' in analysis) {
-                  await sendText(
-                    chatId,
-                    `*Your phrase:* "${analysis.utterance}"\n\n${analysis.feedback}`,
-                    env
-                  );
-                  
-                  // Add a short delay between messages to avoid flooding
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              }
-              
-              // Add skill assessment if available
-              if (analyses.skillAssessment) {
-                const skills = analyses.skillAssessment;
-                await sendText(
-                  chatId,
-                  "🏆 *Your Skill Assessment*\n\n" +
-                  `*Speaking:* ${skills.speaking.score}/100\n${skills.speaking.feedback}\n\n` +
-                  `*Vocabulary:* ${skills.vocabulary.score}/100\n${skills.vocabulary.feedback}\n\n` +
-                  `*Grammar:* ${skills.grammar.score}/100\n${skills.grammar.feedback}`,
-                  env
-                );
-              }
-              
-              // After all analyses, send encouragement message
-              await sendText(
-                chatId,
-                "🌟 *Keep practicing! With consistent practice, you'll see steady improvement in your speaking skills!*",
-                env
-              );
+              await sendText(chatId, titleText, env);
+              await sendText(chatId, consolidatedFeedback, env);
             }
 
             // Send message about next lesson
@@ -391,6 +360,73 @@ export default {
     }
   }
 };
+
+// Analyze language in a single concise message, localized (mirrors lesson0 approach)
+async function analyzeLanguageConsolidated(utterances, env, language) {
+  try {
+    if (!utterances || utterances.length === 0) return '';
+    const allUtterances = utterances.join(' | ');
+    const prompt = language === 'ru' ? `
+Как эксперт-преподаватель английского языка, проанализируйте весь разговор студента и дайте максимум 3-4 самых важных замечания по приоритету:
+
+Высказывания студента: "${allUtterances}"
+
+ПРИОРИТЕТ ЗАМЕЧАНИЙ:
+1. Грамматические ошибки (самые важные)
+2. Лексические улучшения 
+3. Произношение
+4. Разнообразие речи (только если остальное идеально)
+
+ФОРМАТ:
+- Начните с краткого позитивного комментария
+- Дайте 2-4 конкретных замечания в порядке важности
+- Каждое замечание должно быть коротким и практичным
+- Общий ответ не более 300 слов
+- ВАЖНО: Отвечайте на русском языке
+` : `
+As an expert English language teacher, analyze the student's entire conversation and provide maximum 3-4 most important observations by priority:
+
+Student utterances: "${allUtterances}"
+
+PRIORITY ORDER:
+1. Grammar errors (most important)
+2. Vocabulary improvements
+3. Pronunciation 
+4. Speech variety (only if everything else is perfect)
+
+FORMAT:
+- Start with brief positive comment
+- Give 2-4 specific observations in order of importance
+- Each observation should be short and practical
+- Total response under 300 words
+- IMPORTANT: Respond in English
+`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.OPENAI_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 400
+      })
+    });
+    if (!res.ok) {
+      console.error('OpenAI API error in analyzeLanguageConsolidated:', await res.text());
+      return '';
+    }
+    const j = await res.json();
+    const feedback = j.choices[0].message.content.trim();
+    return feedback;
+  } catch (e) {
+    console.error('Error in analyzeLanguageConsolidated:', e);
+    return '';
+  }
+}
 
 // Check if session is still active and valid
 async function checkSessionActive(chatId, kv) {

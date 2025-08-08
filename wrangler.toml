@@ -44,7 +44,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
 # Newbies Funnel Environment (replaces test-bot functionality)
 [env.newbies-funnel]
-name = "linguapulse-newbies-funnel"
+name = "linguapulse-newbies-funnel-v2"
 main = "newbies-funnel.js"
 keep_vars = true
 
@@ -93,7 +93,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Сервисные привязки для окружения webhook
 [[env.webhook.services]]
 binding = "NEWBIES_FUNNEL"
-service = "linguapulse-newbies-funnel"
+service = "linguapulse-newbies-funnel-v2"
 
 [[env.webhook.services]]
 binding = "LESSON0"
