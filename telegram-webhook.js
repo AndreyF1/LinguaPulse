@@ -392,6 +392,12 @@ return new Response('OK');
       // Handle /start command to check for welcome parameter
       if (update.message?.text?.startsWith('/start')) {
         console.log(`🚀 [${chatId}] Processing /start command`);
+        // Ensure user has a base profile row as early as possible
+        try {
+          await ensureUserProfileExists(env.USER_DB, chatId);
+        } catch (e) {
+          console.error(`⚠️ [${chatId}] Failed to ensure user profile exists:`, e);
+        }
         
         // Helper functions for /start localization
         async function getUserLanguageForStart() {
@@ -999,6 +1005,35 @@ return new Response('OK');
     }
   }
 };
+
+// Ensure a base row exists in user_profiles for the given telegram_id
+async function ensureUserProfileExists(db, chatId) {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO user_profiles (telegram_id, created_at)
+         VALUES (?, datetime('now'))
+         ON CONFLICT(telegram_id) DO NOTHING`
+      )
+      .bind(parseInt(chatId, 10))
+      .run();
+  } catch (e) {
+    // Fallback for schemas without created_at
+    try {
+      await db
+        .prepare(
+          `INSERT INTO user_profiles (telegram_id)
+           VALUES (?)
+           ON CONFLICT(telegram_id) DO NOTHING`
+        )
+        .bind(parseInt(chatId, 10))
+        .run();
+    } catch (inner) {
+      console.error('ensureUserProfileExists failed:', inner);
+      throw inner;
+    }
+  }
+}
 
 // UPDATED: Handle Tribute webhook for subscription notifications
 async function handleTributeWebhook(request, env) {
