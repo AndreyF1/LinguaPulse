@@ -486,7 +486,7 @@ export default {
   }
 };
 
-// Beginner interactive script (step-by-step with voice responses).
+// NEW Beginner Alex mentor script (structured conversation flow).
 async function runBeginnerScriptLesson(chatId, env, db, kv, userLang) {
   // Ensure profile rows and mark start
   const now = new Date().toISOString();
@@ -501,37 +501,61 @@ async function runBeginnerScriptLesson(chatId, env, db, kv, userLang) {
     console.error('Beginner flow: failed to upsert start_lesson0_at', e);
   }
 
-  // Initialize beginner session state
+  // Initialize Alex mentor session state
   const sessionId = Date.now().toString();
   const beginnerState = {
-    step: 0,
+    scene: 1, // Current scene (1-5)
     sessionId: sessionId,
-    steps: userLang === 'ru' ? [
-      'Привет! Давай начнём с простого. Повтори: My name is ...',
-      'Отлично! Теперь попробуй: I live in ...',
-      'И ещё одно: I like ... because ...'
-    ] : [
-      "Hi! Let's start simple. Repeat: My name is ...",
-      'Great! Now try: I live in ...',
-      'One more: I like ... because ...'
-    ]
+    language: userLang
   };
 
   // Save beginner state to KV
   await safeKvPut(kv, `beginner_session:${chatId}`, JSON.stringify(beginnerState));
   await safeKvPut(kv, `session:${chatId}`, sessionId);
 
-  // Send first step and wait for response
-  const firstStep = beginnerState.steps[0];
+  // SCENE 1: Send 4 initial messages
+  console.log(`Starting Alex mentor flow for user ${chatId} in language ${userLang}`);
+  
+  // First bubble (text)
+  const greeting = userLang === 'ru' 
+    ? "Привет! 👋 Я Алекс, твой AI-наставник. Здесь мы будем много общаться голосом, чтобы ты смог(ла) легко преодолеть главный страх — что тебя не так поймут или не поймут вовсе."
+    : "Hi! 👋 I'm Alex, your AI mentor. Here we'll communicate a lot by voice so you can easily overcome the main fear — that you won't be understood correctly or won't be understood at all.";
+  
+  await sendText(chatId, greeting, env);
+  await new Promise(r => setTimeout(r, 2000));
+
+  // Second bubble (text)  
+  const instruction = userLang === 'ru'
+    ? "Прежде чем мы начнем, я за 10 секунд покажу, как работает главный инструмент наших уроков — голосовые сообщения."
+    : "Before we start, I'll show you in 10 seconds how the main tool of our lessons works — voice messages.";
+  
+  await sendText(chatId, instruction, env);
+  await new Promise(r => setTimeout(r, 2000));
+
+  // Third bubble (GIF)
   try {
-    await safeSendTTS(chatId, firstStep, env);
-  } catch (e) {
-    console.error('Beginner flow TTS error:', e);
+    await sendGif(
+      chatId, 
+      "https://i.gifer.com/3OxNa.gif", 
+      "", // No caption for GIF
+      env
+    );
+  } catch (gifError) {
+    console.error("Failed to send GIF in Alex flow:", gifError);
   }
-  await sendText(chatId, firstStep, env);
+  await new Promise(r => setTimeout(r, 2000));
+
+  // Fourth bubble (text) - call to action
+  const callToAction = userLang === 'ru'
+    ? "Теперь твоя очередь. Зажми значок микрофона 🎤, удерживая его, скажи «Привет», а потом отпусти — и сообщение отправится."
+    : "Now it's your turn. Press and hold the microphone icon 🎤, say 'Hello', then release — and the message will be sent.";
+  
+  await sendText(chatId, callToAction, env);
+  
+  // Now wait for user's first voice message
 }
 
-// Handle voice responses in beginner interactive flow
+// Handle voice responses in Alex mentor flow (scenes 2-5)
 async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang) {
   try {
     // Get beginner session state
@@ -542,86 +566,179 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
     }
 
     const beginnerState = JSON.parse(beginnerSessionData);
-    console.log(`Beginner session state:`, beginnerState);
+    console.log(`Alex mentor session state:`, beginnerState);
 
-    // Transcribe user voice to acknowledge their participation
+    // Transcribe user voice
+    let userText = '';
     try {
-      const userText = await transcribeVoice(voice.file_id, env);
-      console.log(`Beginner user said: ${userText}`);
+      userText = await transcribeVoice(voice.file_id, env);
+      console.log(`User said: "${userText}"`);
     } catch (transcribeError) {
-      console.error('Transcription error in beginner flow:', transcribeError);
-      // Continue anyway as we don't need perfect transcription for beginners
+      console.error('Transcription error in Alex flow:', transcribeError);
+      // Continue with empty text, we'll handle it
     }
 
-    // Move to next step
-    beginnerState.step++;
-    console.log(`Moving to beginner step: ${beginnerState.step}`);
+    const userTextLower = userText.toLowerCase();
 
-    if (beginnerState.step < beginnerState.steps.length) {
-      // Send next step
-      const nextStep = beginnerState.steps[beginnerState.step];
+    // Handle different scenes
+    if (beginnerState.scene === 1) {
+      // SCENE 2: User sent first voice (any response is OK)
+      console.log('SCENE 2: Moving from hello test to English introduction');
       
-      // Update state in KV
+      // Send confirmation
+      const confirmation = userLang === 'ru'
+        ? "Отлично, все получилось! Технически ты полностью готов(а). А теперь — первый шаг в английском. Не волнуйся, я буду вести тебя. Сейчас ты услышишь мой голос."
+        : "Excellent, it worked! Technically you're fully ready. Now — the first step in English. Don't worry, I'll guide you. Now you'll hear my voice.";
+      
+      await sendText(chatId, confirmation, env);
+      await new Promise(r => setTimeout(r, 1500));
+
+      // Send Alex's audio introduction
+      await safeSendTTS(chatId, "Hello! My name is Alex.", env);
+      await new Promise(r => setTimeout(r, 1000));
+
+      // Send instruction
+      const instruction = userLang === 'ru'
+        ? "А теперь ты. Просто нажми на микрофон 🎤 и представься: Hello! My name is [твое имя]."
+        : "Now you. Just press the microphone 🎤 and introduce yourself: Hello! My name is [your name].";
+      
+      await sendText(chatId, instruction, env);
+
+      // Move to scene 3
+      beginnerState.scene = 3;
       await safeKvPut(kv, `beginner_session:${chatId}`, JSON.stringify(beginnerState));
-      
-      // Send audio and text
-      try {
-        await safeSendTTS(chatId, nextStep, env);
-      } catch (e) {
-        console.error('Beginner flow TTS error:', e);
-      }
-      await sendText(chatId, nextStep, env);
-      
-    } else {
-      // All steps completed - finish lesson
-      console.log(`Beginner lesson completed for user ${chatId}`);
-      
-      // Send completion message
-      const completionMessage = userLang === 'ru' 
-        ? 'Отлично! Ты прошёл первый урок. Теперь можешь подписаться для ежедневных уроков!'
-        : 'Great! You completed your first lesson. Now you can subscribe for daily lessons!';
-      
-      await sendText(chatId, completionMessage, env);
-      
-      // Offer subscription with direct Tribute link and feedback
-      let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || 'https://t.me/tribute/app?startapp=swvs';
-      if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
-        tributeAppLink = 'https://' + tributeAppLink.replace(/^[\/\\]+/, '');
-      }
-      const feedbackLink = 'https://t.me/+sBmchJHjPKwyMDVi';
-      await sendText(
-        chatId,
-        getText(userLang, 'subscriptionOffer'),
-        env,
-        [[
-          { text: getText(userLang, 'subscribeWeekly'), url: tributeAppLink },
-          { text: userLang === 'ru' ? 'Обратная связь' : 'Feedback', url: feedbackLink }
-        ]]
-      );
 
-      // Mark completion in database
-      try {
-        const passAt = new Date().toISOString();
-        await db.prepare(
-          `INSERT INTO user_profiles(telegram_id, created_at, pass_lesson0_at)
-           VALUES(?, datetime('now'), ?)
-           ON CONFLICT(telegram_id) DO UPDATE
-           SET pass_lesson0_at=excluded.pass_lesson0_at`
-        ).bind(parseInt(chatId, 10), passAt).run();
-      } catch (e) {
-        console.error('Beginner flow: failed to upsert pass_lesson0_at', e);
+    } else if (beginnerState.scene === 3) {
+      // SCENE 3: User tries to introduce themselves
+      console.log('SCENE 3: User introduction attempt');
+      
+      // Check if user said the right pattern
+      const hasMyName = userTextLower.includes('my') && userTextLower.includes('name') && userTextLower.includes('is');
+      
+      if (hasMyName) {
+        // CASE 1: Correct response
+        await sendText(chatId, "Супер! 🔥", env);
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Send Alex's next audio
+        await safeSendTTS(chatId, "It's very nice to meet you! I am from London.", env);
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Send next instruction
+        const instruction = userLang === 'ru'
+          ? "Твоя очередь. Скажи, из какого ты города: I am from [твой город]."
+          : "Your turn. Say which city you're from: I am from [your city].";
+        
+        await sendText(chatId, instruction, env);
+
+        // Move to scene 4
+        beginnerState.scene = 4;
+        await safeKvPut(kv, `beginner_session:${chatId}`, JSON.stringify(beginnerState));
+      } else {
+        // CASE 2: Wrong response - correction
+        const correction = userLang === 'ru'
+          ? "Почти! Для первого урока давай будем строго следовать шаблону. Попробуй, пожалуйста, еще раз сказать именно: Hello! My name is [имя]."
+          : "Almost! For the first lesson let's strictly follow the template. Please try again to say exactly: Hello! My name is [name].";
+        
+        await sendText(chatId, correction, env);
+        // Stay in scene 3
       }
 
-      // Clean up beginner session
-      await safeKvDelete(kv, `beginner_session:${chatId}`);
-      await safeKvDelete(kv, `session:${chatId}`);
+    } else if (beginnerState.scene === 4) {
+      // SCENE 4: User tries to say where they're from
+      console.log('SCENE 4: User location attempt');
       
-      // Notify webhook about lesson completion
-      await fetch('https://internal/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lesson_done: true, user_id: chatId })
-      }).catch(e => console.error("Failed to notify about lesson completion:", e));
+      // Check if user said the right pattern
+      const hasFromPattern = (userTextLower.includes('i am') || userTextLower.includes("i'm")) && userTextLower.includes('from');
+      
+      if (hasFromPattern) {
+        // CASE 1: Correct response
+        // Send Alex's final question
+        await safeSendTTS(chatId, "Great! So, how are you today?", env);
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Send instruction
+        const instruction = userLang === 'ru'
+          ? "Просто ответь на вопрос Алекса. Например, скажи: I'm fine, thanks!."
+          : "Just answer Alex's question. For example, say: I'm fine, thanks!.";
+        
+        await sendText(chatId, instruction, env);
+
+        // Move to scene 5
+        beginnerState.scene = 5;
+        await safeKvPut(kv, `beginner_session:${chatId}`, JSON.stringify(beginnerState));
+      } else {
+        // CASE 2: Wrong response - correction
+        const correction = userLang === 'ru'
+          ? "Давай попробуем еще раз. Постарайся использовать шаблон: I am from [город], чтобы мы могли двигаться дальше."
+          : "Let's try again. Try to use the template: I am from [city], so we can move forward.";
+        
+        await sendText(chatId, correction, env);
+        // Stay in scene 4
+      }
+
+    } else if (beginnerState.scene === 5) {
+      // SCENE 5: Final response and conversion
+      console.log('SCENE 5: Final response and conversion');
+      
+      // Check if user said fine/great
+      const hasFineGreat = userTextLower.includes('fine') || userTextLower.includes('great') || userTextLower.includes('good');
+      
+      if (hasFineGreat) {
+        // CASE 1: Correct final response - show conversion
+        await sendText(chatId, "Awesome! We just had a real conversation in English. You did great! (Потрясающе! У нас только что состоялся настоящий разговор на английском. Ты молодец!)", env);
+        await new Promise(r => setTimeout(r, 1500));
+
+        // Send subscription offer
+        let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || 'https://t.me/tribute/app?startapp=swvs';
+        if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+          tributeAppLink = 'https://' + tributeAppLink.replace(/^[\/\\]+/, '');
+        }
+        const feedbackLink = 'https://t.me/+sBmchJHjPKwyMDVi';
+        
+        await sendText(
+          chatId,
+          "Практикуйся хоть каждый день! Прокачаем твой английский вместе! Первый месяц всего за стоимость одного бизнес-ланча.",
+          env,
+          [[
+            { text: "Подписаться", url: tributeAppLink },
+            { text: "Обратная связь", url: feedbackLink }
+          ]]
+        );
+
+        // Mark completion in database
+        try {
+          const passAt = new Date().toISOString();
+          await db.prepare(
+            `INSERT INTO user_profiles(telegram_id, created_at, pass_lesson0_at)
+             VALUES(?, datetime('now'), ?)
+             ON CONFLICT(telegram_id) DO UPDATE
+             SET pass_lesson0_at=excluded.pass_lesson0_at`
+          ).bind(parseInt(chatId, 10), passAt).run();
+        } catch (e) {
+          console.error('Alex flow: failed to upsert pass_lesson0_at', e);
+        }
+
+        // Clean up session
+        await safeKvDelete(kv, `beginner_session:${chatId}`);
+        await safeKvDelete(kv, `session:${chatId}`);
+        
+        // Notify webhook about lesson completion
+        await fetch('https://internal/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lesson_done: true, user_id: chatId })
+        }).catch(e => console.error("Failed to notify about lesson completion:", e));
+
+      } else {
+        // CASE 2: Wrong final response
+        const correction = userLang === 'ru'
+          ? "Не совсем то. Просто скажи: I'm fine, thanks!, и мы закончим первое упражнение."
+          : "Not quite. Just say: I'm fine, thanks!, and we'll finish the first exercise.";
+        
+        await sendText(chatId, correction, env);
+        // Stay in scene 5
+      }
     }
 
     return new Response('OK');
