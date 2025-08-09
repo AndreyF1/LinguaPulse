@@ -8,7 +8,7 @@
 const TEXTS = {
   en: {
     alreadyCompleted: "You've already completed your free trial lesson. If you'd like to continue practicing English, you can subscribe for just 600₽ per month. This gives you access to one extended lesson every day with personalized feedback.",
-    subscribeWeekly: "Subscribe for 600₽/month",
+    subscribeWeekly: "Subscribe",
     welcomeMessage: "🎧 *Welcome to your free English conversation practice!* Please listen to the audio and respond with a voice message.",
     voiceInstructions: "🎤 *How to send voice messages:*\n\n• In the bottom right corner of your screen, find the rightmost icon – this could be a circle in a square (for video messages) or a microphone.\n• If you see a circle in a square, tap it once briefly to switch the icon to a microphone.\n• Now press and hold the microphone icon to start recording.\n• Speak clearly and calmly.\n• When you finish speaking, release the icon. Your message will be sent automatically.",
     startingLesson: "Starting free audio lesson…",
@@ -19,7 +19,7 @@ const TEXTS = {
     analyzingSpeaking: "🔍 *Analyzing your speaking...*",
     feedbackTitle: "📝 *Your Language Feedback*\n\nHere's a detailed analysis of your speaking during our conversation:",
     overallAssessment: "🌟 *Overall Assessment*\n\nYou demonstrated good effort in communicating in English. With continued practice, you'll see significant improvements in fluency, grammar accuracy, and vocabulary usage. I recommend practicing daily conversations like this to build confidence and speaking skills.",
-    subscriptionOffer: "To unlock daily personalized audio lessons, you can subscribe for just 600₽ per month.",
+    subscriptionOffer: "Practice every day! Let’s boost your English together! First month costs less than a business lunch.",
     fallbackResponse: "I didn't quite catch that. Could you please repeat?",
     fallbackGreeting: "Hi there! I'm your English practice partner today. How are you feeling, and what would you like to talk about?",
     chatGptFallback: "I'd love to hear more about that. Could you tell me more?",
@@ -29,7 +29,7 @@ const TEXTS = {
   },
   ru: {
     alreadyCompleted: "Вы уже прошли бесплатный пробный урок. Если хотите продолжить изучение английского, вы можете подписаться всего за 600₽ в месяц. Это даст вам доступ к одному расширенному уроку каждый день с персональной обратной связью.",
-    subscribeWeekly: "Подписаться за 600₽/месяц",
+    subscribeWeekly: "Подписаться",
     welcomeMessage: "🎧 *Добро пожаловать на бесплатную практику английского разговора!* Пожалуйста, прослушайте аудио и ответьте голосовым сообщением.",
     voiceInstructions: "🎤 *Как отправлять голосовые сообщения:*\n\n• В правом нижнем углу экрана найдите самую правую иконку – это может быть кружочек в квадрате (для видеосообщений) или микрофон.\n• Если вы видите кружочек в квадрате, коротко нажмите на нее один раз, чтобы иконка переключилась на микрофон.\n• Теперь нажмите и удерживайте иконку микрофона, чтобы начать запись.\n• Говорите четко и спокойно.\n• Когда закончите говорить, отпустите иконку. Ваше сообщение будет автоматически отправлено.",
     startingLesson: "Начинаем бесплатный аудио урок…",
@@ -40,7 +40,7 @@ const TEXTS = {
     analyzingSpeaking: "🔍 *Анализирую вашу речь...*",
     feedbackTitle: "📝 *Обратная связь по языку*\n\nВот подробный анализ вашей речи во время нашего разговора:",
     overallAssessment: "🌟 *Общая оценка*\n\nВы продемонстрировали хорошие усилия в общении на английском языке. При продолжении практики вы увидите значительные улучшения в беглости, грамматической точности и использовании словарного запаса. Рекомендую практиковать ежедневные разговоры, подобные этому, чтобы развить уверенность и навыки говорения.",
-    subscriptionOffer: "Чтобы получить доступ к ежедневным персонализированным аудио урокам, вы можете подписаться всего за 600₽ в месяц.",
+    subscriptionOffer: "Практикуйся хоть каждый день! Прокачаем твой английский вместе! Первый месяц всего за стоимость одного бизнес-ланча.",
     fallbackResponse: "Я не совсем понял. Не могли бы вы повторить?",
     fallbackGreeting: "Привет! Я ваш партнер по практике английского на сегодня. Как дела, и о чем бы вы хотели поговорить?",
     chatGptFallback: "Мне бы хотелось услышать об этом больше. Не могли бы вы рассказать подробнее?",
@@ -340,11 +340,20 @@ export default {
             console.log(`=== FREE LESSON SUBSCRIPTION OFFER PHASE START ===`);
             // Subscription offer - sent after all feedback messages
             await new Promise(resolve => setTimeout(resolve, 1000));
+            // Direct Tribute link buttons: Subscribe + Feedback
+            let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || "https://t.me/tribute/app?startapp=swvs";
+            if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+              tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
+            }
+            const feedbackLink = 'https://t.me/+sBmchJHjPKwyMDVi';
             await sendText(
               chatId,
               getText(userLang, 'subscriptionOffer'),
               env,
-              [[{ text: getText(userLang, 'subscribeWeekly'), callback_data: "subscribe:weekly" }]]
+              [[
+                { text: getText(userLang, 'subscribeWeekly'), url: tributeAppLink },
+                { text: userLang === 'ru' ? 'Обратная связь' : 'Feedback', url: feedbackLink }
+              ]]
             );
 
             // Record lesson completion in database
