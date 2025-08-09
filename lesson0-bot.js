@@ -350,8 +350,8 @@ export default {
             // Record lesson completion in database
             const passAt = new Date().toISOString();
             await db.prepare(
-              `INSERT INTO user_profiles(telegram_id, pass_lesson0_at)
-                 VALUES(?, ?)
+              `INSERT INTO user_profiles(telegram_id, created_at, pass_lesson0_at)
+                 VALUES(?, datetime('now'), ?)
                  ON CONFLICT(telegram_id) DO UPDATE
                  SET pass_lesson0_at=excluded.pass_lesson0_at`
             )
