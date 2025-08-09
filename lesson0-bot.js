@@ -637,8 +637,8 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
       } else {
         // CASE 2: Wrong response - correction
         const correction = userLang === 'ru'
-          ? "Почти! Для первого урока давай будем строго следовать шаблону. Попробуй, пожалуйста, еще раз сказать именно: Hello! My name is [имя]."
-          : "Almost! For the first lesson let's strictly follow the template. Please try again to say exactly: Hello! My name is [name].";
+          ? "Почти! Для первого урока давай будем строго следовать шаблону. Попробуй, пожалуйста, еще раз сказать именно: Hello! My name is [твое имя]."
+          : "Almost! For the first lesson let's strictly follow the template. Please try again to say exactly: Hello! My name is [your name].";
         
         await sendText(chatId, correction, env);
         // Stay in scene 3
@@ -670,8 +670,8 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
       } else {
         // CASE 2: Wrong response - correction
         const correction = userLang === 'ru'
-          ? "Давай попробуем еще раз. Постарайся использовать шаблон: I am from [город], чтобы мы могли двигаться дальше."
-          : "Let's try again. Try to use the template: I am from [city], so we can move forward.";
+          ? "Давай попробуем еще раз. Постарайся использовать шаблон: I am from [твой город], чтобы мы могли двигаться дальше."
+          : "Let's try again. Try to use the template: I am from [your city], so we can move forward.";
         
         await sendText(chatId, correction, env);
         // Stay in scene 4
@@ -686,7 +686,7 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
       
       if (hasFineGreat) {
         // CASE 1: Correct final response - show conversion
-        await sendText(chatId, "Awesome! We just had a real conversation in English. You did great! (Потрясающе! У нас только что состоялся настоящий разговор на английском. Ты молодец!)", env);
+        await sendText(chatId, "Awesome! We just had a real conversation in English. You did great! (Потрясающе! У нас только что состоялся настоящий разговор на английском. Это отличный результат!)", env);
         await new Promise(r => setTimeout(r, 1500));
 
         // Send subscription offer
