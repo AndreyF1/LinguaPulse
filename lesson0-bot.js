@@ -158,8 +158,8 @@ export default {
         // Record lesson start in database (eng_level no longer used)
         const now = new Date().toISOString();
         await db.prepare(
-          `INSERT INTO user_profiles(telegram_id, start_lesson0_at)
-             VALUES(?, ?)
+          `INSERT INTO user_profiles(telegram_id, created_at, start_lesson0_at)
+             VALUES(?, datetime('now'), ?)
              ON CONFLICT(telegram_id) DO UPDATE
              SET start_lesson0_at=excluded.start_lesson0_at`
         )
