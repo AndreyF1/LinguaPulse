@@ -299,15 +299,17 @@ if (update.message?.text) {
           .all();
         
         const { results: surveyResults } = await env.USER_DB
-          .prepare('SELECT language_level FROM user_survey WHERE telegram_id = ?')
+          .prepare('SELECT language_level, completed_at FROM user_survey WHERE telegram_id = ?')
           .bind(parseInt(chatId, 10))
           .all();
         
         const profile = profileResults[0] || {};
         const surveyLevel = surveyResults.length > 0 ? surveyResults[0].language_level : 'Intermediate';
         
-        // Basic profile info
-        const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
+        // Basic profile info (use survey completion date instead of legacy tested_at)
+        const testedAt = surveyResults.length > 0 && surveyResults[0].completed_at
+          ? new Date(surveyResults[0].completed_at).toLocaleDateString()
+          : 'N/A';
         const lessonsTotal = profile.number_of_lessons || 0;
         const lessonsStreak = profile.lessons_in_row || 0;
         
@@ -1926,8 +1928,10 @@ async function handleLessonCommand(chatId, env) {
     const userLevel = surveyResults.length > 0 ? surveyResults[0].language_level : 'Intermediate';
     console.log(`User ${chatId} language level from survey: ${userLevel}`);
     
-    // Basic profile info
-    const testedAt = profile.tested_at ? new Date(profile.tested_at).toLocaleDateString() : 'N/A';
+    // Basic profile info (use survey completion date instead of legacy tested_at)
+    const testedAt = surveyResults.length > 0 && surveyResults[0].completed_at
+      ? new Date(surveyResults[0].completed_at).toLocaleDateString()
+      : 'N/A';
     const lessonsTotal = profile.number_of_lessons || 0;
     const lessonsStreak = profile.lessons_in_row || 0;
     

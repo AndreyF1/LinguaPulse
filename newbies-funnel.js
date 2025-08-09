@@ -209,16 +209,25 @@ export default {
         const surveyLevel = surveyResults[0].language_level;
         console.log(`User ${chatId} survey level: ${surveyLevel}`);
         
-        // Create initial user profile record (without eng_level since we'll use survey data)
-        const startAt = new Date().toISOString();
-        await db.prepare(
-          `INSERT INTO user_profiles (telegram_id, start_test_at)
-           VALUES (?, ?)
-           ON CONFLICT(telegram_id) DO UPDATE
-             SET start_test_at = COALESCE(excluded.start_test_at, start_test_at)`
-        )
-        .bind(parseInt(chatId, 10), startAt)
-        .run();
+        // Ensure base profile exists (legacy start_test_at no longer used)
+        try {
+          await db.prepare(
+            `INSERT INTO user_profiles (telegram_id, created_at)
+             VALUES (?, datetime('now'))
+             ON CONFLICT(telegram_id) DO NOTHING`
+          )
+          .bind(parseInt(chatId, 10))
+          .run();
+        } catch (e) {
+          // Fallback for older schema without created_at
+          await db.prepare(
+            `INSERT INTO user_profiles (telegram_id)
+             VALUES (?)
+             ON CONFLICT(telegram_id) DO NOTHING`
+          )
+          .bind(parseInt(chatId, 10))
+          .run();
+        }
         
         // Forward to lesson0 for free lesson
         console.log("Forwarding to LESSON0 for free lesson");

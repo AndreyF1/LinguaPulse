@@ -117,7 +117,7 @@ export default {
       if (raw.action === 'start_free') {
         // Check if the user has already completed the free lesson
         const { results } = await db.prepare(
-          `SELECT eng_level, pass_lesson0_at FROM user_profiles 
+          `SELECT pass_lesson0_at FROM user_profiles 
            WHERE telegram_id = ?`
         )
         .bind(parseInt(chatId, 10))
@@ -155,7 +155,7 @@ export default {
           await sendText(chatId, getText(userLang, 'voiceInstructions'), env);
         }
         
-        // Record lesson start in database
+        // Record lesson start in database (eng_level no longer used)
         const now = new Date().toISOString();
         await db.prepare(
           `INSERT INTO user_profiles(telegram_id, start_lesson0_at)
