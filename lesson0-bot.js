@@ -115,6 +115,15 @@ export default {
 
       // A) Start free lesson trigger
       if (raw.action === 'start_free') {
+        // Check beginner level from survey to optionally run linear script (dev rollout)
+        let surveyLevel = await getUserLanguageLevel(chatId, db);
+        const isBeginner = surveyLevel === 'Beginner' || surveyLevel === 'Начинающий';
+        if (isBeginner) {
+          console.log(`Beginner flow selected for user ${chatId} (level: ${surveyLevel})`);
+          await runBeginnerScriptLesson(chatId, env, db, kv, userLang);
+          return new Response('OK');
+        }
+
         // Check if the user has already completed the free lesson
         const { results } = await db.prepare(
           `SELECT pass_lesson0_at FROM user_profiles 
@@ -469,6 +478,79 @@ export default {
     }
   }
 };
+
+// Beginner linear script (no AI). Sends TTS + text duplicates.
+async function runBeginnerScriptLesson(chatId, env, db, kv, userLang) {
+  // Ensure profile rows and mark start
+  const now = new Date().toISOString();
+  try {
+    await db.prepare(
+      `INSERT INTO user_profiles(telegram_id, created_at, start_lesson0_at)
+       VALUES(?, datetime('now'), ?)
+       ON CONFLICT(telegram_id) DO UPDATE
+       SET start_lesson0_at=excluded.start_lesson0_at`
+    ).bind(parseInt(chatId, 10), now).run();
+  } catch (e) {
+    console.error('Beginner flow: failed to upsert start_lesson0_at', e);
+  }
+
+  const steps = userLang === 'ru' ? [
+    'Привет! Давай начнём с простого. Повтори: My name is ...',
+    'Отлично! Теперь попробуй: I live in ...',
+    'И ещё одно: I like ... because ...'
+  ] : [
+    "Hi! Let's start simple. Repeat: My name is ...",
+    'Great! Now try: I live in ...',
+    'One more: I like ... because ...'
+  ];
+
+  for (const text of steps) {
+    try {
+      await safeSendTTS(chatId, text, env);
+    } catch (e) {
+      console.error('Beginner flow TTS error:', e);
+    }
+    await sendText(chatId, text, env);
+    await new Promise(r => setTimeout(r, 1200));
+  }
+
+  // Offer subscription with direct Tribute link and feedback
+  let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || 'https://t.me/tribute/app?startapp=swvs';
+  if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+    tributeAppLink = 'https://' + tributeAppLink.replace(/^[\/\\]+/, '');
+  }
+  const feedbackLink = 'https://t.me/+sBmchJHjPKwyMDVi';
+  await sendText(
+    chatId,
+    getText(userLang, 'subscriptionOffer'),
+    env,
+    [[
+      { text: getText(userLang, 'subscribeWeekly'), url: tributeAppLink },
+      { text: userLang === 'ru' ? 'Обратная связь' : 'Feedback', url: feedbackLink }
+    ]]
+  );
+
+  // Mark completion and cleanup any prior KV keys just in case
+  try {
+    const passAt = new Date().toISOString();
+    await db.prepare(
+      `INSERT INTO user_profiles(telegram_id, created_at, pass_lesson0_at)
+       VALUES(?, datetime('now'), ?)
+       ON CONFLICT(telegram_id) DO UPDATE
+       SET pass_lesson0_at=excluded.pass_lesson0_at`
+    ).bind(parseInt(chatId, 10), passAt).run();
+  } catch (e) {
+    console.error('Beginner flow: failed to upsert pass_lesson0_at', e);
+  }
+
+  // Clean any possible free-lesson session remnants
+  await safeKvDelete(kv, `hist:${chatId}`);
+  await safeKvDelete(kv, `session:${chatId}`);
+  const keys = await kv.list({ prefix: `processed:${chatId}:` }).catch(() => ({ keys: [] }));
+  for (const key of keys.keys) {
+    await safeKvDelete(kv, key.name);
+  }
+}
 
 // Функция для подсчета количества сообщений пользователя и бота в истории
 function countTurns(history) {
