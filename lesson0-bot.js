@@ -207,6 +207,13 @@ export default {
         
         // Mark this message as being processed
         await safeKvPut(kv, processedKey, "1", { expirationTtl: 3600 }); // 1 hour TTL
+
+        // Check if this is a beginner interactive session
+        const beginnerSessionData = await safeKvGet(kv, `beginner_session:${chatId}`);
+        if (beginnerSessionData) {
+          console.log(`Processing voice message for beginner session`);
+          return await handleBeginnerVoiceResponse(chatId, raw.message.voice, env, db, kv, userLang);
+        }
         
         // Get conversation history
         const histKey = `hist:${chatId}`;
@@ -479,7 +486,7 @@ export default {
   }
 };
 
-// Beginner linear script (no AI). Sends TTS + text duplicates.
+// Beginner interactive script (step-by-step with voice responses).
 async function runBeginnerScriptLesson(chatId, env, db, kv, userLang) {
   // Ensure profile rows and mark start
   const now = new Date().toISOString();
@@ -494,61 +501,133 @@ async function runBeginnerScriptLesson(chatId, env, db, kv, userLang) {
     console.error('Beginner flow: failed to upsert start_lesson0_at', e);
   }
 
-  const steps = userLang === 'ru' ? [
-    'Привет! Давай начнём с простого. Повтори: My name is ...',
-    'Отлично! Теперь попробуй: I live in ...',
-    'И ещё одно: I like ... because ...'
-  ] : [
-    "Hi! Let's start simple. Repeat: My name is ...",
-    'Great! Now try: I live in ...',
-    'One more: I like ... because ...'
-  ];
+  // Initialize beginner session state
+  const sessionId = Date.now().toString();
+  const beginnerState = {
+    step: 0,
+    sessionId: sessionId,
+    steps: userLang === 'ru' ? [
+      'Привет! Давай начнём с простого. Повтори: My name is ...',
+      'Отлично! Теперь попробуй: I live in ...',
+      'И ещё одно: I like ... because ...'
+    ] : [
+      "Hi! Let's start simple. Repeat: My name is ...",
+      'Great! Now try: I live in ...',
+      'One more: I like ... because ...'
+    ]
+  };
 
-  for (const text of steps) {
-    try {
-      await safeSendTTS(chatId, text, env);
-    } catch (e) {
-      console.error('Beginner flow TTS error:', e);
-    }
-    await sendText(chatId, text, env);
-    await new Promise(r => setTimeout(r, 1200));
-  }
+  // Save beginner state to KV
+  await safeKvPut(kv, `beginner_session:${chatId}`, JSON.stringify(beginnerState));
+  await safeKvPut(kv, `session:${chatId}`, sessionId);
 
-  // Offer subscription with direct Tribute link and feedback
-  let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || 'https://t.me/tribute/app?startapp=swvs';
-  if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
-    tributeAppLink = 'https://' + tributeAppLink.replace(/^[\/\\]+/, '');
-  }
-  const feedbackLink = 'https://t.me/+sBmchJHjPKwyMDVi';
-  await sendText(
-    chatId,
-    getText(userLang, 'subscriptionOffer'),
-    env,
-    [[
-      { text: getText(userLang, 'subscribeWeekly'), url: tributeAppLink },
-      { text: userLang === 'ru' ? 'Обратная связь' : 'Feedback', url: feedbackLink }
-    ]]
-  );
-
-  // Mark completion and cleanup any prior KV keys just in case
+  // Send first step and wait for response
+  const firstStep = beginnerState.steps[0];
   try {
-    const passAt = new Date().toISOString();
-    await db.prepare(
-      `INSERT INTO user_profiles(telegram_id, created_at, pass_lesson0_at)
-       VALUES(?, datetime('now'), ?)
-       ON CONFLICT(telegram_id) DO UPDATE
-       SET pass_lesson0_at=excluded.pass_lesson0_at`
-    ).bind(parseInt(chatId, 10), passAt).run();
+    await safeSendTTS(chatId, firstStep, env);
   } catch (e) {
-    console.error('Beginner flow: failed to upsert pass_lesson0_at', e);
+    console.error('Beginner flow TTS error:', e);
   }
+  await sendText(chatId, firstStep, env);
+}
 
-  // Clean any possible free-lesson session remnants
-  await safeKvDelete(kv, `hist:${chatId}`);
-  await safeKvDelete(kv, `session:${chatId}`);
-  const keys = await kv.list({ prefix: `processed:${chatId}:` }).catch(() => ({ keys: [] }));
-  for (const key of keys.keys) {
-    await safeKvDelete(kv, key.name);
+// Handle voice responses in beginner interactive flow
+async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang) {
+  try {
+    // Get beginner session state
+    const beginnerSessionData = await safeKvGet(kv, `beginner_session:${chatId}`);
+    if (!beginnerSessionData) {
+      console.log(`No beginner session found for user ${chatId}`);
+      return new Response('OK');
+    }
+
+    const beginnerState = JSON.parse(beginnerSessionData);
+    console.log(`Beginner session state:`, beginnerState);
+
+    // Transcribe user voice to acknowledge their participation
+    try {
+      const userText = await transcribeVoice(voice.file_id, env);
+      console.log(`Beginner user said: ${userText}`);
+    } catch (transcribeError) {
+      console.error('Transcription error in beginner flow:', transcribeError);
+      // Continue anyway as we don't need perfect transcription for beginners
+    }
+
+    // Move to next step
+    beginnerState.step++;
+    console.log(`Moving to beginner step: ${beginnerState.step}`);
+
+    if (beginnerState.step < beginnerState.steps.length) {
+      // Send next step
+      const nextStep = beginnerState.steps[beginnerState.step];
+      
+      // Update state in KV
+      await safeKvPut(kv, `beginner_session:${chatId}`, JSON.stringify(beginnerState));
+      
+      // Send audio and text
+      try {
+        await safeSendTTS(chatId, nextStep, env);
+      } catch (e) {
+        console.error('Beginner flow TTS error:', e);
+      }
+      await sendText(chatId, nextStep, env);
+      
+    } else {
+      // All steps completed - finish lesson
+      console.log(`Beginner lesson completed for user ${chatId}`);
+      
+      // Send completion message
+      const completionMessage = userLang === 'ru' 
+        ? 'Отлично! Ты прошёл первый урок. Теперь можешь подписаться для ежедневных уроков!'
+        : 'Great! You completed your first lesson. Now you can subscribe for daily lessons!';
+      
+      await sendText(chatId, completionMessage, env);
+      
+      // Offer subscription with direct Tribute link and feedback
+      let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || 'https://t.me/tribute/app?startapp=swvs';
+      if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+        tributeAppLink = 'https://' + tributeAppLink.replace(/^[\/\\]+/, '');
+      }
+      const feedbackLink = 'https://t.me/+sBmchJHjPKwyMDVi';
+      await sendText(
+        chatId,
+        getText(userLang, 'subscriptionOffer'),
+        env,
+        [[
+          { text: getText(userLang, 'subscribeWeekly'), url: tributeAppLink },
+          { text: userLang === 'ru' ? 'Обратная связь' : 'Feedback', url: feedbackLink }
+        ]]
+      );
+
+      // Mark completion in database
+      try {
+        const passAt = new Date().toISOString();
+        await db.prepare(
+          `INSERT INTO user_profiles(telegram_id, created_at, pass_lesson0_at)
+           VALUES(?, datetime('now'), ?)
+           ON CONFLICT(telegram_id) DO UPDATE
+           SET pass_lesson0_at=excluded.pass_lesson0_at`
+        ).bind(parseInt(chatId, 10), passAt).run();
+      } catch (e) {
+        console.error('Beginner flow: failed to upsert pass_lesson0_at', e);
+      }
+
+      // Clean up beginner session
+      await safeKvDelete(kv, `beginner_session:${chatId}`);
+      await safeKvDelete(kv, `session:${chatId}`);
+      
+      // Notify webhook about lesson completion
+      await fetch('https://internal/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lesson_done: true, user_id: chatId })
+      }).catch(e => console.error("Failed to notify about lesson completion:", e));
+    }
+
+    return new Response('OK');
+  } catch (error) {
+    console.error('Error in handleBeginnerVoiceResponse:', error);
+    return new Response('OK');
   }
 }
 
