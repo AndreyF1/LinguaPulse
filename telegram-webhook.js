@@ -1,6 +1,9 @@
 // telegram-webhook/worker.js with Tribute.tg integration
 // Receives every Telegram update on /tg and routes it to NEWBIES_FUNNEL or LESSON0
 
+// Import funnel logging helper
+const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js');
+
 export default {
   async fetch(request, env, ctx) {
     // Просто логируем все доступные ключи в env для диагностики
@@ -500,6 +503,9 @@ return new Response('OK');
             // User has NOT completed onboarding, or survey check failed.
             // Route to newbies-funnel.
             console.log(`🔄 [${chatId}] User has not completed onboarding (or survey check failed), routing to NEWBIES_FUNNEL`);
+            
+            // Log funnel step: user entered bot (будет логироваться только для начинающих после опроса)
+            safeLogBeginnerFunnelStep(chatId, 'entered_bot_at', env.USER_DB);
             
             if (!env.NEWBIES_FUNNEL) {
               console.error(`❌ [${chatId}] NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);

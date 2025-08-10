@@ -4,6 +4,9 @@
 // - KV binding for conversation history: CHAT_KV
 // - Env vars: OPENAI_KEY, BOT_TOKEN, TRANSLOADIT_KEY, TRANSLOADIT_TPL, SYSTEM_PROMPT
 
+// Import funnel logging helper
+const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js');
+
 // Localization texts
 const TEXTS = {
   en: {
@@ -488,6 +491,9 @@ export default {
 
 // NEW Beginner Alex mentor script (structured conversation flow).
 async function runBeginnerScriptLesson(chatId, env, db, kv, userLang) {
+  // Log funnel step: lesson started
+  safeLogBeginnerFunnelStep(chatId, 'started_lesson0_at', db);
+  
   // Ensure profile rows and mark start
   const now = new Date().toISOString();
   try {
@@ -585,6 +591,9 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
       // SCENE 2: User sent first voice (any response is OK)
       console.log('SCENE 2: Moving from hello test to English introduction');
       
+      // Log funnel step: first audio sent (microphone test)
+      safeLogBeginnerFunnelStep(chatId, 'sent_first_audio_at', db);
+      
       // Send confirmation
       const confirmation = userLang === 'ru'
         ? "Отлично, все получилось! Технически ты полностью готов(а). А теперь — первый шаг в английском. Не волнуйся, я буду вести тебя. Сейчас ты услышишь мой голос."
@@ -617,6 +626,9 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
       
       if (hasMyName) {
         // CASE 1: Correct response
+        // Log funnel step: intro audio sent successfully
+        safeLogBeginnerFunnelStep(chatId, 'sent_intro_audio_at', db);
+        
         await sendText(chatId, "Супер! 🔥", env);
         await new Promise(r => setTimeout(r, 1000));
 
@@ -653,6 +665,9 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
       
       if (hasFromPattern) {
         // CASE 1: Correct response
+        // Log funnel step: city audio sent successfully
+        safeLogBeginnerFunnelStep(chatId, 'sent_city_audio_at', db);
+        
         // Send Alex's final question
         await safeSendTTS(chatId, "Great! So, how are you today?", env);
         await new Promise(r => setTimeout(r, 1000));
@@ -686,6 +701,9 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
       
       if (hasFineGreat) {
         // CASE 1: Correct final response - show conversion
+        // Log funnel step: final audio sent successfully
+        safeLogBeginnerFunnelStep(chatId, 'sent_final_audio_at', db);
+        
         await sendText(chatId, "Awesome! We just had a real conversation in English. You did great! (Потрясающе! У нас только что состоялся настоящий разговор на английском. Это отличный результат!)", env);
         await new Promise(r => setTimeout(r, 1500));
 
@@ -715,6 +733,9 @@ async function handleBeginnerVoiceResponse(chatId, voice, env, db, kv, userLang)
              ON CONFLICT(telegram_id) DO UPDATE
              SET pass_lesson0_at=excluded.pass_lesson0_at`
           ).bind(parseInt(chatId, 10), passAt).run();
+          
+          // Log funnel step: lesson completed
+          safeLogBeginnerFunnelStep(chatId, 'completed_lesson0_at', db);
         } catch (e) {
           console.error('Alex flow: failed to upsert pass_lesson0_at', e);
         }

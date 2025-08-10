@@ -1,6 +1,9 @@
 // newbies-funnel worker.js
 // Handles onboarding funnel: language selection and mini-survey
 
+// Import funnel logging helper  
+const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js');
+
 export default {
   async fetch(request, env, ctx) {
     let raw; // Declared here to be accessible in the final catch block
@@ -407,6 +410,9 @@ async function completeSurvey(chatId, surveyData, env) {
     new Date().toISOString()
   )
   .run();
+  
+  // Log funnel step: survey completed for beginners only
+  safeLogBeginnerFunnelStep(chatId, 'completed_survey_at', env.USER_DB, surveyData.language_level);
   
   // Clean up survey state
   await env.CHAT_KV.delete(`survey:${chatId}`);
