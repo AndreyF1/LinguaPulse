@@ -28,12 +28,12 @@ async function logBeginnerFunnelStep(chatId, step, db, languageLevel = null) {
     
     // Создаем запись или обновляем существующую
     await db.prepare(`
-      INSERT INTO beginners_funnel (telegram_id, language_level, ${step}, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO beginners_funnel (telegram_id, language_level, ${step}, updated_at)
+      VALUES (?, ?, ?, ?)
       ON CONFLICT(telegram_id) DO UPDATE SET
         ${step} = excluded.${step},
         updated_at = excluded.updated_at
-    `).bind(chatId, languageLevel, now, now, now).run();
+    `).bind(chatId, languageLevel, now, now).run();
     
     console.log(`✅ Logged beginner funnel step: ${step} for user ${chatId} (${languageLevel})`);
   } catch (error) {

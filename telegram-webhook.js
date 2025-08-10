@@ -504,8 +504,7 @@ return new Response('OK');
             // Route to newbies-funnel.
             console.log(`🔄 [${chatId}] User has not completed onboarding (or survey check failed), routing to NEWBIES_FUNNEL`);
             
-            // Log funnel step: user entered bot (будет логироваться только для начинающих после опроса)
-            safeLogBeginnerFunnelStep(chatId, 'entered_bot_at', env.USER_DB);
+            // Note: Funnel logging will start after survey completion in newbies-funnel
             
             if (!env.NEWBIES_FUNNEL) {
               console.error(`❌ [${chatId}] NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);
