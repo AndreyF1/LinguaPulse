@@ -397,6 +397,19 @@ return new Response('OK');
       // Handle /start command to check for welcome parameter
       if (update.message?.text?.startsWith('/start')) {
         console.log(`🚀 [${chatId}] Processing /start command`);
+        
+        // Try Lambda first, fallback to original logic
+        try {
+          console.log(`📤 [${chatId}] Calling Lambda onboarding with start_onboarding action`);
+          return await callLambdaFunction('onboarding', {
+            user_id: chatId,
+            action: 'start_onboarding'
+          }, env);
+        } catch (lambdaError) {
+          console.error(`❌ [${chatId}] Lambda onboarding failed, using original logic:`, lambdaError);
+          // Fallback to original logic
+        }
+        
         // Ensure user has a base profile row as early as possible
         try {
           await ensureUserProfileExists(env.USER_DB, chatId);
@@ -1796,6 +1809,41 @@ async function callTelegram(method, payload, env) {
     return response;
   } catch (error) {
     console.error(`[DEBUG] Error calling Telegram API ${method}:`, error);
+    throw error;
+  }
+}
+
+/* ──── helper: call AWS Lambda function ──── */
+async function callLambdaFunction(functionName, payload, env) {
+  try {
+    console.log(`🔄 [LAMBDA] Calling ${functionName} with payload:`, JSON.stringify(payload).substring(0, 300));
+    
+    const lambdaUrl = env[`${functionName.toUpperCase()}_URL`];
+    if (!lambdaUrl) {
+      console.error(`❌ [LAMBDA] ${functionName.toUpperCase()}_URL not found in environment`);
+      throw new Error(`${functionName.toUpperCase()}_URL not configured`);
+    }
+    
+    const response = await fetch(lambdaUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${env.AWS_LAMBDA_TOKEN || 'default-token'}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ [LAMBDA] ${functionName} error:`, response.status, errorText);
+      throw new Error(`Lambda ${functionName} error: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log(`✅ [LAMBDA] ${functionName} call successful`);
+    return new Response('OK');
+  } catch (error) {
+    console.error(`❌ [LAMBDA] Error calling ${functionName}:`, error);
     throw error;
   }
 }
