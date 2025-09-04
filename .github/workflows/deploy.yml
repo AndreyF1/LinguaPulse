@@ -26,4 +26,4 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: deploy --env webhook --keep-vars
+          command: deploy telegram-webhook.js --name telegram-webhook --keep-vars
