@@ -1843,7 +1843,7 @@ async function callLambdaFunction(functionName, payload, env) {
     
     const result = await response.json();
     console.log(`✅ [LAMBDA] ${functionName} call successful`);
-    return new Response('OK');
+    return result;
   } catch (error) {
     console.error(`❌ [LAMBDA] Error calling ${functionName}:`, error);
     throw error;
