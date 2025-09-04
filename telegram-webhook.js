@@ -376,20 +376,22 @@ if (update.message?.text) {
       }
 
       // Handle /lesson command - same as /start for users who completed onboarding
-if (update.message?.text === '/lesson') {
-try {
-console.log(`Calling handleLessonCommand for user ${chatId}`);
-await handleLessonCommand(chatId, env);
-      } catch (error) {
-        console.error(`Error handling /lesson command for user ${chatId}:`, error);
-        // Fallback response in case of error
+      if (update.message?.text === '/lesson') {
         try {
-          await sendMessageViaTelegram(chatId, 
-            "Sorry, there was an error processing your command. Please try again later or contact support.", 
-            env);
-        } catch (sendError) {
-          console.error("Failed to send error message:", sendError);
+          console.log(`Calling handleLessonCommand for user ${chatId}`);
+          await handleLessonCommand(chatId, env);
+        } catch (error) {
+          console.error(`Error handling /lesson command for user ${chatId}:`, error);
+          // Fallback response in case of error
+          try {
+            await sendMessageViaTelegram(chatId, 
+              "Sorry, there was an error processing your command. Please try again later or contact support.", 
+              env);
+          } catch (sendError) {
+            console.error("Failed to send error message:", sendError);
+          }
         }
+        return new Response('OK');
       }
       
       // Handle /start command to check for welcome parameter
