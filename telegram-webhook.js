@@ -406,7 +406,7 @@ return new Response('OK');
             action: 'start_onboarding'
           }, env);
           console.log(`✅ [${chatId}] Lambda onboarding successful, returning response`);
-          return lambdaResponse;
+          return new Response('OK');
         } catch (lambdaError) {
           console.error(`❌ [${chatId}] Lambda onboarding failed, using original logic:`, lambdaError);
           // Fallback to original logic
