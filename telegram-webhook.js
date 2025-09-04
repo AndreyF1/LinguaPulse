@@ -391,8 +391,6 @@ await handleLessonCommand(chatId, env);
           console.error("Failed to send error message:", sendError);
         }
       }
-return new Response('OK');
-}
       
       // Handle /start command to check for welcome parameter
       if (update.message?.text?.startsWith('/start')) {
