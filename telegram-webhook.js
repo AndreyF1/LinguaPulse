@@ -401,10 +401,12 @@ return new Response('OK');
         // Try Lambda first, fallback to original logic
         try {
           console.log(`📤 [${chatId}] Calling Lambda onboarding with start_onboarding action`);
-          return await callLambdaFunction('onboarding', {
+          const lambdaResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
             action: 'start_onboarding'
           }, env);
+          console.log(`✅ [${chatId}] Lambda onboarding successful, returning response`);
+          return lambdaResponse;
         } catch (lambdaError) {
           console.error(`❌ [${chatId}] Lambda onboarding failed, using original logic:`, lambdaError);
           // Fallback to original logic
