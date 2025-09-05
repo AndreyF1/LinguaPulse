@@ -210,12 +210,15 @@ def start_survey(chat_id: int, language: str) -> Dict[str, Any]:
             'inline_keyboard': [options]
         }
         
-        telegram.send_message(chat_id, f"{message}\n\n{question_text}", reply_markup=reply_markup)
-        return {'statusCode': 200, 'body': 'Survey started'}
+        result = telegram.send_message(chat_id, f"{message}\n\n{question_text}", reply_markup=reply_markup)
+        if result:
+            return {'statusCode': 200, 'body': 'OK', 'message_sent': True}
+        else:
+            return {'statusCode': 500, 'body': 'Failed to send survey message', 'message_sent': False}
         
     except Exception as e:
         print(f"Error in start_survey: {e}")
-        return {'statusCode': 500, 'body': 'Error starting survey'}
+        return {'statusCode': 500, 'body': 'Error starting survey', 'message_sent': False}
 
 def handle_survey_response(chat_id: int, raw_data: Dict[str, Any]) -> Dict[str, Any]:
     """Handle survey response"""
