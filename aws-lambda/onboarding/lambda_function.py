@@ -100,9 +100,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 def handle_start_onboarding(chat_id: int, raw_data: Dict[str, Any]) -> Dict[str, Any]:
     """Handle start onboarding action"""
     try:
-        # Check if user already exists and completed survey
-        user = db.get_user_by_telegram_id(chat_id)
+        # FIRST: Always ensure user exists in Supabase (create if not exists)
+        print(f"Ensuring user {chat_id} exists in Supabase...")
+        user = db.ensure_user_exists(chat_id)
+        print(f"User {chat_id} ensured in Supabase: {user}")
         
+        # Check if user already completed survey
         if user and user.get('quiz_completed_at'):
             # User already completed survey
             print(f"User {chat_id} already completed survey, sending welcome back.")
@@ -133,12 +136,18 @@ def handle_start_onboarding(chat_id: int, raw_data: Dict[str, Any]) -> Dict[str,
             ]]
         }
         
-        telegram.send_message(chat_id, welcome_message, reply_markup=reply_markup)
-        return {'statusCode': 200, 'body': 'OK'}
+        print(f"Sending message to {chat_id}...")
+        result = telegram.send_message(chat_id, welcome_message, reply_markup=reply_markup)
+        print(f"Message sent result: {result}")
+        
+        if result:
+            return {'statusCode': 200, 'body': 'OK', 'message_sent': True}
+        else:
+            return {'statusCode': 500, 'body': 'Failed to send message', 'message_sent': False}
         
     except Exception as e:
         print(f"Error in handle_start_onboarding: {e}")
-        return {'statusCode': 200, 'body': 'OK'}  # Return OK like original
+        return {'statusCode': 500, 'body': 'Internal server error', 'message_sent': False}
 
 def handle_language_selection(chat_id: int, raw_data: Dict[str, Any]) -> Dict[str, Any]:
     """Handle language selection callback"""

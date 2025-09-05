@@ -405,8 +405,16 @@ if (update.message?.text) {
             user_id: chatId,
             action: 'start_onboarding'
           }, env);
-          console.log(`✅ [${chatId}] Lambda onboarding successful, returning response`);
-          return new Response('OK');
+          console.log(`✅ [${chatId}] Lambda onboarding response:`, lambdaResponse);
+          
+          // Check if Lambda successfully sent message
+          if (lambdaResponse.message_sent) {
+            console.log(`✅ [${chatId}] Lambda onboarding successful, message sent`);
+            return new Response('OK');
+          } else {
+            console.log(`⚠️ [${chatId}] Lambda onboarding failed to send message, using fallback`);
+            // Fallback to original logic
+          }
         } catch (lambdaError) {
           console.error(`❌ [${chatId}] Lambda onboarding failed, using original logic:`, lambdaError);
           // Fallback to original logic

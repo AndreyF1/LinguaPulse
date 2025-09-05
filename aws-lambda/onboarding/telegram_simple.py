@@ -28,8 +28,13 @@ class TelegramClient:
         try:
             with urllib.request.urlopen(req) as response:
                 result = response.read().decode('utf-8')
+                print(f"Telegram API response: {result}")
                 response_data = json.loads(result)
                 return response_data.get('ok', False)
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8')
+            print(f"Telegram API HTTP Error {e.code}: {error_body}")
+            return False
         except Exception as e:
             print(f"Telegram API error: {e}")
             return False

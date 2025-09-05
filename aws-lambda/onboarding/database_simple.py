@@ -11,10 +11,10 @@ from datetime import datetime, timedelta
 class SupabaseClient:
     def __init__(self):
         self.url = os.environ.get("SUPABASE_URL")
-        self.key = os.environ.get("SUPABASE_ANON_KEY")
+        self.key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
         
         if not self.url or not self.key:
-            raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_ANON_KEY) must be set")
         
         self.base_url = f"{self.url}/rest/v1"
         self.headers = {
@@ -35,9 +35,11 @@ class SupabaseClient:
         try:
             with urllib.request.urlopen(req) as response:
                 result = response.read().decode('utf-8')
+                print(f"Supabase response: {result}")
                 return json.loads(result) if result else []
         except urllib.error.HTTPError as e:
-            print(f"HTTP Error {e.code}: {e.read().decode('utf-8')}")
+            error_body = e.read().decode('utf-8')
+            print(f"HTTP Error {e.code}: {error_body}")
             return []
         except Exception as e:
             print(f"Request error: {e}")
@@ -134,6 +136,37 @@ class SupabaseClient:
         except Exception as e:
             print(f"Error getting active products: {e}")
             return []
+    
+    def ensure_user_exists(self, telegram_id: int) -> Optional[Dict[str, Any]]:
+        """Ensure user exists in database, create if not exists"""
+        try:
+            # First try to get existing user
+            user = self.get_user_by_telegram_id(telegram_id)
+            if user:
+                print(f"User {telegram_id} already exists")
+                return user
+            
+            # Create new user with minimal required fields (no id field - Supabase will generate it)
+            print(f"Creating new user {telegram_id}")
+            user_data = {
+                'telegram_id': telegram_id,
+                'lessons_left': 0,
+                'total_lessons_completed': 0,
+                'current_streak': 0,
+                'is_active': True
+            }
+            
+            result = self._make_request('POST', 'users', user_data)
+            if result:
+                print(f"User {telegram_id} created successfully")
+                return self.get_user_by_telegram_id(telegram_id)
+            else:
+                print(f"Failed to create user {telegram_id}")
+                return None
+                
+        except Exception as e:
+            print(f"Error ensuring user {telegram_id} exists: {e}")
+            return None
 
 # Global instance
 db = SupabaseClient()
