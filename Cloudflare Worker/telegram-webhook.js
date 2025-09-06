@@ -726,19 +726,11 @@ if (update.message?.text) {
             
             console.log(`📝 [${chatId}] Survey answer: ${questionType} = ${answer}`);
             
-            // Получаем текущее состояние опросника из KV (или создаем новое)
-            let surveyState = {};
-            try {
-              const stateData = await env.CHAT_KV.get(`survey:${chatId}`);
-              if (stateData) {
-                surveyState = JSON.parse(stateData);
-              }
-            } catch (e) {
-              console.log(`No existing survey state for user ${chatId}`);
+            // Для маркетинговых вопросов не сохраняем состояние - только передаем дальше
+            let languageLevel = null;
+            if (questionType === 'language_level') {
+              languageLevel = answer; // Сохраняем только уровень языка
             }
-            
-            // Сохраняем ответ
-            surveyState[questionType] = answer;
             
             // Определяем следующий вопрос
             const nextQuestion = getNextQuestion(questionType);
@@ -748,7 +740,7 @@ if (update.message?.text) {
               const questionResponse = await callLambdaFunction('onboarding', {
                 action: 'get_survey_question',
                 question_type: nextQuestion,
-                language: surveyState.interface_language || 'ru'
+                language: 'ru' // Всегда русский для маркетинговых вопросов
               }, env);
               
               const questionBody = questionResponse;
@@ -762,29 +754,23 @@ if (update.message?.text) {
                   reply_markup: { inline_keyboard: keyboard }
                 });
                 
-                // Сохраняем состояние
-                surveyState.current_question = nextQuestion;
-                await env.CHAT_KV.put(`survey:${chatId}`, JSON.stringify(surveyState));
+                // Состояние не сохраняем - маркетинговые вопросы
               } else {
                 await sendMessageViaTelegram(chatId, 
                   "❌ Произошла ошибка при загрузке следующего вопроса. Попробуйте еще раз.", env);
               }
             } else {
-              // Опросник завершен
+              // Опросник завершен - сохраняем только language_level
               const completeResponse = await callLambdaFunction('onboarding', {
                 user_id: chatId,
                 action: 'complete_survey',
-                language_level: surveyState.language_level,
-                survey_data: surveyState
+                language_level: languageLevel // Только уровень языка
               }, env);
               
               const completeBody = completeResponse;
               console.log(`✅ [${chatId}] Survey completion response:`, completeBody);
               
               if (completeBody.success) {
-                // Очищаем состояние опросника
-                await env.CHAT_KV.delete(`survey:${chatId}`);
-                
                 // Показываем сообщение об успешном завершении
                 const successText = "🎉 Отлично! Ваш профиль настроен.\n\nВам начислены бесплатные уроки! Нажмите кнопку ниже, чтобы начать обучение.";
                 const startButton = [{ text: "🚀 Начать обучение", callback_data: "lesson:start" }];
