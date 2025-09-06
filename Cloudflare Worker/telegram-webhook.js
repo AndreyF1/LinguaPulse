@@ -412,9 +412,14 @@ if (update.message?.text) {
           if (checkBody.success && checkBody.user_exists) {
             // Пользователь существует - показываем приветствие
             console.log(`✅ [${chatId}] User exists, showing welcome message`);
-            await sendMessageViaTelegram(chatId, 
-              "👋 Добро пожаловать обратно! Ваш профиль уже настроен. Используйте /lesson для доступа к урокам.", 
-              env);
+            
+            // Получаем информацию о пользователе из ответа Lambda
+            const userData = checkBody.user_data;
+            const welcomeMessage = userData.interface_language === 'ru' 
+              ? `👋 Добро пожаловать обратно, ${userData.username}! Ваш профиль уже настроен. Используйте /lesson для доступа к урокам.`
+              : `👋 Welcome back, ${userData.username}! Your profile is already set up. Use /lesson to access your lessons.`;
+            
+            await sendMessageViaTelegram(chatId, welcomeMessage, env);
             return new Response('OK');
           } else {
             // Пользователь не существует - показываем выбор языка
@@ -660,12 +665,27 @@ if (update.message?.text) {
             const selectedLanguage = update.callback_query.data.split(':')[1];
             console.log(`🌍 [${chatId}] User selected language: ${selectedLanguage}`);
             
+            // Получаем username из Telegram данных
+            const telegramUser = update.callback_query.from;
+            const username = telegramUser.username 
+              ? `@${telegramUser.username}` 
+              : telegramUser.first_name 
+                ? `${telegramUser.first_name}${telegramUser.last_name ? ' ' + telegramUser.last_name : ''}`
+                : `user_${chatId}`;
+            
+            console.log(`👤 [${chatId}] User info:`, {
+              username: telegramUser.username,
+              first_name: telegramUser.first_name,
+              last_name: telegramUser.last_name,
+              final_username: username
+            });
+            
             // Создаем пользователя в Supabase через Lambda
             const createResponse = await callLambdaFunction('onboarding', {
               user_id: chatId,
               action: 'start_survey',
               interface_language: selectedLanguage,
-              username: update.callback_query.from.username || `user_${chatId}`
+              username: username
             }, env);
             
             const createBody = typeof createResponse.body === 'string' ? JSON.parse(createResponse.body) : createResponse.body;
