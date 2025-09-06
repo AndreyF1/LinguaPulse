@@ -91,8 +91,7 @@ def lambda_handler(event, context):
                 'username': f'user_{user_id}',
                 'interface_language': interface_language,
                 'lessons_left': 3,
-                'is_active': True,
-                'created_at': 'now()'
+                'is_active': True
             }
             
             print(f"Creating user in Supabase: {user_data}")
@@ -167,8 +166,7 @@ def lambda_handler(event, context):
         try:
             # Обновляем пользователя с уровнем языка
             update_data = {
-                'language_level': language_level,
-                'completed_at': 'now()'
+                'current_level': language_level
             }
             
             print(f"Updating user {user_id} with language level: {language_level}")
@@ -239,7 +237,7 @@ SURVEY_QUESTIONS = {
     'language_level': {
         'ru': {
             'question': "Какой у тебя уровень языка?",
-            'options': ["Начинающий", "Средний", "Продвинутый"]
+            'options': ["Beginner", "Intermediate", "Advanced"]
         },
         'en': {
             'question': "What's your language level?",
