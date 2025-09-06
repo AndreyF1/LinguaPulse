@@ -96,7 +96,7 @@ def lambda_handler(event, context):
                 'is_active': True
             }
             
-            print(f"[ADMIN RIGHTS TEST] Creating user in Supabase with quiz_started_at=now() and lessons_left=0: {user_data}")
+            print(f"[FINAL DEBUG TEST] Creating user in Supabase with quiz_started_at=now() and lessons_left=0: {user_data}")
             
             url = f"{supabase_url}/rest/v1/users"
             headers = {
