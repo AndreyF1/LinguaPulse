@@ -1871,10 +1871,11 @@ async function callLambdaFunction(functionName, payload, env) {
   try {
     console.log(`🔄 [LAMBDA] Calling ${functionName} with payload:`, JSON.stringify(payload).substring(0, 300));
     
-    const lambdaUrl = env[`${functionName.toUpperCase()}_URL`];
+    // For onboarding, use hardcoded Lambda URL
+    const lambdaUrl = functionName === 'onboarding' ? 'https://nlztawsfheqjmzw7oa7wqoduvi0zehzg.lambda-url.us-east-1.on.aws/' : env[`${functionName.toUpperCase()}_URL`];
     if (!lambdaUrl) {
-      console.error(`❌ [LAMBDA] ${functionName.toUpperCase()}_URL not found in environment`);
-      throw new Error(`${functionName.toUpperCase()}_URL not configured`);
+      console.error(`❌ [LAMBDA] ${functionName === 'onboarding' ? 'ONBOARDING_URL' : `${functionName.toUpperCase()}_URL`} not found in environment`);
+      throw new Error(`${functionName === 'onboarding' ? 'ONBOARDING_URL' : `${functionName.toUpperCase()}_URL`} not configured`);
     }
     
     const response = await fetch(lambdaUrl, {

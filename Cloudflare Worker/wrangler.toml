@@ -91,6 +91,10 @@ id = "ff3bf4d1633d45cd92e95d193b7d250f"
 binding = "USER_DB"
 database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 
+[[env.webhook.d1_databases]]
+binding = "dev_user_db"
+database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
+
 # Сервисные привязки для окружения webhook
 [[env.webhook.services]]
 binding = "NEWBIES_FUNNEL"
@@ -304,13 +308,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Dev database direct access for management (only for CLI commands)
 # Note: This binding is not inherited by environments and is only for wrangler CLI access
 
-# Dev database access for wrangler CLI
-[[d1_databases]]
-binding = "dev_user_db"
-database_name = "dev_user_db"
-database_id = "9eff8ecf-456d-4f6a-adda-e6163deba886"
-
-# Prod database access for wrangler CLI  
+# Database access for wrangler CLI
 [[d1_databases]]
 binding = "user_db"
 database_name = "user_db"
