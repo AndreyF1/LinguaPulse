@@ -788,16 +788,62 @@ if (update.message?.text) {
               console.log(`✅ [${chatId}] Survey completion response:`, completeBody);
               
               if (completeBody.success) {
-                // Показываем сообщение об успешном завершении
-                const successText = "🎉 Отлично! Ваш профиль настроен.\n\nВам начислены бесплатные уроки! Нажмите кнопку ниже, чтобы начать обучение.";
-                const startButton = [{ text: "🚀 Начать обучение", callback_data: "lesson:start" }];
+                // Показываем анимацию подбора плана
+                const loadingText = interfaceLanguage === 'en' 
+                  ? "🔍 Finding the perfect learning plan for you..."
+                  : "🔍 Подбираем идеальный план обучения для вас...";
+                
+                const loadingMessage = await sendMessageViaTelegram(chatId, loadingText, env);
+                
+                // Анимация троеточия
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                await sendMessageViaTelegram(chatId, "⏳", env);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                await sendMessageViaTelegram(chatId, "⏳⏳", env);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                await sendMessageViaTelegram(chatId, "⏳⏳⏳", env);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Финальное сообщение с описанием аудио-уроков
+                const successText = interfaceLanguage === 'en' 
+                  ? `🎉 Perfect! Your profile is set up.
+
+🎧 **Audio lessons** have been assigned to you! These are the most valuable part of our program - regular speaking practice is crucial for overcoming language barriers and achieving real progress.
+
+📚 **What you get:**
+• Interactive audio lessons with AI feedback
+• Personalized pronunciation corrections
+• Grammar and vocabulary improvements
+• Real-time conversation practice
+
+💬 You can also ask any English-related questions via text messages anytime.
+
+Ready to start your speaking journey?`
+                  : `🎉 Отлично! Ваш профиль настроен.
+
+🎧 **Аудио-уроки** начислены! Это самая ценная часть программы - регулярная тренировка говорения критически важна для преодоления языкового барьера и качественного скачка в изучении.
+
+📚 **Что вас ждет:**
+• Интерактивные аудио-уроки с ИИ-фидбэком
+• Персональная коррекция произношения  
+• Улучшение грамматики и лексики
+• Практика живого общения
+
+💬 Вы также можете задавать вопросы по английскому языку текстовыми сообщениями в любое время.
+
+Готовы начать путь к свободному говорению?`;
+
+                const startButtonText = interfaceLanguage === 'en' ? "🚀 Start Learning" : "🚀 Начать обучение";
+                const startButton = [{ text: startButtonText, callback_data: "lesson:start" }];
                 
                 await sendMessageViaTelegram(chatId, successText, env, {
                   reply_markup: { inline_keyboard: [startButton] }
                 });
               } else {
-                await sendMessageViaTelegram(chatId, 
-                  "❌ Произошла ошибка при сохранении данных. Попробуйте еще раз.", env);
+                const errorText = interfaceLanguage === 'en' 
+                  ? "❌ Error saving data. Please try again."
+                  : "❌ Произошла ошибка при сохранении данных. Попробуйте еще раз.";
+                await sendMessageViaTelegram(chatId, errorText, env);
               }
             }
           }
