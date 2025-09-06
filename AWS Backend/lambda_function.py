@@ -286,7 +286,7 @@ SURVEY_QUESTIONS = {
     'language_level': {
         'ru': {
             'question': "Какой у тебя уровень языка?",
-            'options': ["Beginner", "Intermediate", "Advanced"]
+            'options': ["Начинающий", "Средний", "Продвинутый"]
         },
         'en': {
             'question': "What's your language level?",
