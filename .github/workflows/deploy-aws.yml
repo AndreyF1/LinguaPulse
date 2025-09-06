@@ -26,6 +26,8 @@ jobs:
           aws sts get-caller-identity --no-cli-pager
           echo "🔍 Checking Lambda function exists..."
           aws lambda get-function --function-name linguapulse-onboarding --query 'Configuration.FunctionName' --output text --no-cli-pager
+          echo "🔑 Testing Lambda permissions..."
+          aws lambda get-function-configuration --function-name linguapulse-onboarding --query 'Runtime' --output text --no-cli-pager
       
       - name: Deploy Lambda function
         run: |
@@ -40,15 +42,25 @@ jobs:
           echo "✅ Zip created, size: $(ls -lh lambda_function.zip)"
           
           echo "🚀 Updating Lambda function code..."
-          aws lambda update-function-code \
+          if aws lambda update-function-code \
             --function-name linguapulse-onboarding \
             --zip-file fileb://lambda_function.zip \
-            --no-cli-pager
+            --no-cli-pager; then
+            echo "✅ Lambda code updated successfully"
+          else
+            echo "❌ Failed to update Lambda code"
+            exit 1
+          fi
           
           echo "⚙️  Updating Lambda function configuration..."
-          aws lambda update-function-configuration \
+          if aws lambda update-function-configuration \
             --function-name linguapulse-onboarding \
             --handler lambda_function.lambda_handler \
-            --no-cli-pager
+            --no-cli-pager; then
+            echo "✅ Lambda configuration updated successfully"
+          else
+            echo "❌ Failed to update Lambda configuration"
+            exit 1
+          fi
           
           echo "✅ Lambda deployment completed successfully!"
