@@ -408,7 +408,8 @@ if (update.message?.text) {
           console.log(`✅ [${chatId}] Lambda onboarding response:`, lambdaResponse);
           
           // Check if Lambda successfully sent message
-          if (lambdaResponse.message_sent) {
+          const lambdaBody = typeof lambdaResponse.body === 'string' ? JSON.parse(lambdaResponse.body) : lambdaResponse.body;
+          if (lambdaBody && lambdaBody.message_sent) {
             console.log(`✅ [${chatId}] Lambda onboarding successful, message sent`);
             return new Response('OK');
           } else {
