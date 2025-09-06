@@ -2,7 +2,7 @@
 // Receives every Telegram update on /tg and handles onboarding and lesson routing
 
 // Import funnel logging helper
-const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js');
+// const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js'); // Commented out - file doesn't exist
 
 export default {
   async fetch(request, env, ctx) {

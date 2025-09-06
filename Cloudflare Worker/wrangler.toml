@@ -1,4 +1,5 @@
 name = "linguapulse"
+main = "telegram-webhook.js"
 compatibility_date = "2025-05-17"
 keep_vars = true
 
