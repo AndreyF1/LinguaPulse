@@ -28,6 +28,8 @@ jobs:
           aws lambda get-function --function-name linguapulse-onboarding --query 'Configuration.FunctionName' --output text --no-cli-pager
           echo "🔑 Testing Lambda permissions..."
           aws lambda get-function-configuration --function-name linguapulse-onboarding --query 'Runtime' --output text --no-cli-pager
+          echo "📋 Current Lambda configuration:"
+          aws lambda get-function-configuration --function-name linguapulse-onboarding --no-cli-pager | head -10
       
       - name: Deploy Lambda function
         run: |
@@ -41,14 +43,19 @@ jobs:
           zip -r lambda_function.zip lambda_function.py
           echo "✅ Zip created, size: $(ls -lh lambda_function.zip)"
           
+          echo "🧪 Testing zip file validity..."
+          unzip -t lambda_function.zip
+          
           echo "🚀 Updating Lambda function code..."
           if aws lambda update-function-code \
             --function-name linguapulse-onboarding \
             --zip-file fileb://lambda_function.zip \
-            --no-cli-pager; then
+            --no-cli-pager 2>&1; then
             echo "✅ Lambda code updated successfully"
           else
-            echo "❌ Failed to update Lambda code"
+            echo "❌ Failed to update Lambda code, exit code: $?"
+            echo "📋 Lambda function current state:"
+            aws lambda get-function --function-name linguapulse-onboarding --query 'Configuration.State' --output text --no-cli-pager
             exit 1
           fi
           
