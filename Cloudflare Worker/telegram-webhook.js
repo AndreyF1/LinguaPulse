@@ -406,7 +406,7 @@ if (update.message?.text) {
             action: 'check_user'
           }, env);
           
-          const checkBody = typeof checkResponse.body === 'string' ? JSON.parse(checkResponse.body) : checkResponse.body;
+          const checkBody = checkResponse;
           console.log(`✅ [${chatId}] User check response:`, checkBody);
           
           if (checkBody.success && checkBody.user_exists) {
@@ -688,7 +688,7 @@ if (update.message?.text) {
               username: username
             }, env);
             
-            const createBody = typeof createResponse.body === 'string' ? JSON.parse(createResponse.body) : createResponse.body;
+            const createBody = createResponse;
             console.log(`✅ [${chatId}] User creation response:`, createBody);
             
             if (createBody.success) {
@@ -699,7 +699,7 @@ if (update.message?.text) {
                 language: selectedLanguage
               }, env);
               
-              const questionBody = typeof questionResponse.body === 'string' ? JSON.parse(questionResponse.body) : questionResponse.body;
+              const questionBody = questionResponse;
               
               if (questionBody.success) {
                 const keyboard = questionBody.options.map(option => [
@@ -751,7 +751,7 @@ if (update.message?.text) {
                 language: surveyState.interface_language || 'ru'
               }, env);
               
-              const questionBody = typeof questionResponse.body === 'string' ? JSON.parse(questionResponse.body) : questionResponse.body;
+              const questionBody = questionResponse;
               
               if (questionBody.success) {
                 const keyboard = questionBody.options.map(option => [
@@ -778,7 +778,7 @@ if (update.message?.text) {
                 survey_data: surveyState
               }, env);
               
-              const completeBody = typeof completeResponse.body === 'string' ? JSON.parse(completeResponse.body) : completeResponse.body;
+              const completeBody = completeResponse;
               console.log(`✅ [${chatId}] Survey completion response:`, completeBody);
               
               if (completeBody.success) {
