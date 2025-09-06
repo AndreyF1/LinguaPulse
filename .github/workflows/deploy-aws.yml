@@ -9,6 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.modified, 'AWS Backend/') || contains(github.event.head_commit.added, 'AWS Backend/')
     steps:
       - uses: actions/checkout@v4
       
