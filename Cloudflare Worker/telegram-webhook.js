@@ -2144,3 +2144,4 @@ async function hasActiveSubscription(chatId, env) {
     return false; // If we can't verify, assume no subscription
   }
 }
+// Test comment
