@@ -664,7 +664,8 @@ if (update.message?.text) {
             const createResponse = await callLambdaFunction('onboarding', {
               user_id: chatId,
               action: 'start_survey',
-              interface_language: selectedLanguage
+              interface_language: selectedLanguage,
+              username: update.callback_query.from.username || `user_${chatId}`
             }, env);
             
             const createBody = typeof createResponse.body === 'string' ? JSON.parse(createResponse.body) : createResponse.body;

@@ -80,6 +80,7 @@ def lambda_handler(event, context):
     if 'action' in body and body['action'] == 'start_survey':
         user_id = body.get('user_id')
         interface_language = body.get('interface_language', 'ru')
+        username = body.get('username', f'user_{user_id}')  # Получаем username из Telegram
         
         if not user_id:
             return error_response('user_id is required')
@@ -88,7 +89,7 @@ def lambda_handler(event, context):
             # Создаем пользователя в Supabase
             user_data = {
                 'telegram_id': int(user_id),
-                'username': f'user_{user_id}',
+                'username': username,
                 'interface_language': interface_language,
                 'lessons_left': 3,
                 'is_active': True
@@ -164,12 +165,22 @@ def lambda_handler(event, context):
             return error_response('user_id and language_level are required')
         
         try:
-            # Обновляем пользователя с уровнем языка
+            # Трансформируем уровень языка в формат Supabase
+            transformed_level = transform_language_level(language_level)
+            
+            # Получаем информацию о продукте
+            product_id = "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5"
+            product_info = get_product_info(product_id, supabase_url, supabase_key)
+            
+            # Обновляем пользователя
             update_data = {
-                'current_level': language_level
+                'current_level': transformed_level,
+                'quiz_started_at': 'now()',
+                'quiz_completed_at': 'now()',
+                'package_expires_at': product_info.get('expires_at') if product_info else None
             }
             
-            print(f"Updating user {user_id} with language level: {language_level}")
+            print(f"Updating user {user_id} with language level: {transformed_level}")
             print(f"Full survey data: {survey_data}")
             
             url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
@@ -189,13 +200,11 @@ def lambda_handler(event, context):
                 response_text = response.read().decode('utf-8')
                 print(f"Supabase update response: {response_text}")
                 
-                # Начисляем продукт (пока просто логируем)
-                product_id = "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5"
-                print(f"Product {product_id} should be assigned to user {user_id}")
+                print(f"Product {product_id} assigned to user {user_id}")
                 
                 return success_response({
                     'message': 'Survey completed successfully',
-                    'language_level': language_level,
+                    'language_level': transformed_level,
                     'product_assigned': product_id,
                     'survey_data': survey_data  # Возвращаем все данные для логирования
                 })
@@ -203,6 +212,46 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Error completing survey: {e}")
             return error_response(f'Failed to complete survey: {str(e)}')
+    
+    # 5. Обработка отписки пользователя
+    if 'action' in body and body['action'] == 'deactivate_user':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            # Деактивируем пользователя
+            update_data = {
+                'is_active': False
+            }
+            
+            print(f"Deactivating user {user_id}")
+            
+            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key,
+                'Prefer': 'return=representation'
+            }
+            
+            req = urllib.request.Request(url, 
+                                       data=json.dumps(update_data).encode('utf-8'),
+                                       headers=headers,
+                                       method='PATCH')
+            
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                print(f"Supabase deactivation response: {response_text}")
+                
+                return success_response({
+                    'message': 'User deactivated successfully'
+                })
+                
+        except Exception as e:
+            print(f"Error deactivating user: {e}")
+            return error_response(f'Failed to deactivate user: {str(e)}')
     
     return {
         'statusCode': 200,
@@ -328,4 +377,50 @@ def get_next_question(current_question):
     if current_index == -1 or current_index >= len(QUESTION_ORDER) - 1:
         return None  # No more questions
     return QUESTION_ORDER[current_index + 1]
+
+def transform_language_level(russian_level):
+    """Трансформирует русский уровень языка в английский для Supabase"""
+    level_mapping = {
+        'Начинающий': 'Beginner',
+        'Средний': 'Intermediate', 
+        'Продвинутый': 'Advanced',
+        'Beginner': 'Beginner',
+        'Intermediate': 'Intermediate',
+        'Advanced': 'Advanced'
+    }
+    return level_mapping.get(russian_level, 'Beginner')
+
+def get_product_info(product_id, supabase_url, supabase_key):
+    """Получает информацию о продукте из Supabase"""
+    try:
+        url = f"{supabase_url}/rest/v1/products?id=eq.{product_id}"
+        headers = {
+            'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key
+        }
+        
+        req = urllib.request.Request(url, headers=headers, method='GET')
+        
+        with urllib.request.urlopen(req) as response:
+            response_text = response.read().decode('utf-8')
+            products = json.loads(response_text) if response_text else []
+            
+            if products:
+                product = products[0]
+                # Вычисляем дату истечения пакета
+                from datetime import datetime, timedelta
+                duration_days = product.get('duration_days', 30)
+                expires_at = (datetime.now() + timedelta(days=duration_days)).isoformat()
+                
+                return {
+                    'id': product['id'],
+                    'name': product['name'],
+                    'duration_days': duration_days,
+                    'expires_at': expires_at
+                }
+            return None
+            
+    except Exception as e:
+        print(f"Error getting product info: {e}")
+        return None
 # Test comment
