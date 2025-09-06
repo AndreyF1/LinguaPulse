@@ -20,9 +20,35 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
       
+      - name: Verify AWS connection
+        run: |
+          echo "🔐 Verifying AWS credentials..."
+          aws sts get-caller-identity --no-cli-pager
+          echo "🔍 Checking Lambda function exists..."
+          aws lambda get-function --function-name linguapulse-onboarding --query 'Configuration.FunctionName' --output text --no-cli-pager
+      
       - name: Deploy Lambda function
         run: |
+          echo "🔍 Starting Lambda deployment..."
           cd "AWS Backend"
+          echo "📁 Current directory: $(pwd)"
+          echo "📋 Files in directory:"
+          ls -la
+          
+          echo "📦 Creating zip archive..."
           zip -r lambda_function.zip lambda_function.py
-          aws lambda update-function-code --function-name linguapulse-onboarding --zip-file fileb://lambda_function.zip
-          aws lambda update-function-configuration --function-name linguapulse-onboarding --handler lambda_function.lambda_handler
+          echo "✅ Zip created, size: $(ls -lh lambda_function.zip)"
+          
+          echo "🚀 Updating Lambda function code..."
+          aws lambda update-function-code \
+            --function-name linguapulse-onboarding \
+            --zip-file fileb://lambda_function.zip \
+            --no-cli-pager
+          
+          echo "⚙️  Updating Lambda function configuration..."
+          aws lambda update-function-configuration \
+            --function-name linguapulse-onboarding \
+            --handler lambda_function.lambda_handler \
+            --no-cli-pager
+          
+          echo "✅ Lambda deployment completed successfully!"
