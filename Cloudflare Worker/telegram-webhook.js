@@ -1,5 +1,5 @@
 // telegram-webhook/worker.js with Tribute.tg integration
-// Receives every Telegram update on /tg and routes it to NEWBIES_FUNNEL or LESSON0
+// Receives every Telegram update on /tg and handles onboarding and lesson routing
 
 // Import funnel logging helper
 const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js');
@@ -398,189 +398,63 @@ if (update.message?.text) {
       if (update.message?.text?.startsWith('/start')) {
         console.log(`🚀 [${chatId}] Processing /start command`);
         
-        // Try Lambda first, fallback to original logic
         try {
-          console.log(`📤 [${chatId}] Calling Lambda onboarding with start_onboarding action`);
-          const lambdaResponse = await callLambdaFunction('onboarding', {
+          // 1. Проверяем существование пользователя в Supabase через Lambda
+          console.log(`📤 [${chatId}] Checking if user exists in Supabase`);
+          const checkResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
-            action: 'start_onboarding'
+            action: 'check_user'
           }, env);
-          console.log(`✅ [${chatId}] Lambda onboarding response:`, lambdaResponse);
           
-          // Check if Lambda successfully sent message
-          const lambdaBody = typeof lambdaResponse.body === 'string' ? JSON.parse(lambdaResponse.body) : lambdaResponse.body;
-          if (lambdaBody && lambdaBody.message_sent) {
-            console.log(`✅ [${chatId}] Lambda onboarding successful, message sent`);
+          const checkBody = typeof checkResponse.body === 'string' ? JSON.parse(checkResponse.body) : checkResponse.body;
+          console.log(`✅ [${chatId}] User check response:`, checkBody);
+          
+          if (checkBody.success && checkBody.user_exists) {
+            // Пользователь существует - показываем приветствие
+            console.log(`✅ [${chatId}] User exists, showing welcome message`);
+            await sendMessageViaTelegram(chatId, 
+              "👋 Добро пожаловать обратно! Ваш профиль уже настроен. Используйте /lesson для доступа к урокам.", 
+              env);
             return new Response('OK');
           } else {
-            console.log(`⚠️ [${chatId}] Lambda onboarding failed to send message, using fallback`);
-            // Fallback to original logic
-          }
-        } catch (lambdaError) {
-          console.error(`❌ [${chatId}] Lambda onboarding failed, using original logic:`, lambdaError);
-          // Fallback to original logic
-        }
-        
-        // Ensure user has a base profile row as early as possible
-        try {
-          await ensureUserProfileExists(env.USER_DB, chatId);
-        } catch (e) {
-          console.error(`⚠️ [${chatId}] Failed to ensure user profile exists:`, e);
-        }
-        
-        // Helper functions for /start localization
-        async function getUserLanguageForStart() {
-          try {
-            const { results } = await env.USER_DB
-              .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-              .bind(parseInt(chatId, 10))
-              .all();
-            return results.length > 0 ? results[0].interface_language : 'en';
-          } catch (error) {
-            console.error('Error getting user language for /start:', error);
-            return 'en';
-          }
-        }
-        
-        const startTexts = {
-          en: {
-            welcomeBack: "🎉 Welcome back! Your subscription is active and your lesson is ready. Would you like to start it now?",
-            startLessonButton: "Start Lesson",
-            subscriptionInactive: "🔔 Welcome back! Your subscription has expired. Would you like to renew it to continue learning?",
-            renewButton: "Renew Subscription",
-            generalError: "⚙️ Sorry, a technical error occurred. Please try your request again in a moment. If the problem persists, you can use /start to begin again."
-          },
-          ru: {
-            welcomeBack: "🎉 Добро пожаловать! Ваша подписка активна и урок готов. Хотите начать сейчас?",
-            startLessonButton: "Начать урок",
-            subscriptionInactive: "🔔 Добро пожаловать! Ваша подписка истекла. Хотите продлить её для продолжения обучения?",
-            renewButton: "Продлить подписку",
-            generalError: "⚙️ Извините, произошла техническая ошибка. Попробуйте повторить запрос через минуту. Если проблема повторится, используйте /start для начала."
-          }
-        };
-        
-        function getStartText(lang, key) {
-          return startTexts[lang]?.[key] || startTexts.en[key] || key;
-        }
-        
-        try {
-          // Check if this is a return from subscription
-          const isWelcomeBack = update.message.text.includes('welcome');
-          
-          if (isWelcomeBack) {
-            console.log(`👋 [${chatId}] Welcome back from subscription detected`);
-            // This is a user returning from subscribing
-            const { results } = await env.USER_DB
-              .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
-              .bind(parseInt(chatId, 10))
-              .all();
-            
-            if (results.length > 0) {
-              const profile = results[0];
-              const now = new Date();
-              
-              // Check if subscription is active
-              const hasActiveSubscription = profile.subscription_expired_at && 
-                                          (new Date(profile.subscription_expired_at) > now);
-              
-              if (hasActiveSubscription) {
-                // Subscription is active, check if lesson is available
-                if (profile.next_lesson_access_at && (new Date(profile.next_lesson_access_at) <= now)) {
-                  // Lesson is available, offer to start it
-                  const userLang = await getUserLanguageForStart();
-                  await sendMessageViaTelegram(chatId,
-                    getStartText(userLang, 'welcomeBack'),
-                    env,
-                    { reply_markup: { inline_keyboard: [[{ text: getStartText(userLang, 'startLessonButton'), callback_data: "lesson:start" }]] }});
-                  return new Response('OK');
-                }
-              } else {
-                // Subscription inactive or expired, offer to subscribe
-                const channelLink = env.TRIBUTE_CHANNEL_LINK;
-                if (channelLink) {
-                  await sendTributeChannelLink(chatId, env);
-                  return new Response('OK');
+            // Пользователь не существует - показываем выбор языка
+            console.log(`🆕 [${chatId}] New user, showing language selection`);
+            await sendMessageViaTelegram(chatId, 
+              "👋 Добро пожаловать в LinguaPulse! Давайте настроим ваш профиль.\n\nВыберите язык интерфейса:", 
+              env,
+              {
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      { text: "🇷🇺 Русский", callback_data: "language:ru" },
+                      { text: "🇺🇸 English", callback_data: "language:en" }
+                    ]
+                  ]
                 }
               }
+            );
+            return new Response('OK');
+          }
+        } catch (lambdaError) {
+          console.error(`❌ [${chatId}] Lambda check failed:`, lambdaError);
+          // Fallback - показываем выбор языка
+          await sendMessageViaTelegram(chatId, 
+            "👋 Добро пожаловать в LinguaPulse! Давайте настроим ваш профиль.\n\nВыберите язык интерфейса:", 
+            env,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: "🇷🇺 Русский", callback_data: "language:ru" },
+                    { text: "🇺🇸 English", callback_data: "language:en" }
+                  ]
+                ]
+              }
             }
-          }
-          
-          console.log(`🔍 [${chatId}] Checking if user has completed onboarding survey`);
-          // Check if user has completed the FULL onboarding (survey)
-          let surveyResults = [];
-          let surveyCheckFailed = false;
-          
-          try {
-            const { results } = await env.USER_DB
-              .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
-              .bind(parseInt(chatId, 10))
-              .all();
-            surveyResults = results;
-            console.log(`📊 [${chatId}] Survey check results:`, surveyResults.length > 0 ? 'Found survey record' : 'No survey record');
-          } catch (surveyError) {
-            console.error(`❌ [${chatId}] Error checking user_survey table:`, surveyError);
-            surveyCheckFailed = true;
-            // If survey check fails, assume user needs onboarding
-          }
-
-          if (surveyCheckFailed || surveyResults.length === 0 || !surveyResults[0]?.completed_at) {
-            // User has NOT completed onboarding, or survey check failed.
-            // Route to newbies-funnel.
-            console.log(`🔄 [${chatId}] User has not completed onboarding (or survey check failed), routing to NEWBIES_FUNNEL`);
-            
-            // Note: Funnel logging will start after survey completion in newbies-funnel
-            
-            if (!env.NEWBIES_FUNNEL) {
-              console.error(`❌ [${chatId}] NEWBIES_FUNNEL worker is undefined, cannot start onboarding`);
-              await sendMessageViaTelegram(chatId, 
-                "👋 Welcome to LinguaPulse! There was a technical issue with our onboarding service. Please try again in a moment.", 
-                env);
-              return new Response('OK');
-            }
-
-            console.log(`📤 [${chatId}] Forwarding to NEWBIES_FUNNEL with start_onboarding action`);
-            return forward(env.NEWBIES_FUNNEL, {
-              user_id: chatId,
-              action: 'start_onboarding'
-            });
-          }
-          
-          // User has completed onboarding - show lesson options
-          console.log(`✅ [${chatId}] User has completed onboarding, calling handleLessonCommand`);
-          await handleLessonCommand(chatId, env);
-          return new Response('OK');
-          
-        } catch (error) {
-          console.error(`❌ [${chatId}] Error processing /start command:`, error);
-          console.error(`❌ [${chatId}] Error stack:`, error.stack);
-          
-          // Try to route to newbies-funnel as fallback
-          if (env.NEWBIES_FUNNEL) {
-            console.log(`🔄 [${chatId}] Error occurred, trying to route to NEWBIES_FUNNEL as fallback`);
-            try {
-              return forward(env.NEWBIES_FUNNEL, {
-                user_id: chatId,
-                action: 'start_onboarding'
-              });
-            } catch (forwardError) {
-              console.error(`❌ [${chatId}] Failed to forward to NEWBIES_FUNNEL:`, forwardError);
-            }
-          }
-          
-          // Send fallback message to user if all else fails
-          try {
-            const userLang = await getUserLanguageForStart();
-            await sendMessageViaTelegram(chatId, 
-              getStartText(userLang, 'generalError'), 
-              env);
-          } catch (fallbackError) {
-            // If language detection fails, use English as absolute fallback
-            await sendMessageViaTelegram(chatId, 
-              "👋 Welcome to LinguaPulse! There was a technical issue, but let's get you started. Please wait a moment and try again.", 
-              env);
-          }
+          );
           return new Response('OK');
         }
+        
       }
 
       // Handle voice messages with improved routing
@@ -769,22 +643,148 @@ if (update.message?.text) {
         }
       }
 
-      // 1.5. handle language selection buttons (forward to newbies-funnel)
+      // 1.5. handle language selection and survey callbacks
       if (update.callback_query?.data?.startsWith('language:') ||
           update.callback_query?.data?.startsWith('survey:')) {
         
         console.log(`🌍 LANGUAGE/SURVEY CALLBACK: "${update.callback_query.data}" from user ${chatId}`);
         
-        if (!env.NEWBIES_FUNNEL) {
-          console.error(`❌ [${chatId}] NEWBIES_FUNNEL worker is undefined for language selection`);
+        try {
+          // Acknowledge callback
+          await callTelegram('answerCallbackQuery', {
+            callback_query_id: update.callback_query.id
+          }, env);
+          
+          if (update.callback_query.data.startsWith('language:')) {
+            // Обработка выбора языка
+            const selectedLanguage = update.callback_query.data.split(':')[1];
+            console.log(`🌍 [${chatId}] User selected language: ${selectedLanguage}`);
+            
+            // Создаем пользователя в Supabase через Lambda
+            const createResponse = await callLambdaFunction('onboarding', {
+              user_id: chatId,
+              action: 'start_survey',
+              interface_language: selectedLanguage
+            }, env);
+            
+            const createBody = typeof createResponse.body === 'string' ? JSON.parse(createResponse.body) : createResponse.body;
+            console.log(`✅ [${chatId}] User creation response:`, createBody);
+            
+            if (createBody.success) {
+              // Получаем первый вопрос опросника из Lambda
+              const questionResponse = await callLambdaFunction('onboarding', {
+                action: 'get_survey_question',
+                question_type: 'language_level',
+                language: selectedLanguage
+              }, env);
+              
+              const questionBody = typeof questionResponse.body === 'string' ? JSON.parse(questionResponse.body) : questionResponse.body;
+              
+              if (questionBody.success) {
+                const keyboard = questionBody.options.map(option => [
+                  { text: option, callback_data: `survey:language_level:${option}` }
+                ]);
+                
+                await sendMessageViaTelegram(chatId, questionBody.question, env, {
+                  reply_markup: { inline_keyboard: keyboard }
+                });
+              } else {
+                await sendMessageViaTelegram(chatId, 
+                  "❌ Произошла ошибка при загрузке опросника. Попробуйте еще раз.", env);
+              }
+            } else {
+              await sendMessageViaTelegram(chatId, 
+                "❌ Произошла ошибка при создании профиля. Попробуйте еще раз.", env);
+            }
+            
+          } else if (update.callback_query.data.startsWith('survey:')) {
+            // Обработка ответов опросника
+            const parts = update.callback_query.data.split(':');
+            const questionType = parts[1];
+            const answer = parts[2];
+            
+            console.log(`📝 [${chatId}] Survey answer: ${questionType} = ${answer}`);
+            
+            // Получаем текущее состояние опросника из KV (или создаем новое)
+            let surveyState = {};
+            try {
+              const stateData = await env.CHAT_KV.get(`survey:${chatId}`);
+              if (stateData) {
+                surveyState = JSON.parse(stateData);
+              }
+            } catch (e) {
+              console.log(`No existing survey state for user ${chatId}`);
+            }
+            
+            // Сохраняем ответ
+            surveyState[questionType] = answer;
+            
+            // Определяем следующий вопрос
+            const nextQuestion = getNextQuestion(questionType);
+            
+            if (nextQuestion) {
+              // Есть следующий вопрос - показываем его
+              const questionResponse = await callLambdaFunction('onboarding', {
+                action: 'get_survey_question',
+                question_type: nextQuestion,
+                language: surveyState.interface_language || 'ru'
+              }, env);
+              
+              const questionBody = typeof questionResponse.body === 'string' ? JSON.parse(questionResponse.body) : questionResponse.body;
+              
+              if (questionBody.success) {
+                const keyboard = questionBody.options.map(option => [
+                  { text: option, callback_data: `survey:${nextQuestion}:${option}` }
+                ]);
+                
+                await sendMessageViaTelegram(chatId, questionBody.question, env, {
+                  reply_markup: { inline_keyboard: keyboard }
+                });
+                
+                // Сохраняем состояние
+                surveyState.current_question = nextQuestion;
+                await env.CHAT_KV.put(`survey:${chatId}`, JSON.stringify(surveyState));
+              } else {
+                await sendMessageViaTelegram(chatId, 
+                  "❌ Произошла ошибка при загрузке следующего вопроса. Попробуйте еще раз.", env);
+              }
+            } else {
+              // Опросник завершен
+              const completeResponse = await callLambdaFunction('onboarding', {
+                user_id: chatId,
+                action: 'complete_survey',
+                language_level: surveyState.language_level,
+                survey_data: surveyState
+              }, env);
+              
+              const completeBody = typeof completeResponse.body === 'string' ? JSON.parse(completeResponse.body) : completeResponse.body;
+              console.log(`✅ [${chatId}] Survey completion response:`, completeBody);
+              
+              if (completeBody.success) {
+                // Очищаем состояние опросника
+                await env.CHAT_KV.delete(`survey:${chatId}`);
+                
+                // Показываем сообщение об успешном завершении
+                const successText = "🎉 Отлично! Ваш профиль настроен.\n\nВам начислены бесплатные уроки! Нажмите кнопку ниже, чтобы начать обучение.";
+                const startButton = [{ text: "🚀 Начать обучение", callback_data: "lesson:start" }];
+                
+                await sendMessageViaTelegram(chatId, successText, env, {
+                  reply_markup: { inline_keyboard: [startButton] }
+                });
+              } else {
+                await sendMessageViaTelegram(chatId, 
+                  "❌ Произошла ошибка при сохранении данных. Попробуйте еще раз.", env);
+              }
+            }
+          }
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error handling callback:`, error);
           await sendMessageViaTelegram(chatId, 
-            "❌ *Sorry, the language selection service is temporarily unavailable.* Please try again later.", env, { parse_mode: 'Markdown' });
-          return new Response('OK');
+            "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-        // Forward the entire update to newbies-funnel for processing
-        console.log(`📤 [${chatId}] Forwarding language/survey callback to NEWBIES_FUNNEL`);
-        return forward(env.NEWBIES_FUNNEL, update);
+        return new Response('OK');
       }
 
       // 2. handle lesson buttons
@@ -1013,9 +1013,12 @@ if (update.message?.text) {
         return new Response('OK');
       }
 
-      // 5. everything else goes to newbies-funnel (replacing test-bot)
-      console.log("Forwarding to NEWBIES_FUNNEL as default action");
-      return forward(env.NEWBIES_FUNNEL, update);
+      // 5. everything else - send help message
+      console.log("Unknown message type, sending help");
+      await sendMessageViaTelegram(chatId, 
+        "👋 Добро пожаловать в LinguaPulse! Используйте /start для начала.", 
+        env);
+      return new Response('OK');
     } catch (error) {
       console.error("Unhandled error in telegram-webhook:", error, error.stack);
       
@@ -1036,6 +1039,24 @@ if (update.message?.text) {
     }
   }
 };
+
+// Порядок вопросов опросника (должен совпадать с Lambda)
+const QUESTION_ORDER = [
+  'language_level',
+  'study_goal', 
+  'gender',
+  'age',
+  'telegram_preference',
+  'voice_usage'
+];
+
+function getNextQuestion(currentQuestion) {
+  const currentIndex = QUESTION_ORDER.indexOf(currentQuestion);
+  if (currentIndex === -1 || currentIndex >= QUESTION_ORDER.length - 1) {
+    return null; // No more questions
+  }
+  return QUESTION_ORDER[currentIndex + 1];
+}
 
 // Ensure a base row exists in user_profiles for the given telegram_id
 async function ensureUserProfileExists(db, chatId) {
