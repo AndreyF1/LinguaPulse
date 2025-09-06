@@ -722,22 +722,22 @@ if (update.message?.text) {
             // Обработка ответов опросника
             const parts = update.callback_query.data.split(':');
             const questionType = parts[1];
-            const answer = parts[2];
+            const answer = parts[2]; // Для language_level это текст, для остальных - индекс (не важно)
             
             console.log(`📝 [${chatId}] Survey answer: ${questionType} = ${answer}`);
             
-            // Извлекаем language_level из callback data если есть, или сохраняем если это первый вопрос
+            // Извлекаем language_level
             let languageLevel = null;
             
-            // Проверяем, есть ли language_level в callback data (для последующих вопросов)
-            const callbackParts = update.callback_query.data.split(':');
-            if (callbackParts.length > 3) {
-              languageLevel = callbackParts[3]; // language_level передается в callback
-            }
-            
-            // Если это вопрос об уровне языка - сохраняем ответ
             if (questionType === 'language_level') {
+              // Первый вопрос - сохраняем ответ как language_level
               languageLevel = answer;
+            } else {
+              // Последующие вопросы - извлекаем language_level из callback data
+              const callbackParts = update.callback_query.data.split(':');
+              if (callbackParts.length > 3) {
+                languageLevel = callbackParts[3];
+              }
             }
             
             // Определяем следующий вопрос
@@ -754,8 +754,8 @@ if (update.message?.text) {
               const questionBody = questionResponse;
               
               if (questionBody.success) {
-                const keyboard = questionBody.options.map(option => [
-                  { text: option, callback_data: `survey:${nextQuestion}:${option}:${languageLevel || ''}` }
+                const keyboard = questionBody.options.map((option, index) => [
+                  { text: option, callback_data: `survey:${nextQuestion}:${index}:${languageLevel || ''}` }
                 ]);
                 
                 await sendMessageViaTelegram(chatId, questionBody.question, env, {
