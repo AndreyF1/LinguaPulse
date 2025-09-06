@@ -23,6 +23,6 @@ jobs:
       - name: Deploy Lambda function
         run: |
           cd "AWS Backend"
-          zip lambda_function.zip lambda_function.py
+          zip -r lambda_function.zip lambda_function.py
           aws lambda update-function-code --function-name linguapulse-onboarding --zip-file fileb://lambda_function.zip
           aws lambda update-function-configuration --function-name linguapulse-onboarding --handler lambda_function.lambda_handler
