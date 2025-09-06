@@ -730,7 +730,7 @@ if (update.message?.text) {
             let languageLevel = null;
             
             // Проверяем, есть ли language_level в callback data (для последующих вопросов)
-            const callbackParts = callbackData.split(':');
+            const callbackParts = update.callback_query.data.split(':');
             if (callbackParts.length > 3) {
               languageLevel = callbackParts[3]; // language_level передается в callback
             }
