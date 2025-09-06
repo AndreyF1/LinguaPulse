@@ -703,7 +703,7 @@ if (update.message?.text) {
               
               if (questionBody.success) {
                 const keyboard = questionBody.options.map(option => [
-                  { text: option, callback_data: `survey:language_level:${option}` }
+                  { text: option, callback_data: `survey:language_level:${option}:${selectedLanguage}` }
                 ]);
                 
                 await sendMessageViaTelegram(chatId, questionBody.question, env, {
@@ -726,17 +726,26 @@ if (update.message?.text) {
             
             console.log(`📝 [${chatId}] Survey answer: ${questionType} = ${answer}`);
             
-            // Извлекаем language_level
+            // Извлекаем language_level и interface_language
             let languageLevel = null;
+            let interfaceLanguage = 'ru'; // дефолт
             
             if (questionType === 'language_level') {
               // Первый вопрос - сохраняем ответ как language_level
               languageLevel = answer;
+              // Извлекаем interface_language из callback data
+              const callbackParts = update.callback_query.data.split(':');
+              if (callbackParts.length > 3) {
+                interfaceLanguage = callbackParts[3];
+              }
             } else {
-              // Последующие вопросы - извлекаем language_level из callback data
+              // Последующие вопросы - извлекаем из callback data
               const callbackParts = update.callback_query.data.split(':');
               if (callbackParts.length > 3) {
                 languageLevel = callbackParts[3];
+              }
+              if (callbackParts.length > 4) {
+                interfaceLanguage = callbackParts[4];
               }
             }
             
@@ -748,14 +757,14 @@ if (update.message?.text) {
               const questionResponse = await callLambdaFunction('onboarding', {
                 action: 'get_survey_question',
                 question_type: nextQuestion,
-                language: 'ru' // Всегда русский для маркетинговых вопросов
+                language: interfaceLanguage // Используем выбранный язык интерфейса
               }, env);
               
               const questionBody = questionResponse;
               
               if (questionBody.success) {
                 const keyboard = questionBody.options.map((option, index) => [
-                  { text: option, callback_data: `survey:${nextQuestion}:${index}:${languageLevel || ''}` }
+                  { text: option, callback_data: `survey:${nextQuestion}:${index}:${languageLevel || ''}:${interfaceLanguage}` }
                 ]);
                 
                 await sendMessageViaTelegram(chatId, questionBody.question, env, {
