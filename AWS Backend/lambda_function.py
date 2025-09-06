@@ -86,12 +86,13 @@ def lambda_handler(event, context):
             return error_response('user_id is required')
         
         try:
-            # Создаем пользователя в Supabase
+            # Создаем пользователя в Supabase с quiz_started_at
             user_data = {
                 'telegram_id': int(user_id),
                 'username': username,
                 'interface_language': interface_language,
-                'lessons_left': 3,
+                'lessons_left': 0,  # Уроки начисляются только после завершения опроса
+                'quiz_started_at': 'now()',  # Фиксируем начало прохождения опроса
                 'is_active': True
             }
             
@@ -172,11 +173,11 @@ def lambda_handler(event, context):
             product_id = "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5"
             product_info = get_product_info(product_id, supabase_url, supabase_key)
             
-            # Обновляем пользователя
+            # Обновляем пользователя - завершаем опрос и начисляем уроки
             update_data = {
                 'current_level': transformed_level,
-                'quiz_started_at': 'now()',
-                'quiz_completed_at': 'now()',
+                'quiz_completed_at': 'now()',  # Только завершение, quiz_started_at уже установлен
+                'lessons_left': 3,  # Начисляем уроки за завершение опроса
                 'package_expires_at': product_info.get('expires_at') if product_info else None
             }
             
