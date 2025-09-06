@@ -726,10 +726,18 @@ if (update.message?.text) {
             
             console.log(`📝 [${chatId}] Survey answer: ${questionType} = ${answer}`);
             
-            // Для маркетинговых вопросов не сохраняем состояние - только передаем дальше
+            // Извлекаем language_level из callback data если есть, или сохраняем если это первый вопрос
             let languageLevel = null;
+            
+            // Проверяем, есть ли language_level в callback data (для последующих вопросов)
+            const callbackParts = callbackData.split(':');
+            if (callbackParts.length > 3) {
+              languageLevel = callbackParts[3]; // language_level передается в callback
+            }
+            
+            // Если это вопрос об уровне языка - сохраняем ответ
             if (questionType === 'language_level') {
-              languageLevel = answer; // Сохраняем только уровень языка
+              languageLevel = answer;
             }
             
             // Определяем следующий вопрос
@@ -747,7 +755,7 @@ if (update.message?.text) {
               
               if (questionBody.success) {
                 const keyboard = questionBody.options.map(option => [
-                  { text: option, callback_data: `survey:${nextQuestion}:${option}` }
+                  { text: option, callback_data: `survey:${nextQuestion}:${option}:${languageLevel || ''}` }
                 ]);
                 
                 await sendMessageViaTelegram(chatId, questionBody.question, env, {
