@@ -11,4 +11,4 @@ keep_vars = true
 # Secret Variables (set via Cloudflare Dashboard or wrangler secret put):
 # - BOT_TOKEN: Telegram bot token
 # - ONBOARDING_URL: AWS Lambda Function URL for onboarding
-# - AWS_LAMBDA_TOKEN: Token for Lambda authentication
+# - AWS_LAMBDA_TOKEN: Token for Lambda authentication (updated)
