@@ -51,7 +51,12 @@ jobs:
             --function-name linguapulse-onboarding \
             --zip-file fileb://lambda_function.zip \
             --no-cli-pager 2>&1; then
-            echo "✅ Lambda code updated successfully"
+            echo "✅ Lambda code update initiated"
+            
+            echo "⏳ Waiting for Lambda function to become Active..."
+            aws lambda wait function-updated --function-name linguapulse-onboarding
+            
+            echo "✅ Lambda code updated and is now Active"
           else
             echo "❌ Failed to update Lambda code, exit code: $?"
             echo "📋 Lambda function current state:"
@@ -64,7 +69,12 @@ jobs:
             --function-name linguapulse-onboarding \
             --handler lambda_function.lambda_handler \
             --no-cli-pager; then
-            echo "✅ Lambda configuration updated successfully"
+            echo "✅ Lambda configuration update initiated"
+            
+            echo "⏳ Waiting for configuration update to complete..."
+            aws lambda wait function-updated --function-name linguapulse-onboarding
+            
+            echo "✅ Lambda configuration updated and function is Active"
           else
             echo "❌ Failed to update Lambda configuration"
             exit 1
