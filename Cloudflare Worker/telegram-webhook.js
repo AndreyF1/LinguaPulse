@@ -135,23 +135,23 @@ if (update.message?.text) {
     const helpTexts = {
       en: {
         title: '🤖 *LinguaPulse Bot Commands:*',
-        startDesc: '*/start* - Begin the onboarding process or see your profile',
-        profileDesc: '*/profile* - View your language level and progress',
-        lessonDesc: '*/lesson* - Access your lessons and subscription status',
-        talkDesc: '*/talk* - Start today\'s lesson (for subscribers)',
-        feedbackDesc: '*/feedback* - Share your thoughts and suggestions',
-        helpDesc: '*/help* - Show this help message',
+        startDesc: '/start - Begin the onboarding process or see your profile',
+        profileDesc: '/profile - View your language level and progress',
+        lessonDesc: '/lesson - Access your lessons and subscription status',
+        talkDesc: '/talk - Start today\'s lesson (for subscribers)',
+        feedbackDesc: '/feedback - Share your thoughts and suggestions',
+        helpDesc: '/help - Show this help message',
         tip: '💡 *Did you know?* Just 10-15 minutes of conversation practice daily can improve your English skills more than years of study without regular speaking practice!',
         instructions: '• Send voice messages during the lesson to practice speaking\n• The AI tutor may take a few seconds to think and respond\n• Lessons end automatically\n• You\'ll receive personalized grammar and vocabulary feedback after each lesson'
       },
       ru: {
         title: '🤖 *Команды бота LinguaPulse:*',
-        startDesc: '*/start* - Начать регистрацию или посмотреть профиль',
-        profileDesc: '*/profile* - Посмотреть уровень языка и прогресс',
-        lessonDesc: '*/lesson* - Доступ к урокам и статус подписки',
-        talkDesc: '*/talk* - Начать сегодняшний урок (для подписчиков)',
-        feedbackDesc: '*/feedback* - Поделиться мыслями и предложениями',
-        helpDesc: '*/help* - Показать это сообщение помощи',
+        startDesc: '/start - Начать регистрацию или посмотреть профиль',
+        profileDesc: '/profile - Посмотреть уровень языка и прогресс',
+        lessonDesc: '/lesson - Доступ к урокам и статус подписки',
+        talkDesc: '/talk - Начать сегодняшний урок (для подписчиков)',
+        feedbackDesc: '/feedback - Поделиться мыслями и предложениями',
+        helpDesc: '/help - Показать это сообщение помощи',
         tip: '💡 *Знаете ли вы?* Всего 10-15 минут ежедневной разговорной практики могут улучшить ваш английский больше, чем годы изучения без регулярной речевой практики!',
         instructions: '• Отправляйте голосовые сообщения во время урока для практики речи\n• ИИ-преподаватель может подумать несколько секунд перед ответом\n• Уроки заканчиваются автоматически\n• После каждого урока вы получите персональную обратную связь по грамматике и словарному запасу'
       }
