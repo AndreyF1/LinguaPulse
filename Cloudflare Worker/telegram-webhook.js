@@ -786,7 +786,8 @@ The first users who sign up for the list will get a series of audio lessons for 
                 ];
                 
                 await sendMessageViaTelegram(chatId, successText, env, {
-                  reply_markup: { inline_keyboard: buttons }
+                  reply_markup: { inline_keyboard: buttons },
+                  parse_mode: 'Markdown'
                 });
               } else {
                 const errorText = interfaceLanguage === 'en' 
