@@ -590,7 +590,7 @@ if (update.message?.text) {
         try {
           // Отправляем сообщение в Lambda для обработки через OpenAI
           console.log(`🔄 [LAMBDA] Processing text message for user ${chatId}`);
-          const aiResponse = await callLambdaFunction({
+          const aiResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
             action: 'process_text_message',
             message: update.message.text
@@ -823,7 +823,7 @@ The first users who sign up for the list will get a series of audio lessons for 
             // Записать пользователя в waitlist для аудио-практики
             console.log(`🚀 [${chatId}] Adding to audio practice waitlist`);
             
-            const waitlistResponse = await callLambdaFunction({
+            const waitlistResponse = await callLambdaFunction('onboarding', {
               user_id: chatId,
               action: 'add_to_waitlist'
             }, env);
@@ -857,7 +857,7 @@ As soon as we open audio lessons — we'll send an invitation.`
             console.log(`💬 [${chatId}] Showing text helper instructions`);
             
             // Получаем язык интерфейса пользователя
-            const userResponse = await callLambdaFunction({
+            const userResponse = await callLambdaFunction('onboarding', {
               user_id: chatId,
               action: 'check_user'
             }, env);
