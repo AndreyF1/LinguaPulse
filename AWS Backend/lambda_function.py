@@ -2,6 +2,7 @@ import json
 import os
 import urllib.request
 import urllib.parse
+from datetime import datetime, timedelta
 
 def lambda_handler(event, context):
     """
@@ -174,14 +175,19 @@ def lambda_handler(event, context):
             product_info = get_product_info(product_id, supabase_url, supabase_key)
             
             # Обновляем пользователя - завершаем опрос и начисляем уроки
+            # Рассчитываем дату окончания пробного периода текстового помощника (7 дней)
+            text_trial_end = (datetime.now() + timedelta(days=7)).isoformat()
+            
             update_data = {
                 'current_level': transformed_level,
                 'quiz_completed_at': 'now()',  # Только завершение, quiz_started_at уже установлен
                 'lessons_left': 3,  # Начисляем уроки за завершение опроса
-                'package_expires_at': product_info.get('expires_at') if product_info else None
+                'package_expires_at': product_info.get('expires_at') if product_info else None,
+                'text_trial_ends_at': text_trial_end  # 7 дней доступа к текстовому помощнику
             }
             
             print(f"Updating user {user_id} with language level: {transformed_level}")
+            print(f"Setting text_trial_ends_at to: {text_trial_end}")
             print(f"Full survey data: {survey_data}")
             
             url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
