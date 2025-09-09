@@ -12,5 +12,6 @@ keep_vars = true
 # - BOT_TOKEN: Telegram bot token
 # - ONBOARDING_URL: AWS Lambda Function URL for onboarding
 # - AWS_LAMBDA_TOKEN: Token for Lambda authentication
+# Updated: 2025-01-09 - CI/CD workflow fixed
 
 [env.webhook]
