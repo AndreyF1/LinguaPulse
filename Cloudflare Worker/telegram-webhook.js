@@ -796,40 +796,31 @@ if (update.message?.text) {
                 await sendMessageViaTelegram(chatId, loadingText, env);
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 
-                // Финальное сообщение с описанием аудио-уроков
+                // Финальное сообщение с информацией о текстовом помощнике и предзаписи на аудио-практику
                 const successText = interfaceLanguage === 'en' 
-                  ? `🎉 Perfect! Your profile is set up.
+                  ? `🎉 Done!
+Today you have access to a *free English text assistant*. Ask questions: grammar, vocabulary, translations, text corrections, interview preparation.
 
-🎧 **Audio lessons** have been assigned to you! These are the most valuable part of our program - regular speaking practice is crucial for overcoming language barriers and achieving real progress.
+🚀 Very soon we're launching *audio practice* — real speech training with AI that helps overcome language barriers and start speaking fluently.
 
-📚 **What you get:**
-• Interactive audio lessons with AI feedback
-• Personalized pronunciation corrections
-• Grammar and vocabulary improvements
-• Real-time conversation practice
+The first users who sign up for the list will get a series of audio lessons for free. Limited spots available — be among the first.`
+                  : `🎉 Готово!
+Сегодня у тебя есть доступ к *бесплатному текстовому помощнику по английскому*. Задавай вопросы: грамматика, лексика, переводы, правка текстов, подготовка к собеседованию.
 
-💬 You can also ask any English-related questions via text messages anytime.
+🚀 Совсем скоро мы запускаем *аудио-практику* — это реальная тренировка речи с ИИ, которая помогает преодолеть языковой барьер и начать свободно говорить.
 
-Ready to start your speaking journey?`
-                  : `🎉 Отлично! Ваш профиль настроен.
+Первые пользователи, кто запишется в список, получат серию аудио-уроков бесплатно. Количество мест ограничено — будь среди первых.`;
 
-🎧 **Аудио-уроки** начислены! Это самая ценная часть программы - регулярная тренировка говорения критически важна для преодоления языкового барьера и качественного скачка в изучении.
-
-📚 **Что вас ждет:**
-• Интерактивные аудио-уроки с ИИ-фидбэком
-• Персональная коррекция произношения  
-• Улучшение грамматики и лексики
-• Практика живого общения
-
-💬 Вы также можете задавать вопросы по английскому языку текстовыми сообщениями в любое время.
-
-Готовы начать путь к свободному говорению?`;
-
-                const startButtonText = interfaceLanguage === 'en' ? "🚀 Start Learning" : "🚀 Начать обучение";
-                const startButton = [{ text: startButtonText, callback_data: "lesson:start" }];
+                const audioPracticeButtonText = interfaceLanguage === 'en' ? "Want audio practice" : "Хочу аудио-практику";
+                const askQuestionButtonText = interfaceLanguage === 'en' ? "Ask a question" : "Задать вопрос";
+                
+                const buttons = [
+                  [{ text: audioPracticeButtonText, callback_data: "audio_practice:signup" }],
+                  [{ text: askQuestionButtonText, callback_data: "text_helper:start" }]
+                ];
                 
                 await sendMessageViaTelegram(chatId, successText, env, {
-                  reply_markup: { inline_keyboard: [startButton] }
+                  reply_markup: { inline_keyboard: buttons }
                 });
               } else {
                 const errorText = interfaceLanguage === 'en' 
