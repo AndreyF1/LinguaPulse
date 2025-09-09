@@ -788,20 +788,12 @@ if (update.message?.text) {
               console.log(`✅ [${chatId}] Survey completion response:`, completeBody);
               
               if (completeBody.success) {
-                // Показываем анимацию подбора плана
-                const loadingText = interfaceLanguage === 'en' 
-                  ? "🔍 Finding the perfect learning plan for you..."
-                  : "🔍 Подбираем идеальный план обучения для вас...";
-                
-                const loadingMessage = await sendMessageViaTelegram(chatId, loadingText, env);
-                
-                // Анимация троеточия
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                await sendMessageViaTelegram(chatId, "⏳", env);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                await sendMessageViaTelegram(chatId, "⏳⏳", env);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                await sendMessageViaTelegram(chatId, "⏳⏳⏳", env);
+                // Показываем сообщение о подборе плана
+                const loadingText = interfaceLanguage === 'en'
+                    ? "⏳ Finding the perfect learning plan for you..."
+                    : "⏳ Подбираем идеальный план обучения для вас...";
+
+                await sendMessageViaTelegram(chatId, loadingText, env);
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 
                 // Финальное сообщение с описанием аудио-уроков
