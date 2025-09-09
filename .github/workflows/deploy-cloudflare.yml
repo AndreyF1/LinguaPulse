@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'Cloudflare Worker/**'
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:

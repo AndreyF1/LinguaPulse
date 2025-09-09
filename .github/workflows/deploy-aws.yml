@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'AWS Backend/**'
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
