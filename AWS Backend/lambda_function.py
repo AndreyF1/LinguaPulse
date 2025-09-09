@@ -308,6 +308,42 @@ def lambda_handler(event, context):
             print(f"Error adding user to waitlist: {e}")
             return error_response(f'Failed to add user to waitlist: {str(e)}')
     
+    # 7. Обработка текстовых сообщений через OpenAI
+    if 'action' in body and body['action'] == 'process_text_message':
+        user_id = body.get('user_id')
+        message = body.get('message')
+        
+        if not user_id or not message:
+            return error_response('user_id and message are required')
+        
+        try:
+            print(f"Processing text message from user {user_id}: {message}")
+            
+            # Проверяем, есть ли у пользователя активный пробный период
+            user_check_response = check_text_trial_access(user_id, supabase_url, supabase_key)
+            
+            if not user_check_response['has_access']:
+                return success_response({
+                    'reply': user_check_response['message']
+                })
+            
+            # Получаем ответ от OpenAI
+            openai_response = get_openai_response(message)
+            
+            if openai_response['success']:
+                # Логируем использование
+                log_text_usage(user_id, supabase_url, supabase_key)
+                
+                return success_response({
+                    'reply': openai_response['reply']
+                })
+            else:
+                return error_response(f"OpenAI error: {openai_response['error']}")
+                
+        except Exception as e:
+            print(f"Error processing text message: {e}")
+            return error_response(f'Failed to process text message: {str(e)}')
+    
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
@@ -478,4 +514,179 @@ def get_product_info(product_id, supabase_url, supabase_key):
     except Exception as e:
         print(f"Error getting product info: {e}")
         return None
+
+def check_text_trial_access(user_id, supabase_url, supabase_key):
+    """Проверяет доступ к текстовому помощнику"""
+    try:
+        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=text_trial_ends_at,interface_language"
+        headers = {
+            'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key
+        }
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as response:
+            response_text = response.read().decode('utf-8')
+            
+            if response_text:
+                users = json.loads(response_text)
+                if users:
+                    user = users[0]
+                    text_trial_ends_at = user.get('text_trial_ends_at')
+                    interface_language = user.get('interface_language', 'ru')
+                    
+                    if text_trial_ends_at:
+                        trial_end = datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00'))
+                        now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.now()
+                        
+                        if now < trial_end:
+                            return {'has_access': True}
+                    
+                    # Нет доступа - вернуть локализованное сообщение
+                    if interface_language == 'en':
+                        message = "🔒 Your free text assistant trial has ended. Upgrade to continue getting help with English!"
+                    else:
+                        message = "🔒 Пробный период текстового помощника закончился. Оформите подписку, чтобы продолжить изучение английского!"
+                    
+                    return {'has_access': False, 'message': message}
+        
+        # Пользователь не найден
+        return {'has_access': False, 'message': 'User not found. Please complete onboarding first with /start'}
+        
+    except Exception as e:
+        print(f"Error checking text trial access: {e}")
+        return {'has_access': False, 'message': 'Error checking access. Please try again.'}
+
+def get_openai_response(message):
+    """Получает ответ от OpenAI API"""
+    try:        
+        # OpenAI API endpoint
+        url = "https://api.openai.com/v1/chat/completions"
+        
+        # Получаем API ключ из переменных окружения
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        if not openai_api_key:
+            return {'success': False, 'error': 'OpenAI API key not configured'}
+        
+        # Системный промпт на английском
+        system_prompt = """You are a concise English tutor. 
+Only answer questions about English: grammar, vocabulary, translations, writing texts, interviews. 
+If the question is not about English, respond: "I can only help with English. Try asking something about grammar, vocabulary, or translation"."""
+        
+        # Подготавливаем данные для API
+        data = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            "max_tokens": 500,
+            "temperature": 0.7
+        }
+        
+        headers = {
+            'Authorization': f'Bearer {openai_api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Отправляем запрос
+        req = urllib.request.Request(
+            url, 
+            data=json.dumps(data).encode('utf-8'),
+            headers=headers,
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req) as response:
+            response_text = response.read().decode('utf-8')
+            response_data = json.loads(response_text)
+            
+            if 'choices' in response_data and response_data['choices']:
+                reply = response_data['choices'][0]['message']['content'].strip()
+                return {'success': True, 'reply': reply}
+            else:
+                return {'success': False, 'error': 'No response from OpenAI'}
+                
+    except Exception as e:
+        print(f"Error getting OpenAI response: {e}")
+        return {'success': False, 'error': str(e)}
+
+def log_text_usage(user_id, supabase_url, supabase_key):
+    """Логирует использование текстового помощника"""
+    try:
+        # 1. Обновляем общие счетчики пользователя
+        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key
+        }
+        
+        # Получаем текущие значения
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as response:
+            response_text = response.read().decode('utf-8')
+            if response_text:
+                users = json.loads(response_text)
+                if users:
+                    user = users[0]
+                    current_total = user.get('text_messages_total', 0)
+                    
+                    # Обновляем счетчики
+                    update_data = {
+                        'text_messages_total': current_total + 1,
+                        'last_text_used_at': datetime.now().isoformat()
+                    }
+                    
+                    req_update = urllib.request.Request(
+                        url, 
+                        data=json.dumps(update_data).encode('utf-8'),
+                        headers=headers,
+                        method='PATCH'
+                    )
+                    
+                    with urllib.request.urlopen(req_update) as update_response:
+                        print(f"User text usage updated for {user_id}")
+        
+        # 2. UPSERT в daily usage таблицу через raw SQL
+        # Получаем user UUID для foreign key
+        user_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=id"
+        req_user = urllib.request.Request(user_url, headers=headers)
+        
+        with urllib.request.urlopen(req_user) as response:
+            response_text = response.read().decode('utf-8')
+            if response_text:
+                users = json.loads(response_text)
+                if users:
+                    user_uuid = users[0]['id']
+                    
+                    # Используем POST с upsert для daily usage
+                    daily_url = f"{supabase_url}/rest/v1/text_usage_daily"
+                    daily_headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': f'Bearer {supabase_key}',
+                        'apikey': supabase_key,
+                        'Prefer': 'resolution=merge-duplicates'
+                    }
+                    
+                    today = datetime.now().date().isoformat()
+                    daily_data = {
+                        'user_id': user_uuid,
+                        'day': today,
+                        'messages': 1
+                    }
+                    
+                    req_daily = urllib.request.Request(
+                        daily_url, 
+                        data=json.dumps(daily_data).encode('utf-8'),
+                        headers=daily_headers,
+                        method='POST'
+                    )
+                    
+                    with urllib.request.urlopen(req_daily) as daily_response:
+                        print(f"Daily text usage logged for {user_id}")
+            
+    except Exception as e:
+        print(f"Error logging text usage: {e}")
+        # Не возвращаем ошибку, так как это не критично для пользователя
 # Test comment

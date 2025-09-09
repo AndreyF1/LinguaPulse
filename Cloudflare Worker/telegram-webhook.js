@@ -583,69 +583,35 @@ if (update.message?.text) {
         }
       }
 
-      // Handle regular text messages outside of sessions
+      // Handle regular text messages - OpenAI integration for text helper
       if (update.message?.text && !update.message.text.startsWith('/')) {
-        // Check if user has an active session
-        let activeSession = false;
+        console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
         
-        if (env.CHAT_KV) {
-          const mainSession = await env.CHAT_KV.get(`main_session:${chatId}`);
-          const lesson0Session = await env.CHAT_KV.get(`session:${chatId}`);
+        try {
+          // Отправляем сообщение в Lambda для обработки через OpenAI
+          console.log(`🔄 [LAMBDA] Processing text message for user ${chatId}`);
+          const aiResponse = await callLambdaFunction({
+            user_id: chatId,
+            action: 'process_text_message',
+            message: update.message.text
+          }, env);
           
-          if (mainSession || lesson0Session) {
-            activeSession = true;
-          }
-        }
-        
-        // If no active session, provide info about next lesson or subscription
-        if (!activeSession) {
-          const { results } = await env.USER_DB
-            .prepare('SELECT subscription_expired_at, next_lesson_access_at FROM user_profiles WHERE telegram_id = ?')
-            .bind(parseInt(chatId, 10))
-            .all();
-          
-          // If user hasn't completed onboarding yet
-          if (!results.length) {
-            await sendMessageViaTelegram(chatId, 
-              "Please use /start to complete our quick setup and begin your English learning journey.", 
-              env);
-            return new Response('OK');
-          }
-          
-          const profile = results[0];
-          const now = new Date();
-          
-          // Check if subscription is active
-          const hasActiveSubscription = profile.subscription_expired_at && 
-                                       (new Date(profile.subscription_expired_at) > now);
-          
-          if (hasActiveSubscription) {
-            // Check when next lesson is available
-            if (profile.next_lesson_access_at) {
-              const nextLessonAt = new Date(profile.next_lesson_access_at);
-              
-              if (nextLessonAt > now) {
-                // Next lesson in the future - tell user when it will be available
-                const timeUntil = formatTimeUntil(nextLessonAt);
-                await sendMessageViaTelegram(chatId,
-                  `Your next lesson will be available in ${timeUntil}. You can use /profile to see your progress.`,
-                  env);
-                return new Response('OK');
-              } else {
-                // Lesson is available now - suggest starting it
-                await sendMessageViaTelegram(chatId,
-                  "Your next lesson is available now! Would you like to start?",
-                  env,
-                  { reply_markup: { inline_keyboard: [[{ text: "Start Lesson", callback_data: "lesson:start" }]] }});
-                return new Response('OK');
-              }
-            }
+          if (aiResponse && aiResponse.success) {
+            console.log(`✅ [${chatId}] AI response received`);
+            await sendMessageViaTelegram(chatId, aiResponse.reply, env);
           } else {
-            // No active subscription - send message with subscription button
-            await sendTributeChannelLink(chatId, env);
-            return new Response('OK');
+            console.error(`❌ [${chatId}] AI processing failed:`, aiResponse);
+            const errorText = aiResponse?.error || "❌ Произошла ошибка при обработке сообщения.";
+            await sendMessageViaTelegram(chatId, errorText, env);
           }
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error processing text message:`, error);
+          await sendMessageViaTelegram(chatId, 
+            "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
+        
+        return new Response('OK');
       }
 
       // 1.5. handle language selection and survey callbacks
