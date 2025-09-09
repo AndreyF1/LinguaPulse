@@ -254,6 +254,54 @@ def lambda_handler(event, context):
             print(f"Error deactivating user: {e}")
             return error_response(f'Failed to deactivate user: {str(e)}')
     
+    # 6. Добавление пользователя в waitlist для аудио-практики
+    if 'action' in body and body['action'] == 'add_to_waitlist':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            print(f"Adding user {user_id} to audio practice waitlist")
+            
+            # Обновляем waitlist_voice = true для пользователя
+            update_data = {
+                'waitlist_voice': True
+            }
+            
+            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key,
+                'Prefer': 'return=representation'
+            }
+            
+            req = urllib.request.Request(url, 
+                                       data=json.dumps(update_data).encode('utf-8'),
+                                       headers=headers,
+                                       method='PATCH')
+            
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                print(f"Supabase waitlist update response: {response_text}")
+                
+                if response_text:
+                    user_data = json.loads(response_text)[0] if response_text.startswith('[') else json.loads(response_text)
+                    
+                    return success_response({
+                        'message': 'User added to waitlist successfully',
+                        'user_data': user_data
+                    })
+                else:
+                    return success_response({
+                        'message': 'User added to waitlist successfully'
+                    })
+                
+        except Exception as e:
+            print(f"Error adding user to waitlist: {e}")
+            return error_response(f'Failed to add user to waitlist: {str(e)}')
+    
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},

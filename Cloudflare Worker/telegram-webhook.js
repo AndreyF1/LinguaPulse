@@ -812,7 +812,7 @@ The first users who sign up for the list will get a series of audio lessons for 
 Первые пользователи, кто запишется в список, получат серию аудио-уроков бесплатно. Количество мест ограничено — будь среди первых.`;
 
                 const audioPracticeButtonText = interfaceLanguage === 'en' ? "Want audio practice" : "Хочу аудио-практику";
-                const askQuestionButtonText = interfaceLanguage === 'en' ? "Ask a question" : "Задать вопрос";
+                const askQuestionButtonText = interfaceLanguage === 'en' ? "Ask AI" : "Спросить ИИ";
                 
                 const buttons = [
                   [{ text: audioPracticeButtonText, callback_data: "audio_practice:signup" }],
@@ -833,6 +833,89 @@ The first users who sign up for the list will get a series of audio lessons for 
           
         } catch (error) {
           console.error(`❌ [${chatId}] Error handling callback:`, error);
+          await sendMessageViaTelegram(chatId, 
+            "❌ Произошла ошибка. Попробуйте еще раз.", env);
+        }
+        
+        return new Response('OK');
+      }
+
+      // 1.6. Handle audio practice waitlist and text helper buttons
+      if (update.callback_query?.data === 'audio_practice:signup' || 
+          update.callback_query?.data === 'text_helper:start') {
+        
+        console.log(`🎯 NEW FEATURE CALLBACK: "${update.callback_query.data}" from user ${chatId}`);
+        
+        try {
+          // Acknowledge callback
+          await callTelegram('answerCallbackQuery', {
+            callback_query_id: update.callback_query.id
+          }, env);
+          
+          if (update.callback_query.data === 'audio_practice:signup') {
+            // Записать пользователя в waitlist для аудио-практики
+            console.log(`🚀 [${chatId}] Adding to audio practice waitlist`);
+            
+            const waitlistResponse = await callLambdaFunction({
+              user_id: chatId,
+              action: 'add_to_waitlist'
+            }, env);
+            
+            if (waitlistResponse && waitlistResponse.success) {
+              console.log(`✅ [${chatId}] Added to waitlist successfully`);
+              
+              // Определяем язык интерфейса пользователя
+              const userLang = waitlistResponse.user_data?.interface_language || 'ru';
+              
+              const waitlistMessage = userLang === 'en' 
+                ? `You're on the list of first participants 🚀
+As soon as we open audio lessons — we'll send an invitation.`
+                : `Ты в списке первых участников 🚀
+Как только откроем аудио-уроки — пришлём приглашение.`;
+
+              const askAIButtonText = userLang === 'en' ? "Ask AI" : "Спросить ИИ";
+              const askAIButton = [{ text: askAIButtonText, callback_data: "text_helper:start" }];
+              
+              await sendMessageViaTelegram(chatId, waitlistMessage, env, {
+                reply_markup: { inline_keyboard: [askAIButton] }
+              });
+            } else {
+              console.error(`❌ [${chatId}] Failed to add to waitlist:`, waitlistResponse);
+              const errorText = "❌ Произошла ошибка. Попробуйте еще раз.";
+              await sendMessageViaTelegram(chatId, errorText, env);
+            }
+            
+          } else if (update.callback_query.data === 'text_helper:start') {
+            // Показать инструкцию по использованию текстового помощника
+            console.log(`💬 [${chatId}] Showing text helper instructions`);
+            
+            // Получаем язык интерфейса пользователя
+            const userResponse = await callLambdaFunction({
+              user_id: chatId,
+              action: 'check_user'
+            }, env);
+            
+            const userLang = userResponse?.user_data?.interface_language || 'ru';
+            
+            const instructionMessage = userLang === 'en' 
+              ? `Write your question in one message. Examples:
+• Explain the difference between since and for
+• Check my email: …
+• Suggest vocabulary for a product manager interview (10-12 phrases)
+• Translate text to English: …
+• Translate text to Russian: …`
+              : `Напиши свой вопрос одним сообщением. Примеры:
+• Объясни разницу между since и for
+• Проверь письмо: …
+• Подбери лексику для собеседования продакта (10–12 фраз)
+• Переведи текст на английский: …
+• Переведи текст на русский: …`;
+            
+            await sendMessageViaTelegram(chatId, instructionMessage, env);
+          }
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error handling new feature callback:`, error);
           await sendMessageViaTelegram(chatId, 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
