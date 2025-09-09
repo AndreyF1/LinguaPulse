@@ -109,6 +109,8 @@ if (update.message?.text === '/feedback') {
   return new Response('OK');
 }
 
+// ВРЕМЕННО ЗАКОММЕНТИРОВАНО - старая логика обработки текстовых сообщений
+/*
 if (update.message?.text) {
   if (update.message.text === '/help' || 
       !supportedCommands.some(cmd => update.message.text.startsWith(cmd))) {
@@ -191,6 +193,7 @@ if (update.message?.text) {
     return new Response('OK');
   }
 }
+*/
 
       // Handle /talk command - route to main-lesson
       if (update.message?.text === '/talk') {
