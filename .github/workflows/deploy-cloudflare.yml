@@ -19,4 +19,3 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           workingDirectory: 'Cloudflare Worker'
-          command: deploy --env webhook
