@@ -113,7 +113,9 @@ if (update.message?.text) {
   if (update.message.text === '/help' || 
       !supportedCommands.some(cmd => update.message.text.startsWith(cmd))) {
     
+    // ВРЕМЕННО ЗАКОММЕНТИРОВАНО - старая логика с USER_DB
     // Helper functions for /help localization
+    /*
     async function getUserLanguageForHelp() {
       try {
         const { results } = await env.USER_DB
@@ -126,7 +128,10 @@ if (update.message?.text) {
         return 'en';
       }
     }
+    */
 
+    // ВРЕМЕННО ЗАКОММЕНТИРОВАНО - старая логика help сообщений
+    /*
     const helpTexts = {
       en: {
         title: '🤖 *LinguaPulse Bot Commands:*',
@@ -177,6 +182,11 @@ if (update.message?.text) {
       // For non-subscribed users, show subscription options
       await sendMessageWithSubscriptionCheck(chatId, helpMessage, env, { parse_mode: 'Markdown' });
     }
+    */
+    
+    // ВРЕМЕННАЯ ЗАГЛУШКА для /help и неизвестных команд
+    await sendMessageViaTelegram(chatId, 
+      "👋 Используйте /start для начала работы с ботом.", env);
     
     return new Response('OK');
   }
@@ -2241,6 +2251,8 @@ function formatTimeUntil(date) {
 }
 
 /* ──── helper: check if user has active subscription ──── */
+// ВРЕМЕННО ЗАКОММЕНТИРОВАНО - старая логика с USER_DB
+/*
 async function hasActiveSubscription(chatId, env) {
   try {
     console.log(`[DEBUG] Checking subscription status for user ${chatId}`);
@@ -2268,5 +2280,12 @@ async function hasActiveSubscription(chatId, env) {
     console.error(`Error checking subscription status for user ${chatId}:`, error);
     return false; // If we can't verify, assume no subscription
   }
+}
+*/
+
+// ВРЕМЕННАЯ ЗАГЛУШКА
+async function hasActiveSubscription(chatId, env) {
+  console.log(`[DEBUG] hasActiveSubscription stub - returning false for user ${chatId}`);
+  return false;
 }
 // Test comment
