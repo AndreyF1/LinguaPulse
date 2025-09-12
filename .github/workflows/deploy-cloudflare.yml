@@ -14,9 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Deploy to Cloudflare
+      - name: Deploy to Cloudflare (with retry)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           workingDirectory: 'Cloudflare Worker'
+          command: deploy --env webhook --compatibility-date 2025-01-01
+        continue-on-error: true
+        id: deploy_attempt1
+        
+      - name: Wait and retry on failure
+        if: steps.deploy_attempt1.outcome == 'failure'
+        run: |
+          echo "First deploy failed, waiting 30 seconds and retrying..."
+          sleep 30
+          
+      - name: Retry deploy on failure
+        if: steps.deploy_attempt1.outcome == 'failure'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: 'Cloudflare Worker'
+          command: deploy --env webhook
