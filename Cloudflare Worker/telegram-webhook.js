@@ -522,10 +522,9 @@ if (update.message?.text === '/feedback') {
           let currentMode = 'translation'; // по умолчанию
           
           try {
-            let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
-            if (kvStorage) {
+            if (env.USER_MODES) {
               const userModeKey = `ai_mode:${chatId}`;
-              const savedMode = await kvStorage.get(userModeKey);
+              const savedMode = await env.USER_MODES.get(userModeKey);
               if (savedMode) {
                 currentMode = savedMode;
                 console.log(`📖 [${chatId}] Using saved AI mode: ${currentMode}`);
@@ -533,7 +532,17 @@ if (update.message?.text === '/feedback') {
                 console.log(`📖 [${chatId}] No saved mode found, using default: ${currentMode}`);
               }
             } else {
-              console.log(`📖 [${chatId}] No KV storage available, using default mode: ${currentMode}`);
+              // Fallback: определяем режим по содержимому сообщения
+              const message = update.message.text.toLowerCase();
+              if (message.includes('грамматик') || message.includes('grammar') || 
+                  message.includes('артикль') || message.includes('article') ||
+                  message.includes('время') || message.includes('tense') ||
+                  message.includes('правило') || message.includes('rule')) {
+                currentMode = 'grammar';
+                console.log(`📖 [${chatId}] KV not available, detected grammar mode from message content`);
+              } else {
+                console.log(`📖 [${chatId}] KV not available, using default translation mode`);
+              }
             }
           } catch (error) {
             console.error(`❌ [${chatId}] Error getting AI mode from KV:`, error);
@@ -929,15 +938,14 @@ As soon as we open audio lessons — we'll send an invitation.`
             parse_mode: 'Markdown'
           });
           
-          // Сохраняем выбранный режим в KV storage (если доступно)
+          // Сохраняем выбранный режим в KV storage
           try {
-            let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
-            if (kvStorage) {
+            if (env.USER_MODES) {
               const userModeKey = `ai_mode:${chatId}`;
-              await kvStorage.put(userModeKey, mode, { expirationTtl: 86400 }); // 24 часа
-              console.log(`✅ [${chatId}] AI mode saved to KV: ${mode}`);
+              await env.USER_MODES.put(userModeKey, mode, { expirationTtl: 86400 }); // 24 часа
+              console.log(`✅ [${chatId}] AI mode saved to USER_MODES KV: ${mode}`);
             } else {
-              console.log(`⚠️ [${chatId}] No KV storage available, mode not saved: ${mode}`);
+              console.log(`⚠️ [${chatId}] USER_MODES KV not available, mode not saved: ${mode}`);
             }
           } catch (error) {
             console.error(`❌ [${chatId}] Error saving AI mode to KV:`, error);

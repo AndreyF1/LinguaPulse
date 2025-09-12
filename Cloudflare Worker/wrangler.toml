@@ -15,3 +15,7 @@ keep_vars = true
 # Updated: 2025-01-09 - CI/CD workflow fixed
 
 [env.webhook]
+
+[[env.webhook.kv_namespaces]]
+binding = "USER_MODES"
+id = "4d1820c5855d404683d2c6e8c9142647"
