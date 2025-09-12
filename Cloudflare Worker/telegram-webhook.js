@@ -534,14 +534,18 @@ if (update.message?.text === '/feedback') {
             } else {
               // Fallback: определяем режим по содержимому сообщения
               const message = update.message.text.toLowerCase();
+              console.log(`⚠️ [${chatId}] USER_MODES KV not available, analyzing message: "${message}"`);
+              
               if (message.includes('грамматик') || message.includes('grammar') || 
                   message.includes('артикль') || message.includes('article') ||
                   message.includes('время') || message.includes('tense') ||
-                  message.includes('правило') || message.includes('rule')) {
+                  message.includes('правило') || message.includes('rule') ||
+                  message.includes('разница между') || message.includes('difference between')) {
                 currentMode = 'grammar';
-                console.log(`📖 [${chatId}] KV not available, detected grammar mode from message content`);
+                console.log(`🎯 [${chatId}] KV not available, detected GRAMMAR mode from message content`);
               } else {
-                console.log(`📖 [${chatId}] KV not available, using default translation mode`);
+                currentMode = 'translation';
+                console.log(`🔄 [${chatId}] KV not available, using default TRANSLATION mode`);
               }
             }
           } catch (error) {
@@ -940,12 +944,20 @@ As soon as we open audio lessons — we'll send an invitation.`
           
           // Сохраняем выбранный режим в KV storage
           try {
+            console.log(`🔍 [${chatId}] Checking USER_MODES KV availability...`);
+            console.log(`🔍 [${chatId}] env.USER_MODES exists:`, !!env.USER_MODES);
+            
             if (env.USER_MODES) {
               const userModeKey = `ai_mode:${chatId}`;
               await env.USER_MODES.put(userModeKey, mode, { expirationTtl: 86400 }); // 24 часа
               console.log(`✅ [${chatId}] AI mode saved to USER_MODES KV: ${mode}`);
+              
+              // Проверяем, что сохранилось
+              const checkSaved = await env.USER_MODES.get(userModeKey);
+              console.log(`🔍 [${chatId}] Verification - saved mode:`, checkSaved);
             } else {
-              console.log(`⚠️ [${chatId}] USER_MODES KV not available, mode not saved: ${mode}`);
+              console.log(`⚠️ [${chatId}] USER_MODES KV not available in env, mode not saved: ${mode}`);
+              console.log(`🔍 [${chatId}] Available env keys:`, Object.keys(env));
             }
           } catch (error) {
             console.error(`❌ [${chatId}] Error saving AI mode to KV:`, error);
