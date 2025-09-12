@@ -529,7 +529,21 @@ if (update.message?.text === '/feedback') {
                 currentMode = savedMode;
                 console.log(`📖 [${chatId}] Using saved AI mode: ${currentMode}`);
               } else {
-                console.log(`📖 [${chatId}] No saved mode found, using default: ${currentMode}`);
+                console.log(`📖 [${chatId}] No saved mode found, analyzing message content...`);
+                // Даже если KV доступно, но режим не сохранен, анализируем сообщение
+                const message = update.message.text.toLowerCase();
+                if (message.includes('грамматик') || message.includes('grammar') || 
+                    message.includes('артикль') || message.includes('article') ||
+                    message.includes('время') || message.includes('tense') ||
+                    message.includes('правило') || message.includes('rule') ||
+                    message.includes('разница между') || message.includes('difference between') ||
+                    message.includes('объясни') || message.includes('explain')) {
+                  currentMode = 'grammar';
+                  console.log(`🎯 [${chatId}] Detected GRAMMAR mode from message content`);
+                } else {
+                  currentMode = 'translation';
+                  console.log(`🔄 [${chatId}] Using default TRANSLATION mode`);
+                }
               }
             } else {
               // Fallback: определяем режим по содержимому сообщения
@@ -540,7 +554,8 @@ if (update.message?.text === '/feedback') {
                   message.includes('артикль') || message.includes('article') ||
                   message.includes('время') || message.includes('tense') ||
                   message.includes('правило') || message.includes('rule') ||
-                  message.includes('разница между') || message.includes('difference between')) {
+                  message.includes('разница между') || message.includes('difference between') ||
+                  message.includes('объясни') || message.includes('explain')) {
                 currentMode = 'grammar';
                 console.log(`🎯 [${chatId}] KV not available, detected GRAMMAR mode from message content`);
               } else {
@@ -550,6 +565,16 @@ if (update.message?.text === '/feedback') {
             }
           } catch (error) {
             console.error(`❌ [${chatId}] Error getting AI mode from KV:`, error);
+            // В случае ошибки тоже анализируем сообщение
+            const message = update.message.text.toLowerCase();
+            if (message.includes('грамматик') || message.includes('grammar') || 
+                message.includes('артикль') || message.includes('article') ||
+                message.includes('время') || message.includes('tense') ||
+                message.includes('правило') || message.includes('rule') ||
+                message.includes('разница между') || message.includes('difference between')) {
+              currentMode = 'grammar';
+              console.log(`🎯 [${chatId}] Error fallback: detected GRAMMAR mode from message content`);
+            }
           }
           
           // Отправляем сообщение в Lambda для обработки через OpenAI
@@ -563,22 +588,70 @@ if (update.message?.text === '/feedback') {
           
           if (aiResponse && aiResponse.success) {
             console.log(`✅ [${chatId}] AI response received`);
-            
+
             // Получаем язык интерфейса пользователя для кнопки
             const userResponse = await callLambdaFunction('onboarding', {
               user_id: chatId,
               action: 'check_user'
             }, env);
-            
+
             const userLang = userResponse?.user_data?.interface_language || 'ru';
             const changeModeButtonText = userLang === 'en' ? "🔄 Change AI Mode" : "🔄 Сменить Режим ИИ";
+
+            // Разбиваем длинный ответ на части (лимит Telegram ~4096 символов)
+            const maxLength = 4000; // Оставляем запас для кнопок
+            const reply = aiResponse.reply;
             
-            // Отправляем ответ с кнопкой смены режима
-            await sendMessageViaTelegram(chatId, aiResponse.reply, env, {
-              reply_markup: { 
-                inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+            if (reply.length <= maxLength) {
+              // Короткое сообщение - отправляем как есть
+              await sendMessageViaTelegram(chatId, reply, env, {
+                reply_markup: {
+                  inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+                }
+              });
+            } else {
+              // Длинное сообщение - разбиваем на части
+              console.log(`📏 [${chatId}] Long message (${reply.length} chars), splitting...`);
+              
+              const parts = [];
+              let currentPart = '';
+              const sentences = reply.split('\n\n'); // Разбиваем по абзацам
+              
+              for (const sentence of sentences) {
+                if ((currentPart + sentence + '\n\n').length <= maxLength) {
+                  currentPart += sentence + '\n\n';
+                } else {
+                  if (currentPart) {
+                    parts.push(currentPart.trim());
+                    currentPart = sentence + '\n\n';
+                  } else {
+                    // Если один абзац слишком длинный, разбиваем по предложениям
+                    parts.push(sentence.substring(0, maxLength));
+                    currentPart = sentence.substring(maxLength) + '\n\n';
+                  }
+                }
               }
-            });
+              if (currentPart.trim()) {
+                parts.push(currentPart.trim());
+              }
+              
+              // Отправляем части
+              for (let i = 0; i < parts.length; i++) {
+                const isLast = i === parts.length - 1;
+                const options = isLast ? {
+                  reply_markup: {
+                    inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+                  }
+                } : {};
+                
+                await sendMessageViaTelegram(chatId, parts[i], env, options);
+                
+                // Небольшая задержка между сообщениями
+                if (!isLast) {
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              }
+            }
           } else {
             console.error(`❌ [${chatId}] AI processing failed:`, aiResponse);
             const errorText = aiResponse?.error || "❌ Произошла ошибка при обработке сообщения.";

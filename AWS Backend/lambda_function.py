@@ -623,7 +623,7 @@ Form/Structure: patterns, word order, auxiliaries, morphology.
 
 Use & Contrast: when to use/avoid; compare with close forms.
 
-Examples (5–7): include ✅/❌ pairs for correct/incorrect; if the user wrote in Russian, add short Russian glosses.
+Examples (5–7): include varied, contextual examples showing different uses; if the user wrote in Russian, add short Russian glosses.
 
 Common mistakes & tips: brief, practical.
 
