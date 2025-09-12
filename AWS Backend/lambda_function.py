@@ -312,12 +312,13 @@ def lambda_handler(event, context):
     if 'action' in body and body['action'] == 'process_text_message':
         user_id = body.get('user_id')
         message = body.get('message')
+        mode = body.get('mode', 'general')  # Получаем режим, по умолчанию 'general'
         
         if not user_id or not message:
             return error_response('user_id and message are required')
         
         try:
-            print(f"Processing text message from user {user_id}: {message}")
+            print(f"Processing text message from user {user_id} in mode '{mode}': {message}")
             
             # Проверяем, есть ли у пользователя активный пробный период
             user_check_response = check_text_trial_access(user_id, supabase_url, supabase_key)
@@ -327,8 +328,8 @@ def lambda_handler(event, context):
                     'reply': user_check_response['message']
                 })
             
-            # Получаем ответ от OpenAI
-            openai_response = get_openai_response(message)
+            # Получаем ответ от OpenAI с указанным режимом
+            openai_response = get_openai_response(message, mode)
             
             if openai_response['success']:
                 # Логируем использование
@@ -343,6 +344,28 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Error processing text message: {e}")
             return error_response(f'Failed to process text message: {str(e)}')
+    
+    # 8. Установка режима ИИ для пользователя
+    if 'action' in body and body['action'] == 'set_ai_mode':
+        user_id = body.get('user_id')
+        mode = body.get('mode')
+        
+        if not user_id or not mode:
+            return error_response('user_id and mode are required')
+        
+        try:
+            print(f"Setting AI mode '{mode}' for user {user_id}")
+            
+            # В будущем можно сохранять режим в базе данных
+            # Пока просто возвращаем успешный ответ
+            return success_response({
+                'mode_set': mode,
+                'message': f'AI mode set to {mode}'
+            })
+                
+        except Exception as e:
+            print(f"Error setting AI mode: {e}")
+            return error_response(f'Failed to set AI mode: {str(e)}')
     
     return {
         'statusCode': 200,
@@ -557,8 +580,8 @@ def check_text_trial_access(user_id, supabase_url, supabase_key):
         print(f"Error checking text trial access: {e}")
         return {'has_access': False, 'message': 'Error checking access. Please try again.'}
 
-def get_openai_response(message):
-    """Получает ответ от OpenAI API"""
+def get_openai_response(message, mode='general'):
+    """Получает ответ от OpenAI API с поддержкой разных режимов"""
     try:        
         # OpenAI API endpoint
         url = "https://api.openai.com/v1/chat/completions"
@@ -568,10 +591,31 @@ def get_openai_response(message):
         if not openai_api_key:
             return {'success': False, 'error': 'OpenAI API key not configured'}
         
-        # Системный промпт на английском
-        system_prompt = """You are a concise English tutor. 
+        # Системные промпты для разных режимов
+        system_prompts = {
+            'translation': """You are a bilingual translation bot. Your only task is to automatically translate each incoming message:
+
+If the message is in Russian → translate it into English.
+
+If the message is in English → translate it into Russian.
+
+Do not add explanations, comments, or extra text.
+Do not ask questions or start conversations.
+Only return the translated text, nothing else.""",
+            
+            'grammar': "You are a concise English grammar tutor. Help with grammar questions, corrections, and explanations. Keep responses focused and practical.",
+            
+            'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
+            
+            'audio_dialog': "You are an English speaking coach. Focus on pronunciation tips, speaking practice, and conversational skills.",
+            
+            'general': """You are a concise English tutor. 
 Only answer questions about English: grammar, vocabulary, translations, writing texts, interviews. 
 If the question is not about English, respond: "I can only help with English. Try asking something about grammar, vocabulary, or translation"."""
+        }
+        
+        system_prompt = system_prompts.get(mode, system_prompts['general'])
+        print(f"Using AI mode: {mode}")
         
         # Подготавливаем данные для API
         data = {
@@ -603,7 +647,7 @@ If the question is not about English, respond: "I can only help with English. Tr
             
             if 'choices' in response_data and response_data['choices']:
                 reply = response_data['choices'][0]['message']['content'].strip()
-                return {'success': True, 'reply': reply}
+                return {'success': True, 'reply': reply, 'mode': mode}
             else:
                 return {'success': False, 'error': 'No response from OpenAI'}
                 

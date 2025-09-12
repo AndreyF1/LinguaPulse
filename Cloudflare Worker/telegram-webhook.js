@@ -518,17 +518,37 @@ if (update.message?.text === '/feedback') {
         console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
         
         try {
+          // Пока используем режим "translation" по умолчанию
+          // В будущем можно сохранять выбранный режим в KV или базе данных
+          const currentMode = 'translation';
+          
           // Отправляем сообщение в Lambda для обработки через OpenAI
-          console.log(`🔄 [LAMBDA] Processing text message for user ${chatId}`);
+          console.log(`🔄 [LAMBDA] Processing text message for user ${chatId} in mode: ${currentMode}`);
           const aiResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
             action: 'process_text_message',
-            message: update.message.text
+            message: update.message.text,
+            mode: currentMode
           }, env);
           
           if (aiResponse && aiResponse.success) {
             console.log(`✅ [${chatId}] AI response received`);
-            await sendMessageViaTelegram(chatId, aiResponse.reply, env);
+            
+            // Получаем язык интерфейса пользователя для кнопки
+            const userResponse = await callLambdaFunction('onboarding', {
+              user_id: chatId,
+              action: 'check_user'
+            }, env);
+            
+            const userLang = userResponse?.user_data?.interface_language || 'ru';
+            const changeModeButtonText = userLang === 'en' ? "🔄 Change AI Mode" : "🔄 Сменить Режим ИИ";
+            
+            // Отправляем ответ с кнопкой смены режима
+            await sendMessageViaTelegram(chatId, aiResponse.reply, env, {
+              reply_markup: { 
+                inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+              }
+            });
           } else {
             console.error(`❌ [${chatId}] AI processing failed:`, aiResponse);
             const errorText = aiResponse?.error || "❌ Произошла ошибка при обработке сообщения.";
@@ -783,8 +803,8 @@ As soon as we open audio lessons — we'll send an invitation.`
             }
             
           } else if (update.callback_query.data === 'text_helper:start') {
-            // Показать инструкцию по использованию текстового помощника
-            console.log(`💬 [${chatId}] Showing text helper instructions`);
+            // Показать выбор режимов ИИ
+            console.log(`💬 [${chatId}] Showing AI mode selection`);
             
             // Получаем язык интерфейса пользователя
             const userResponse = await callLambdaFunction('onboarding', {
@@ -794,25 +814,101 @@ As soon as we open audio lessons — we'll send an invitation.`
             
             const userLang = userResponse?.user_data?.interface_language || 'ru';
             
-            const instructionMessage = userLang === 'en' 
-              ? `Write your question in one message. Examples:
-• Explain the difference between since and for
-• Check my email: …
-• Suggest vocabulary for a product manager interview (10-12 phrases)
-• Translate text to English: …
-• Translate text to Russian: …`
-              : `Напиши свой вопрос одним сообщением. Примеры:
-• Объясни разницу между since и for
-• Проверь письмо: …
-• Подбери лексику для собеседования продакта (10–12 фраз)
-• Переведи текст на английский: …
-• Переведи текст на русский: …`;
+            const modeMessage = userLang === 'en' 
+              ? `🤖 Choose AI mode:`
+              : `🤖 Выберите режим ИИ:`;
             
-            await sendMessageViaTelegram(chatId, instructionMessage, env);
+            // Создаем кнопки для выбора режима
+            const modeButtons = userLang === 'en' 
+              ? [
+                  [{ text: "📝 Text Translation", callback_data: "ai_mode:translation" }],
+                  [{ text: "📚 Grammar", callback_data: "ai_mode:grammar" }],
+                  [{ text: "💬 Text Dialog", callback_data: "ai_mode:text_dialog" }],
+                  [{ text: "🎤 Audio Dialog", callback_data: "ai_mode:audio_dialog" }]
+                ]
+              : [
+                  [{ text: "📝 Перевод текста", callback_data: "ai_mode:translation" }],
+                  [{ text: "📚 Грамматика", callback_data: "ai_mode:grammar" }],
+                  [{ text: "💬 Текстовый диалог", callback_data: "ai_mode:text_dialog" }],
+                  [{ text: "🎤 Аудио-диалог", callback_data: "ai_mode:audio_dialog" }]
+                ];
+            
+            await sendMessageViaTelegram(chatId, modeMessage, env, {
+              reply_markup: { inline_keyboard: modeButtons }
+            });
           }
           
         } catch (error) {
           console.error(`❌ [${chatId}] Error handling new feature callback:`, error);
+          await sendMessageViaTelegram(chatId, 
+            "❌ Произошла ошибка. Попробуйте еще раз.", env);
+        }
+        
+        return new Response('OK');
+      }
+
+      // 1.7. Handle AI mode selection
+      if (update.callback_query?.data?.startsWith('ai_mode:')) {
+        console.log(`🤖 AI MODE SELECTION: "${update.callback_query.data}" from user ${chatId}`);
+        
+        try {
+          // Acknowledge callback
+          await callTelegram('answerCallbackQuery', {
+            callback_query_id: update.callback_query.id
+          }, env);
+          
+          const mode = update.callback_query.data.split(':')[1]; // Извлекаем режим из callback_data
+          console.log(`🎯 [${chatId}] Selected AI mode: ${mode}`);
+          
+          // Получаем язык интерфейса пользователя
+          const userResponse = await callLambdaFunction('onboarding', {
+            user_id: chatId,
+            action: 'check_user'
+          }, env);
+          
+          const userLang = userResponse?.user_data?.interface_language || 'ru';
+          
+          // Формируем сообщение в зависимости от выбранного режима
+          let instructionMessage = '';
+          let changeModeButtonText = userLang === 'en' ? "🔄 Change AI Mode" : "🔄 Сменить Режим ИИ";
+          
+          switch (mode) {
+            case 'translation':
+              instructionMessage = userLang === 'en' 
+                ? `📝 **Translation Mode**\n\nJust send me any text in Russian or English, and I'll automatically translate it to the other language.`
+                : `📝 **Режим перевода**\n\nПросто отправь мне любой текст на русском или английском, и я автоматически переведу его на другой язык.`;
+              break;
+            case 'grammar':
+              instructionMessage = userLang === 'en' 
+                ? `📚 **Grammar Mode**\n\nAsk me about English grammar rules, corrections, or explanations.`
+                : `📚 **Режим грамматики**\n\nСпрашивай меня о правилах английской грамматики, исправлениях или объяснениях.`;
+              break;
+            case 'text_dialog':
+              instructionMessage = userLang === 'en' 
+                ? `💬 **Text Dialog Mode**\n\nLet's have a conversation in English! I'll help you practice while chatting naturally.`
+                : `💬 **Режим текстового диалога**\n\nДавай поговорим на английском! Я помогу тебе практиковаться в естественном общении.`;
+              break;
+            case 'audio_dialog':
+              instructionMessage = userLang === 'en' 
+                ? `🎤 **Audio Dialog Mode**\n\nThis mode will be available soon! For now, try other modes.`
+                : `🎤 **Режим аудио-диалога**\n\nЭтот режим скоро будет доступен! Пока попробуй другие режимы.`;
+              break;
+            default:
+              instructionMessage = userLang === 'en' 
+                ? `❓ Unknown mode selected.`
+                : `❓ Выбран неизвестный режим.`;
+          }
+          
+          // Отправляем инструкцию с кнопкой смены режима
+          await sendMessageViaTelegram(chatId, instructionMessage, env, {
+            reply_markup: { 
+              inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+            },
+            parse_mode: 'Markdown'
+          });
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error handling AI mode selection:`, error);
           await sendMessageViaTelegram(chatId, 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
