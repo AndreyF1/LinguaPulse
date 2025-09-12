@@ -518,9 +518,26 @@ if (update.message?.text === '/feedback') {
         console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
         
         try {
-          // Пока используем режим "translation" по умолчанию
-          // В будущем можно сохранять выбранный режим в KV или базе данных
-          const currentMode = 'translation';
+          // Получаем сохраненный режим из KV storage
+          let currentMode = 'translation'; // по умолчанию
+          
+          try {
+            let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
+            if (kvStorage) {
+              const userModeKey = `ai_mode:${chatId}`;
+              const savedMode = await kvStorage.get(userModeKey);
+              if (savedMode) {
+                currentMode = savedMode;
+                console.log(`📖 [${chatId}] Using saved AI mode: ${currentMode}`);
+              } else {
+                console.log(`📖 [${chatId}] No saved mode found, using default: ${currentMode}`);
+              }
+            } else {
+              console.log(`📖 [${chatId}] No KV storage available, using default mode: ${currentMode}`);
+            }
+          } catch (error) {
+            console.error(`❌ [${chatId}] Error getting AI mode from KV:`, error);
+          }
           
           // Отправляем сообщение в Lambda для обработки через OpenAI
           console.log(`🔄 [LAMBDA] Processing text message for user ${chatId} in mode: ${currentMode}`);
@@ -880,8 +897,8 @@ As soon as we open audio lessons — we'll send an invitation.`
               break;
             case 'grammar':
               instructionMessage = userLang === 'en' 
-                ? `📚 **Grammar Mode**\n\nAsk me about English grammar rules, corrections, or explanations.`
-                : `📚 **Режим грамматики**\n\nСпрашивай меня о правилах английской грамматики, исправлениях или объяснениях.`;
+                ? `📚 **Grammar Mode**\n\nAsk me about English grammar: tenses, articles, word order, conditionals, and more. I'll give you structured explanations with examples and practice questions.`
+                : `📚 **Режим грамматики**\n\nСпрашивай меня о грамматике английского: времена, артикли, порядок слов, условные предложения и многое другое. Я дам структурированные объяснения с примерами и упражнениями.`;
               break;
             case 'text_dialog':
               instructionMessage = userLang === 'en' 
@@ -900,12 +917,31 @@ As soon as we open audio lessons — we'll send an invitation.`
           }
           
           // Отправляем инструкцию с кнопкой смены режима
+          // Также добавляем кнопку с текущим режимом для дальнейшего использования
+          const modeButtons = [
+            [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
+          ];
+
           await sendMessageViaTelegram(chatId, instructionMessage, env, {
             reply_markup: { 
-              inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+              inline_keyboard: modeButtons
             },
             parse_mode: 'Markdown'
           });
+          
+          // Сохраняем выбранный режим в KV storage (если доступно)
+          try {
+            let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
+            if (kvStorage) {
+              const userModeKey = `ai_mode:${chatId}`;
+              await kvStorage.put(userModeKey, mode, { expirationTtl: 86400 }); // 24 часа
+              console.log(`✅ [${chatId}] AI mode saved to KV: ${mode}`);
+            } else {
+              console.log(`⚠️ [${chatId}] No KV storage available, mode not saved: ${mode}`);
+            }
+          } catch (error) {
+            console.error(`❌ [${chatId}] Error saving AI mode to KV:`, error);
+          }
           
         } catch (error) {
           console.error(`❌ [${chatId}] Error handling AI mode selection:`, error);
