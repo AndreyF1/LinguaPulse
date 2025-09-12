@@ -522,58 +522,49 @@ if (update.message?.text === '/feedback') {
           let currentMode = 'translation'; // по умолчанию
           
           try {
-            if (env.USER_MODES) {
-              const userModeKey = `ai_mode:${chatId}`;
-              const savedMode = await env.USER_MODES.get(userModeKey);
-              if (savedMode) {
-                currentMode = savedMode;
-                console.log(`📖 [${chatId}] Using saved AI mode: ${currentMode}`);
-              } else {
-                console.log(`📖 [${chatId}] No saved mode found, analyzing message content...`);
-                // Даже если KV доступно, но режим не сохранен, анализируем сообщение
-                const message = update.message.text.toLowerCase();
-                if (message.includes('грамматик') || message.includes('grammar') || 
-                    message.includes('артикль') || message.includes('article') ||
-                    message.includes('время') || message.includes('tense') ||
-                    message.includes('правило') || message.includes('rule') ||
-                    message.includes('разница между') || message.includes('difference between') ||
-                    message.includes('объясни') || message.includes('explain')) {
-                  currentMode = 'grammar';
-                  console.log(`🎯 [${chatId}] Detected GRAMMAR mode from message content`);
-                } else {
-                  currentMode = 'translation';
-                  console.log(`🔄 [${chatId}] Using default TRANSLATION mode`);
-                }
-              }
+            console.log(`📖 [${chatId}] Getting AI mode from Supabase...`);
+            
+            const modeResponse = await callLambdaFunction('onboarding', {
+              user_id: chatId,
+              action: 'get_ai_mode'
+            }, env);
+            
+            if (modeResponse && modeResponse.success && modeResponse.ai_mode) {
+              currentMode = modeResponse.ai_mode;
+              console.log(`📖 [${chatId}] Using saved AI mode from Supabase: ${currentMode}`);
             } else {
+              console.log(`📖 [${chatId}] No saved mode in Supabase, analyzing message content...`);
               // Fallback: определяем режим по содержимому сообщения
               const message = update.message.text.toLowerCase();
-              console.log(`⚠️ [${chatId}] USER_MODES KV not available, analyzing message: "${message}"`);
-              
               if (message.includes('грамматик') || message.includes('grammar') || 
                   message.includes('артикль') || message.includes('article') ||
                   message.includes('время') || message.includes('tense') ||
                   message.includes('правило') || message.includes('rule') ||
                   message.includes('разница между') || message.includes('difference between') ||
-                  message.includes('объясни') || message.includes('explain')) {
+                  message.includes('объясни') || message.includes('explain') ||
+                  message.includes('условные') || message.includes('conditional')) {
                 currentMode = 'grammar';
-                console.log(`🎯 [${chatId}] KV not available, detected GRAMMAR mode from message content`);
+                console.log(`🎯 [${chatId}] Detected GRAMMAR mode from message content`);
               } else {
                 currentMode = 'translation';
-                console.log(`🔄 [${chatId}] KV not available, using default TRANSLATION mode`);
+                console.log(`🔄 [${chatId}] Using default TRANSLATION mode`);
               }
             }
           } catch (error) {
-            console.error(`❌ [${chatId}] Error getting AI mode from KV:`, error);
-            // В случае ошибки тоже анализируем сообщение
+            console.error(`❌ [${chatId}] Error getting AI mode from Supabase:`, error);
+            // В случае ошибки анализируем сообщение
             const message = update.message.text.toLowerCase();
             if (message.includes('грамматик') || message.includes('grammar') || 
                 message.includes('артикль') || message.includes('article') ||
                 message.includes('время') || message.includes('tense') ||
                 message.includes('правило') || message.includes('rule') ||
-                message.includes('разница между') || message.includes('difference between')) {
+                message.includes('разница между') || message.includes('difference between') ||
+                message.includes('условные') || message.includes('conditional')) {
               currentMode = 'grammar';
               console.log(`🎯 [${chatId}] Error fallback: detected GRAMMAR mode from message content`);
+            } else {
+              currentMode = 'translation';
+              console.log(`🔄 [${chatId}] Error fallback: using default TRANSLATION mode`);
             }
           }
           
@@ -1015,25 +1006,23 @@ As soon as we open audio lessons — we'll send an invitation.`
             parse_mode: 'Markdown'
           });
           
-          // Сохраняем выбранный режим в KV storage
+          // Сохраняем выбранный режим в Supabase через Lambda
           try {
-            console.log(`🔍 [${chatId}] Checking USER_MODES KV availability...`);
-            console.log(`🔍 [${chatId}] env.USER_MODES exists:`, !!env.USER_MODES);
+            console.log(`💾 [${chatId}] Saving AI mode '${mode}' to Supabase...`);
             
-            if (env.USER_MODES) {
-              const userModeKey = `ai_mode:${chatId}`;
-              await env.USER_MODES.put(userModeKey, mode, { expirationTtl: 86400 }); // 24 часа
-              console.log(`✅ [${chatId}] AI mode saved to USER_MODES KV: ${mode}`);
-              
-              // Проверяем, что сохранилось
-              const checkSaved = await env.USER_MODES.get(userModeKey);
-              console.log(`🔍 [${chatId}] Verification - saved mode:`, checkSaved);
+            const saveResponse = await callLambdaFunction('onboarding', {
+              user_id: chatId,
+              action: 'set_ai_mode',
+              mode: mode
+            }, env);
+            
+            if (saveResponse && saveResponse.success) {
+              console.log(`✅ [${chatId}] AI mode '${mode}' saved to Supabase successfully`);
             } else {
-              console.log(`⚠️ [${chatId}] USER_MODES KV not available in env, mode not saved: ${mode}`);
-              console.log(`🔍 [${chatId}] Available env keys:`, Object.keys(env));
+              console.error(`❌ [${chatId}] Failed to save AI mode to Supabase:`, saveResponse);
             }
           } catch (error) {
-            console.error(`❌ [${chatId}] Error saving AI mode to KV:`, error);
+            console.error(`❌ [${chatId}] Error saving AI mode to Supabase:`, error);
           }
           
         } catch (error) {

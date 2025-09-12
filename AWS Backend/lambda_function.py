@@ -356,16 +356,79 @@ def lambda_handler(event, context):
         try:
             print(f"Setting AI mode '{mode}' for user {user_id}")
             
-            # В будущем можно сохранять режим в базе данных
-            # Пока просто возвращаем успешный ответ
-            return success_response({
-                'mode_set': mode,
-                'message': f'AI mode set to {mode}'
-            })
+            # Сохраняем режим в Supabase
+            update_data = {'ai_mode': mode}
+            data_json = json.dumps(update_data)
+            
+            req = urllib.request.Request(
+                f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}",
+                data=data_json.encode('utf-8'),
+                headers={
+                    'apikey': supabase_key,
+                    'Authorization': f'Bearer {supabase_key}',
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal'
+                },
+                method='PATCH'
+            )
+            
+            with urllib.request.urlopen(req) as response:
+                print(f"AI mode '{mode}' saved to Supabase for user {user_id}")
+                return success_response({
+                    'mode_set': mode,
+                    'message': f'AI mode set to {mode}'
+                })
                 
         except Exception as e:
             print(f"Error setting AI mode: {e}")
             return error_response(f'Failed to set AI mode: {str(e)}')
+    
+    # New action 'get_ai_mode' - get mode from Supabase
+    if 'action' in body and body['action'] == 'get_ai_mode':
+        user_id = body.get('user_id')
+
+        if not user_id:
+            return error_response('user_id is required')
+
+        try:
+            print(f"Getting AI mode for user {user_id}")
+            
+            # Получаем режим из Supabase
+            req = urllib.request.Request(
+                f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=ai_mode",
+                headers={
+                    'apikey': supabase_key,
+                    'Authorization': f'Bearer {supabase_key}',
+                    'Content-Type': 'application/json'
+                }
+            )
+            
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                if response_text:
+                    users = json.loads(response_text)
+                    if users:
+                        ai_mode = users[0].get('ai_mode', 'translation')
+                        print(f"Retrieved AI mode '{ai_mode}' for user {user_id}")
+                        return success_response({
+                            'ai_mode': ai_mode
+                        })
+                    else:
+                        print(f"User {user_id} not found, returning default mode")
+                        return success_response({
+                            'ai_mode': 'translation'
+                        })
+                else:
+                    print(f"Empty response from Supabase for user {user_id}")
+                    return success_response({
+                        'ai_mode': 'translation'
+                    })
+
+        except Exception as e:
+            print(f"Error getting AI mode: {e}")
+            return success_response({
+                'ai_mode': 'translation'  # Fallback to default
+            })
     
     return {
         'statusCode': 200,
