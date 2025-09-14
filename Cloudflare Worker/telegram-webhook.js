@@ -596,8 +596,17 @@ if (update.message?.text === '/feedback') {
             
             if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
-              await sendMessageViaTelegram(chatId, reply, env, {
-                parse_mode: 'Markdown',
+              let processedReply = reply;
+              let parseMode = 'Markdown';
+              
+              // Если есть спойлеры, используем MarkdownV2 с экранированием
+              if (reply.includes('||')) {
+                processedReply = escapeMarkdownV2(reply);
+                parseMode = 'MarkdownV2';
+              }
+              
+              await sendMessageViaTelegram(chatId, processedReply, env, {
+                parse_mode: parseMode,
                 reply_markup: {
                   inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                 }
@@ -631,16 +640,25 @@ if (update.message?.text === '/feedback') {
               // Отправляем части
               for (let i = 0; i < parts.length; i++) {
                 const isLast = i === parts.length - 1;
+                let processedPart = parts[i];
+                let parseMode = 'Markdown';
+                
+                // Если есть спойлеры в этой части, используем MarkdownV2 с экранированием
+                if (parts[i].includes('||')) {
+                  processedPart = escapeMarkdownV2(parts[i]);
+                  parseMode = 'MarkdownV2';
+                }
+                
                 const options = isLast ? {
-                  parse_mode: 'Markdown',
+                  parse_mode: parseMode,
                   reply_markup: {
                     inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                   }
                 } : {
-                  parse_mode: 'Markdown'
+                  parse_mode: parseMode
                 };
                 
-                await sendMessageViaTelegram(chatId, parts[i], env, options);
+                await sendMessageViaTelegram(chatId, processedPart, env, options);
                 
                 // Небольшая задержка между сообщениями
                 if (!isLast) {
@@ -1866,6 +1884,12 @@ async function sendTributeChannelLink(chatId, env) {
 
 // KV prefix for transient test state
 const STATE_PREFIX = 'state:';
+
+/* ──── helper: escape MarkdownV2 special characters ──── */
+function escapeMarkdownV2(text) {
+  // Экранируем все спецсимволы кроме * (жирный) и || (спойлер)
+  return text.replace(/([_\[\]()~`>#+=|{}.!-])/g, '\\$1');
+}
 
 /* ──── helper: send a text via Telegram Bot API ──── */
 async function sendMessageViaTelegram(chatId, text, env, options = null) {
