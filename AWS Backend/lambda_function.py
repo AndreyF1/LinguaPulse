@@ -689,28 +689,28 @@ Be concise, clear, and practical.
 
 If the user provides their own sentence → first confirm/correct it, then explain why.
 
-Structure of full answer (use HTML formatting for Telegram):
+Structure of full answer (use Markdown formatting for Telegram):
 
-<b>Rule</b>
+**Rule**
 1–2 lines
 
-<b>Form/Structure</b>
+**Form/Structure**
 patterns, word order, common collocations
 
-<b>Use & Contrast</b>
+**Use & Contrast**
 when to use, difference from related forms
 
-<b>Examples</b>
+**Examples**
 5–7 with ✅/❌ if relevant
 
-<b>Common mistakes & tips</b>
+**Common mistakes & tips**
 
-<b>Mini-practice (3 items)</b>
+**Mini-practice (3 items)**
 
-<b>Answer key</b>
-1. <tg-spoiler>answer</tg-spoiler>
-2. <tg-spoiler>answer</tg-spoiler>
-3. <tg-spoiler>answer</tg-spoiler>""",
+**Answer key**
+1. answer
+2. answer  
+3. answer""",
             
             'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
             
