@@ -596,11 +596,8 @@ if (update.message?.text === '/feedback') {
             
             if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
-              // Определяем parse_mode в зависимости от содержимого
-              const parseMode = reply.includes('||') ? 'MarkdownV2' : 'Markdown';
-              
               await sendMessageViaTelegram(chatId, reply, env, {
-                parse_mode: parseMode,
+                parse_mode: 'Markdown',
                 reply_markup: {
                   inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                 }
@@ -634,16 +631,13 @@ if (update.message?.text === '/feedback') {
               // Отправляем части
               for (let i = 0; i < parts.length; i++) {
                 const isLast = i === parts.length - 1;
-                // Определяем parse_mode для каждой части
-                const parseMode = parts[i].includes('||') ? 'MarkdownV2' : 'Markdown';
-                
                 const options = isLast ? {
-                  parse_mode: parseMode,
+                  parse_mode: 'Markdown',
                   reply_markup: {
                     inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                   }
                 } : {
-                  parse_mode: parseMode
+                  parse_mode: 'Markdown'
                 };
                 
                 await sendMessageViaTelegram(chatId, parts[i], env, options);
