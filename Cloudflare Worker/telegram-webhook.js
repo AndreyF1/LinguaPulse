@@ -355,7 +355,7 @@ if (update.message?.text === '/feedback') {
           } else {
             // Пользователь не существует - показываем выбор языка
             console.log(`🆕 [${chatId}] New user, showing language selection`);
-            await sendMessageViaTelegram(chatId, 
+                  await sendMessageViaTelegram(chatId,
               "👋 Добро пожаловать в LinguaPulse! Давайте настроим ваш профиль.\n\nВыберите язык интерфейса:", 
               env,
               {
@@ -369,12 +369,12 @@ if (update.message?.text === '/feedback') {
                 }
               }
             );
-            return new Response('OK');
-          }
+                  return new Response('OK');
+                }
         } catch (lambdaError) {
           console.error(`❌ [${chatId}] Lambda check failed:`, lambdaError);
           // Fallback - показываем выбор языка
-          await sendMessageViaTelegram(chatId, 
+              await sendMessageViaTelegram(chatId, 
             "👋 Добро пожаловать в LinguaPulse! Давайте настроим ваш профиль.\n\nВыберите язык интерфейса:", 
             env,
             {
@@ -652,13 +652,13 @@ if (update.message?.text === '/feedback') {
           
         } catch (error) {
           console.error(`❌ [${chatId}] Error processing text message:`, error);
-          await sendMessageViaTelegram(chatId, 
+            await sendMessageViaTelegram(chatId, 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-        return new Response('OK');
-      }
-
+            return new Response('OK');
+          }
+          
       // 1.5. handle language selection and survey callbacks
       if (update.callback_query?.data?.startsWith('language:') ||
           update.callback_query?.data?.startsWith('survey:')) {
@@ -721,11 +721,11 @@ if (update.message?.text === '/feedback') {
                   reply_markup: { inline_keyboard: keyboard }
                 });
               } else {
-                await sendMessageViaTelegram(chatId, 
+                await sendMessageViaTelegram(chatId,
                   "❌ Произошла ошибка при загрузке опросника. Попробуйте еще раз.", env);
               }
-            } else {
-              await sendMessageViaTelegram(chatId, 
+              } else {
+                await sendMessageViaTelegram(chatId,
                 "❌ Произошла ошибка при создании профиля. Попробуйте еще раз.", env);
             }
             
@@ -748,8 +748,8 @@ if (update.message?.text === '/feedback') {
               const callbackParts = update.callback_query.data.split(':');
               if (callbackParts.length > 3) {
                 interfaceLanguage = callbackParts[3];
-              }
-            } else {
+            }
+          } else {
               // Последующие вопросы - извлекаем из callback data
               const callbackParts = update.callback_query.data.split(':');
               if (callbackParts.length > 3) {
@@ -784,7 +784,7 @@ if (update.message?.text === '/feedback') {
                 
                 // Состояние не сохраняем - маркетинговые вопросы
               } else {
-                await sendMessageViaTelegram(chatId, 
+          await sendMessageViaTelegram(chatId, 
                   "❌ Произошла ошибка при загрузке следующего вопроса. Попробуйте еще раз.", env);
               }
             } else {
@@ -849,9 +849,9 @@ The first users who sign up for the list will get a series of audio lessons for 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-        return new Response('OK');
-      }
-
+          return new Response('OK');
+        }
+        
       // 1.6. Handle audio practice waitlist and text helper buttons
       if (update.callback_query?.data === 'audio_practice:signup' || 
           update.callback_query?.data === 'text_helper:start') {
