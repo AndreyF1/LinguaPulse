@@ -596,8 +596,8 @@ if (update.message?.text === '/feedback') {
             
             if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
+              // ВРЕМЕННЫЙ ТЕСТ - отправляем БЕЗ parse_mode
               await sendMessageViaTelegram(chatId, reply, env, {
-                parse_mode: 'HTML',
                 reply_markup: {
                   inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                 }
@@ -631,14 +631,12 @@ if (update.message?.text === '/feedback') {
               // Отправляем части
               for (let i = 0; i < parts.length; i++) {
                 const isLast = i === parts.length - 1;
+                // ВРЕМЕННЫЙ ТЕСТ - БЕЗ parse_mode
                 const options = isLast ? {
-                  parse_mode: 'HTML',
                   reply_markup: {
                     inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                   }
-                } : {
-                  parse_mode: 'HTML'
-                };
+                } : {};
                 
                 await sendMessageViaTelegram(chatId, parts[i], env, options);
                 
@@ -1897,6 +1895,7 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
     }
     
     console.log(`[DEBUG] Final payload for Telegram API:`, JSON.stringify(payload).substring(0, 400));
+    console.log(`[DEBUG] parse_mode in payload:`, payload.parse_mode);
     
     const response = await callTelegram('sendMessage', payload, env);
     
