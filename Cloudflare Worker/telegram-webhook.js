@@ -515,6 +515,28 @@ if (update.message?.text === '/feedback') {
       }
 
       // Handle regular text messages - OpenAI integration for text helper
+      // ТЕСТ СПОЙЛЕРОВ - отправляем тестовое сообщение
+      if (update.message?.text === 'тест спойлер') {
+        console.log(`🧪 [${chatId}] Testing spoilers with different modes`);
+        
+        // Тест 1: HTML
+        await sendMessageViaTelegram(chatId, '🧪 HTML тест: <tg-spoiler>это спойлер</tg-spoiler>', env, {
+          parse_mode: 'HTML'
+        });
+        
+        // Тест 2: MarkdownV2
+        await sendMessageViaTelegram(chatId, '🧪 MarkdownV2 тест: ||это спойлер||', env, {
+          parse_mode: 'MarkdownV2'
+        });
+        
+        // Тест 3: Markdown
+        await sendMessageViaTelegram(chatId, '🧪 Markdown тест: ||это спойлер||', env, {
+          parse_mode: 'Markdown'
+        });
+        
+        return new Response('OK - spoiler tests sent');
+      }
+
       if (update.message?.text && !update.message.text.startsWith('/')) {
         console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
         
