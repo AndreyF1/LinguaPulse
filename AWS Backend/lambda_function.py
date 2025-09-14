@@ -691,23 +691,23 @@ If the user provides their own sentence → first confirm/correct it, then expla
 
 Structure of full answer:
 
-**Rule**
+🔹 Rule
 1–2 lines
 
-**Form/Structure**
+🔹 Form/Structure
 patterns, word order, common collocations
 
-**Use & Contrast**
+🔹 Use & Contrast
 when to use, difference from related forms
 
-**Examples**
+🔹 Examples
 5–7 with ✅/❌ if relevant
 
-**Common mistakes & tips**
+🔹 Common mistakes & tips
 
-**Mini-practice (3 items)**
+🔹 Mini-practice (3 items)
 
-**Answer key**
+🔹 Answer key
 (provide answers directly, no spoilers for now)""",
             
             'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
