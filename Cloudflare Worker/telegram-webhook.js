@@ -515,27 +515,6 @@ if (update.message?.text === '/feedback') {
       }
 
       // Handle regular text messages - OpenAI integration for text helper
-      // ТЕСТ СПОЙЛЕРОВ - отправляем тестовое сообщение
-      if (update.message?.text === 'тест спойлер') {
-        console.log(`🧪 [${chatId}] Testing spoilers with different modes`);
-        
-        // Тест 1: HTML
-        await sendMessageViaTelegram(chatId, '🧪 HTML тест: <tg-spoiler>это спойлер</tg-spoiler>', env, {
-          parse_mode: 'HTML'
-        });
-        
-        // Тест 2: MarkdownV2
-        await sendMessageViaTelegram(chatId, '🧪 MarkdownV2 тест: ||это спойлер||', env, {
-          parse_mode: 'MarkdownV2'
-        });
-        
-        // Тест 3: Markdown
-        await sendMessageViaTelegram(chatId, '🧪 Markdown тест: ||это спойлер||', env, {
-          parse_mode: 'Markdown'
-        });
-        
-        return new Response('OK - spoiler tests sent');
-      }
 
       if (update.message?.text && !update.message.text.startsWith('/')) {
         console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
@@ -621,7 +600,7 @@ if (update.message?.text === '/feedback') {
               let processedReply = reply;
               let parseMode = 'Markdown';
               
-              // Если есть спойлеры, используем HTML (проще и надежнее)
+              // Если есть спойлеры, используем HTML (проверенно работает!)
               if (reply.includes('||')) {
                 console.log(`🔒 [${chatId}] Found spoilers! Converting to HTML`);
                 // Конвертируем ||spoiler|| в <tg-spoiler>spoiler</tg-spoiler>
@@ -629,9 +608,7 @@ if (update.message?.text === '/feedback') {
                 // Конвертируем *bold* в <b>bold</b>  
                 processedReply = processedReply.replace(/\*([^*]+)\*/g, '<b>$1</b>');
                 parseMode = 'HTML';
-                // ТЕСТ: добавляем тестовый спойлер
-                processedReply = processedReply + '\n\n🧪 ТЕСТ: <tg-spoiler>это спойлер</tg-spoiler>';
-                console.log(`🔒 [${chatId}] Converted to HTML:`, processedReply.substring(0, 200));
+                console.log(`🔒 [${chatId}] Converted to HTML - spoilers should work!`);
               } else {
                 console.log(`📝 [${chatId}] No spoilers found, using Markdown`);
               }
