@@ -691,27 +691,19 @@ If the user provides their own sentence → first confirm/correct it, then expla
 
 Structure of full answer:
 
-Rule: 1–2 lines
+*Rule:* 1–2 lines
 
-Form/Structure: patterns, word order, common collocations
+*Form/Structure:* patterns, word order, common collocations
 
-Use & Contrast: when to use, difference from related forms
+*Use & Contrast:* when to use, difference from related forms
 
-Examples: 5–7 with ✅/❌ if relevant
+*Examples:* 5–7 with ✅/❌ if relevant
 
-Common mistakes & tips
+*Common mistakes & tips*
 
-Mini-practice (3 items)
+*Mini-practice (3 items)*
 
-Answer key → always hidden in Telegram spoiler syntax ||…||
-
-Formatting:
-
-Use *bold* for section headers.
-
-Use _italic_ if needed.
-
-Use ||spoiler|| to hide answers in mini-practice.""",
+*Answer key:* (provide answers directly, no spoilers for now)""",
             
             'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
             
