@@ -570,13 +570,35 @@ if (update.message?.text === '/feedback') {
             }
           }
           
+          // Для текстового диалога - отслеживаем количество сообщений
+          let dialogCount = 0;
+          if (currentMode === 'text_dialog') {
+            try {
+              const countStr = await env.CHAT_KV.get(`dialog_count:${chatId}`);
+              dialogCount = countStr ? parseInt(countStr) : 0;
+              dialogCount++;
+              
+              // Сохраняем новый счетчик (истекает через 1 час)
+              await env.CHAT_KV.put(`dialog_count:${chatId}`, dialogCount.toString(), { expirationTtl: 3600 });
+              console.log(`💬 [${chatId}] Dialog message count: ${dialogCount}/20`);
+              
+              // Если достигли лимита, переключаем на завершение диалога
+              if (dialogCount >= 20) {
+                console.log(`🏁 [${chatId}] Dialog limit reached, forcing goodbye`);
+              }
+            } catch (error) {
+              console.error(`❌ [${chatId}] Error managing dialog count:`, error);
+            }
+          }
+          
           // Отправляем сообщение в Lambda для обработки через OpenAI
           console.log(`🔄 [LAMBDA] Processing text message for user ${chatId} in mode: ${currentMode}`);
           const aiResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
             action: 'process_text_message',
             message: update.message.text,
-            mode: currentMode
+            mode: currentMode,
+            dialog_count: dialogCount // Передаём счётчик для text_dialog режима
           }, env);
           
           if (aiResponse && aiResponse.success) {
@@ -991,6 +1013,16 @@ As soon as we open audio lessons — we'll send an invitation.`
           const mode = update.callback_query.data.split(':')[1]; // Извлекаем режим из callback_data
           console.log(`🎯 [${chatId}] Selected AI mode: ${mode}`);
           
+          // Если выбран текстовый диалог - сбрасываем счётчик
+          if (mode === 'text_dialog') {
+            try {
+              await env.CHAT_KV.delete(`dialog_count:${chatId}`);
+              console.log(`🔄 [${chatId}] Dialog counter reset for new conversation`);
+            } catch (error) {
+              console.error(`❌ [${chatId}] Error resetting dialog counter:`, error);
+            }
+          }
+          
           // Получаем язык интерфейса пользователя
           const userResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
@@ -1016,8 +1048,8 @@ As soon as we open audio lessons — we'll send an invitation.`
               break;
             case 'text_dialog':
               instructionMessage = userLang === 'en' 
-                ? `💬 **Text Dialog Mode**\n\nLet's have a conversation in English! I'll help you practice while chatting naturally.`
-                : `💬 **Режим текстового диалога**\n\nДавай поговорим на английском! Я помогу тебе практиковаться в естественном общении.`;
+                ? `💬 **Text Dialog Mode**\n\nLet's have a natural conversation in English! I'll:\n• Give feedback on your grammar and vocabulary\n• Ask follow-up questions to keep the chat flowing\n• Provide Russian translations in spoilers\n• End the conversation after 20 exchanges\n\nJust start chatting about anything you like!`
+                : `💬 **Режим текстового диалога**\n\nДавай поговорим на английском естественно! Я буду:\n• Давать обратную связь по грамматике и лексике\n• Задавать вопросы для поддержания беседы\n• Предоставлять переводы на русский в спойлерах\n• Завершать разговор через 20 сообщений\n\nПросто начни говорить о чём угодно!`;
               break;
             case 'audio_dialog':
               instructionMessage = userLang === 'en' 

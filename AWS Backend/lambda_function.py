@@ -313,6 +313,7 @@ def lambda_handler(event, context):
         user_id = body.get('user_id')
         message = body.get('message')
         mode = body.get('mode', 'general')  # Получаем режим, по умолчанию 'general'
+        dialog_count = body.get('dialog_count', 0)  # Счётчик для текстового диалога
         
         if not user_id or not message:
             return error_response('user_id and message are required')
@@ -328,8 +329,8 @@ def lambda_handler(event, context):
                     'reply': user_check_response['message']
                 })
             
-            # Получаем ответ от OpenAI с указанным режимом
-            openai_response = get_openai_response(message, mode)
+            # Получаем ответ от OpenAI с указанным режимом (с учётом dialog_count для text_dialog)
+            openai_response = get_openai_response(message, mode, dialog_count)
             
             if openai_response['success']:
                 # Логируем использование
@@ -643,7 +644,7 @@ def check_text_trial_access(user_id, supabase_url, supabase_key):
         print(f"Error checking text trial access: {e}")
         return {'has_access': False, 'message': 'Error checking access. Please try again.'}
 
-def get_openai_response(message, mode='general'):
+def get_openai_response(message, mode='general', dialog_count=0):
     """Получает ответ от OpenAI API с поддержкой разных режимов"""
     try:        
         # OpenAI API endpoint
@@ -716,7 +717,43 @@ when to use, difference from related forms
 
 IMPORTANT: Use single asterisks *word* for bold, not double **word** which may break Telegram parsing""",
             
-            'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
+            'text_dialog': """You are a friendly English conversation partner for structured dialog practice.
+
+CORE RULES:
+1. ALWAYS respond in English only
+2. ALWAYS add Russian translation in spoiler: ||Русский перевод||
+3. Maintain natural conversation flow - ask follow-up questions
+4. Give brief grammar/vocabulary feedback on user's message before responding
+5. Keep conversation engaging and educational
+
+RESPONSE STRUCTURE:
+*Feedback:* Brief comment on user's grammar/vocabulary (if needed)
+[Your English response with natural flow]
+||[Russian translation of your response]||
+
+FEEDBACK GUIDELINES:
+- If user makes grammar errors → gently suggest better version
+- If user uses good vocabulary → praise it
+- If user's message is perfect → mention what they did well
+- Keep feedback encouraging and constructive
+
+CONVERSATION FLOW:
+- Ask follow-up questions to keep dialog going
+- Show genuine interest in user's responses  
+- Introduce new vocabulary naturally
+- Vary topics: hobbies, travel, food, work, dreams, etc.
+
+DIALOG MANAGEMENT:
+- Track conversation naturally (you'll receive conversation history)
+- After 18-19 exchanges, prepare to wrap up politely
+- On 20th exchange, thank user and say goodbye gracefully
+
+Example response:
+*Feedback:* Great use of past tense! Small tip: "I have been" is more natural than "I was been"
+
+That sounds like an amazing trip! What was your favorite moment during the vacation? Did you try any local food that surprised you?
+
+||Это звучит как потрясающая поездка! Какой момент больше всего запомнился во время отпуска? Пробовали ли вы местную еду, которая вас удивила?||""",
             
             'audio_dialog': "You are an English speaking coach. Focus on pronunciation tips, speaking practice, and conversational skills.",
             
@@ -726,7 +763,17 @@ If the question is not about English, respond: "I can only help with English. Tr
         }
         
         system_prompt = system_prompts.get(mode, system_prompts['general'])
-        print(f"Using AI mode: {mode}")
+        
+        # Для текстового диалога добавляем информацию о счётчике
+        if mode == 'text_dialog' and dialog_count > 0:
+            if dialog_count >= 20:
+                system_prompt += f"\n\nIMPORTANT: This is message #{dialog_count}. You MUST end the conversation politely. Thank the user for the great practice and say goodbye warmly."
+            elif dialog_count >= 18:
+                system_prompt += f"\n\nNOTE: This is message #{dialog_count}/20. Start preparing to wrap up the conversation in 1-2 more exchanges."
+            else:
+                system_prompt += f"\n\nDialog progress: {dialog_count}/20 messages"
+        
+        print(f"Using AI mode: {mode}, dialog_count: {dialog_count}")
         
         # Подготавливаем данные для API
         data = {
