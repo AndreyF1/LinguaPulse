@@ -708,7 +708,7 @@ when to use, difference from related forms
 🔹 Mini-practice (3 items)
 
 🔹 Answer key
-Use spoiler syntax: write each answer as ||answer|| (this creates clickable spoilers in Telegram even without parse_mode)""",
+Use HTML spoiler syntax: write each answer as <tg-spoiler>answer</tg-spoiler> (this creates clickable spoilers in Telegram)""",
             
             'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
             

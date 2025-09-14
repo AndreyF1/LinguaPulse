@@ -602,9 +602,9 @@ if (update.message?.text === '/feedback') {
                 }
               };
               
-              // Добавляем parse_mode только если есть спойлеры
-              if (reply.includes('||')) {
-                options.parse_mode = 'MarkdownV2';
+              // Добавляем parse_mode только если есть HTML спойлеры
+              if (reply.includes('<tg-spoiler>')) {
+                options.parse_mode = 'HTML';
               }
               
               await sendMessageViaTelegram(chatId, reply, env, options);
@@ -643,9 +643,9 @@ if (update.message?.text === '/feedback') {
                   }
                 } : {};
                 
-                // Добавляем parse_mode только если в этой части есть спойлеры
-                if (parts[i].includes('||')) {
-                  options.parse_mode = 'MarkdownV2';
+                // Добавляем parse_mode только если в этой части есть HTML спойлеры
+                if (parts[i].includes('<tg-spoiler>')) {
+                  options.parse_mode = 'HTML';
                 }
                 
                 await sendMessageViaTelegram(chatId, parts[i], env, options);
