@@ -403,15 +403,15 @@ if (update.message?.text === '/feedback') {
           const messageId = update.message.message_id;
           const processingKey = `processing_msg:${chatId}:${messageId}`;
           
-          if (env.CHAT_KV) {
-            const alreadyProcessed = await env.CHAT_KV.get(processingKey);
+          if (env.USER_MODES) {
+            const alreadyProcessed = await env.USER_MODES.get(processingKey);
             if (alreadyProcessed) {
               console.log(`❌ Message ${messageId} already processed, skipping duplicate`);
               return new Response('OK - duplicate message skipped');
             }
             
             // Mark message as being processed (expire in 5 minutes)
-            await env.CHAT_KV.put(processingKey, Date.now().toString(), { expirationTtl: 300 });
+            await env.USER_MODES.put(processingKey, Date.now().toString(), { expirationTtl: 300 });
             console.log(`✅ Message ${messageId} marked as processing`);
           }
           
@@ -420,10 +420,10 @@ if (update.message?.text === '/feedback') {
           // FIRST: Check for active lesson sessions
           console.log(`=== CHECKING ACTIVE SESSIONS ===`);
           
-          if (env.CHAT_KV) {
+          if (env.USER_MODES) {
             // Check lesson0 session
-            const lesson0Session = await env.CHAT_KV.get(`session:${chatId}`);
-            const lesson0History = await env.CHAT_KV.get(`hist:${chatId}`);
+            const lesson0Session = await env.USER_MODES.get(`session:${chatId}`);
+            const lesson0History = await env.USER_MODES.get(`hist:${chatId}`);
             
             console.log(`Lesson0 session exists: ${!!lesson0Session}`);
             console.log(`Lesson0 history exists: ${!!lesson0History}`);
@@ -434,8 +434,8 @@ if (update.message?.text === '/feedback') {
             }
             
             // Check main_lesson session
-            const mainLessonSession = await env.CHAT_KV.get(`main_session:${chatId}`);
-            const mainLessonHistory = await env.CHAT_KV.get(`main_hist:${chatId}`);
+            const mainLessonSession = await env.USER_MODES.get(`main_session:${chatId}`);
+            const mainLessonHistory = await env.USER_MODES.get(`main_hist:${chatId}`);
             
             console.log(`Main lesson session exists: ${!!mainLessonSession}`);
             console.log(`Main lesson history exists: ${!!mainLessonHistory}`);
@@ -574,12 +574,12 @@ if (update.message?.text === '/feedback') {
           let dialogCount = 0;
           if (currentMode === 'text_dialog') {
             try {
-              const countStr = await env.CHAT_KV.get(`dialog_count:${chatId}`);
+              const countStr = await env.USER_MODES.get(`dialog_count:${chatId}`);
               dialogCount = countStr ? parseInt(countStr) : 0;
               dialogCount++;
               
               // Сохраняем новый счетчик (истекает через 1 час)
-              await env.CHAT_KV.put(`dialog_count:${chatId}`, dialogCount.toString(), { expirationTtl: 3600 });
+              await env.USER_MODES.put(`dialog_count:${chatId}`, dialogCount.toString(), { expirationTtl: 3600 });
               console.log(`💬 [${chatId}] Dialog message count: ${dialogCount}/20`);
               
               // Если достигли лимита, переключаем на завершение диалога
@@ -1051,7 +1051,7 @@ As soon as we open audio lessons — we'll send an invitation.`
           // Если выбран текстовый диалог - сбрасываем счётчик
           if (mode === 'text_dialog') {
             try {
-              await env.CHAT_KV.delete(`dialog_count:${chatId}`);
+              await env.USER_MODES.delete(`dialog_count:${chatId}`);
               console.log(`🔄 [${chatId}] Dialog counter reset for new conversation`);
             } catch (error) {
               console.error(`❌ [${chatId}] Error resetting dialog counter:`, error);
@@ -1182,7 +1182,7 @@ As soon as we open audio lessons — we'll send an invitation.`
           const lessonStartLockKey = `lesson_start_lock:${chatId}`;
           
           // Check if we have KV storage available for the lock
-          let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
+          let kvStorage = env.USER_MODES || env.USER_PROFILE || env.TEST_KV;
           if (!kvStorage) {
             console.error(`❌ [${chatId}] No KV storage available for duplication protection`);
             // Continue without lock as fallback

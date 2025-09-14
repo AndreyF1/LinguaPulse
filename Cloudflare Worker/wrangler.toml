@@ -8,6 +8,11 @@ keep_vars = true
   [observability.logs]
   enabled = true
 
+# KV Storage for production
+[[kv_namespaces]]
+binding = "USER_MODES"
+id = "4d1820c5855d404683d2c6e8c9142647"
+
 # Secret Variables (set via Cloudflare Dashboard or wrangler secret put):
 # - BOT_TOKEN: Telegram bot token
 # - ONBOARDING_URL: AWS Lambda Function URL for onboarding
