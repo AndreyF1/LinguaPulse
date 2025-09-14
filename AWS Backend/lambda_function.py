@@ -708,7 +708,11 @@ when to use, difference from related forms
 🔹 Mini-practice (3 items)
 
 🔹 Answer key
-Use HTML spoiler syntax: write each answer as <tg-spoiler>answer</tg-spoiler> (this creates clickable spoilers in Telegram)""",
+1. [Click to reveal]
+2. [Click to reveal] 
+3. [Click to reveal]
+
+(Answers: provide them clearly below the questions, no spoilers - just plain text answers)""",
             
             'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
             
