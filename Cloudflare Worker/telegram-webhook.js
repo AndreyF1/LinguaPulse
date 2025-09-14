@@ -596,11 +596,18 @@ if (update.message?.text === '/feedback') {
             
             if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
-              await sendMessageViaTelegram(chatId, reply, env, {
+              const options = {
                 reply_markup: {
                   inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                 }
-              });
+              };
+              
+              // Добавляем parse_mode только если есть спойлеры
+              if (reply.includes('||')) {
+                options.parse_mode = 'MarkdownV2';
+              }
+              
+              await sendMessageViaTelegram(chatId, reply, env, options);
             } else {
               // Длинное сообщение - разбиваем на части
               console.log(`📏 [${chatId}] Long message (${reply.length} chars), splitting...`);
@@ -635,6 +642,11 @@ if (update.message?.text === '/feedback') {
                     inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
                   }
                 } : {};
+                
+                // Добавляем parse_mode только если в этой части есть спойлеры
+                if (parts[i].includes('||')) {
+                  options.parse_mode = 'MarkdownV2';
+                }
                 
                 await sendMessageViaTelegram(chatId, parts[i], env, options);
                 
