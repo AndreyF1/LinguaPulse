@@ -603,6 +603,8 @@ if (update.message?.text === '/feedback') {
               if (reply.includes('||')) {
                 console.log(`🔒 [${chatId}] Found spoilers! Using MarkdownV2`);
                 parseMode = 'MarkdownV2';
+                // ТЕСТ: добавляем тестовый спойлер для проверки
+                processedReply = reply + '\n\n🧪 ТЕСТ: ||это спойлер||';
                 console.log(`🔒 [${chatId}] Using parse_mode: ${parseMode}`);
               } else {
                 console.log(`📝 [${chatId}] No spoilers found, using Markdown`);
