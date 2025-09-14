@@ -599,15 +599,17 @@ if (update.message?.text === '/feedback') {
               let processedReply = reply;
               let parseMode = 'Markdown';
               
-              // Если есть спойлеры, используем MarkdownV2 с правильным экранированием
+              // Если есть спойлеры, используем HTML (проще и надежнее)
               if (reply.includes('||')) {
-                console.log(`🔒 [${chatId}] Found spoilers! Using MarkdownV2 with escaping`);
-                parseMode = 'MarkdownV2';
-                // Экранируем проблемные символы для MarkdownV2 (кроме * и |)
-                processedReply = reply.replace(/([_\[\]()~`>#+={}\.!-])/g, '\\$1');
+                console.log(`🔒 [${chatId}] Found spoilers! Converting to HTML`);
+                // Конвертируем ||spoiler|| в <tg-spoiler>spoiler</tg-spoiler>
+                processedReply = reply.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+                // Конвертируем *bold* в <b>bold</b>  
+                processedReply = processedReply.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+                parseMode = 'HTML';
                 // ТЕСТ: добавляем тестовый спойлер
-                processedReply = processedReply + '\n\n🧪 ТЕСТ: ||это спойлер||';
-                console.log(`🔒 [${chatId}] Escaped text:`, processedReply.substring(0, 200));
+                processedReply = processedReply + '\n\n🧪 ТЕСТ: <tg-spoiler>это спойлер</tg-spoiler>';
+                console.log(`🔒 [${chatId}] Converted to HTML:`, processedReply.substring(0, 200));
               } else {
                 console.log(`📝 [${chatId}] No spoilers found, using Markdown`);
               }
@@ -650,9 +652,11 @@ if (update.message?.text === '/feedback') {
                 let processedPart = parts[i];
                 let parseMode = 'Markdown';
                 
-                // Если есть спойлеры в этой части, используем MarkdownV2
+                // Если есть спойлеры в этой части, конвертируем в HTML
                 if (parts[i].includes('||')) {
-                  parseMode = 'MarkdownV2';
+                  processedPart = parts[i].replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+                  processedPart = processedPart.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+                  parseMode = 'HTML';
                 }
                 
                 const options = isLast ? {
