@@ -689,28 +689,30 @@ Be concise, clear, and practical.
 
 If the user provides their own sentence → first confirm/correct it, then explain why.
 
-Structure of full answer (use Markdown formatting for Telegram):
+Structure of full answer:
 
-**Rule**
+*Rule*
 1–2 lines
 
-**Form/Structure**
+*Form/Structure*
 patterns, word order, common collocations
 
-**Use & Contrast**
+*Use & Contrast*
 when to use, difference from related forms
 
-**Examples**
+*Examples*
 5–7 with ✅/❌ if relevant
 
-**Common mistakes & tips**
+*Common mistakes & tips*
 
-**Mini-practice (3 items)**
+*Mini-practice (3 items)*
 
-**Answer key**
+*Answer key*
 1. answer
 2. answer  
-3. answer""",
+3. answer
+
+IMPORTANT: Use single asterisks *word* for bold, not double **word** which may break Telegram parsing""",
             
             'text_dialog': "You are a friendly English conversation partner. Engage in natural dialogue while helping improve English skills. Correct mistakes gently and naturally.",
             
