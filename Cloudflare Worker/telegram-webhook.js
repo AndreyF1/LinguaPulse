@@ -599,13 +599,15 @@ if (update.message?.text === '/feedback') {
               let processedReply = reply;
               let parseMode = 'Markdown';
               
-              // Если есть спойлеры, используем MarkdownV2 (поддерживает ||spoiler||)
+              // Если есть спойлеры, используем MarkdownV2 с правильным экранированием
               if (reply.includes('||')) {
-                console.log(`🔒 [${chatId}] Found spoilers! Using MarkdownV2`);
+                console.log(`🔒 [${chatId}] Found spoilers! Using MarkdownV2 with escaping`);
                 parseMode = 'MarkdownV2';
-                // ТЕСТ: добавляем тестовый спойлер для проверки
-                processedReply = reply + '\n\n🧪 ТЕСТ: ||это спойлер||';
-                console.log(`🔒 [${chatId}] Using parse_mode: ${parseMode}`);
+                // Экранируем проблемные символы для MarkdownV2 (кроме * и |)
+                processedReply = reply.replace(/([_\[\]()~`>#+={}\.!-])/g, '\\$1');
+                // ТЕСТ: добавляем тестовый спойлер
+                processedReply = processedReply + '\n\n🧪 ТЕСТ: ||это спойлер||';
+                console.log(`🔒 [${chatId}] Escaped text:`, processedReply.substring(0, 200));
               } else {
                 console.log(`📝 [${chatId}] No spoilers found, using Markdown`);
               }
