@@ -599,10 +599,11 @@ if (update.message?.text === '/feedback') {
               let processedReply = reply;
               let parseMode = 'Markdown';
               
-              // Если есть спойлеры, используем MarkdownV2 с экранированием
+              // Если есть спойлеры, используем HTML (проще чем MarkdownV2)
               if (reply.includes('||')) {
-                processedReply = escapeMarkdownV2(reply);
-                parseMode = 'MarkdownV2';
+                processedReply = reply.replace(/\|\|(.*?)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+                processedReply = processedReply.replace(/\*(.*?)\*/g, '<b>$1</b>');
+                parseMode = 'HTML';
               }
               
               await sendMessageViaTelegram(chatId, processedReply, env, {
@@ -643,10 +644,11 @@ if (update.message?.text === '/feedback') {
                 let processedPart = parts[i];
                 let parseMode = 'Markdown';
                 
-                // Если есть спойлеры в этой части, используем MarkdownV2 с экранированием
+                // Если есть спойлеры в этой части, используем HTML (проще чем MarkdownV2)
                 if (parts[i].includes('||')) {
-                  processedPart = escapeMarkdownV2(parts[i]);
-                  parseMode = 'MarkdownV2';
+                  processedPart = parts[i].replace(/\|\|(.*?)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+                  processedPart = processedPart.replace(/\*(.*?)\*/g, '<b>$1</b>');
+                  parseMode = 'HTML';
                 }
                 
                 const options = isLast ? {
@@ -1887,8 +1889,9 @@ const STATE_PREFIX = 'state:';
 
 /* ──── helper: escape MarkdownV2 special characters ──── */
 function escapeMarkdownV2(text) {
-  // Экранируем все спецсимволы кроме * (жирный) и || (спойлер)
-  return text.replace(/([_\[\]()~`>#+=|{}.!-])/g, '\\$1');
+  // Экранируем только самые проблемные символы для MarkdownV2
+  // НЕ трогаем * (жирный) и | (для спойлеров)
+  return text.replace(/([_\[\]()~`>#+={}\.!-])/g, '\\$1');
 }
 
 /* ──── helper: send a text via Telegram Bot API ──── */
