@@ -595,6 +595,11 @@ if (update.message?.text === '/feedback') {
             const maxLength = 4000; // Оставляем запас для кнопок
             const reply = aiResponse.reply;
             
+            // ОТЛАДКА: проверяем что приходит от ИИ
+            console.log(`🔍 [${chatId}] AI response length: ${reply.length}`);
+            console.log(`🔍 [${chatId}] Contains ||: ${reply.includes('||')}`);
+            console.log(`🔍 [${chatId}] First 300 chars:`, reply.substring(0, 300));
+            
             if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
               let processedReply = reply;
