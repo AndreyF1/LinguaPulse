@@ -1,6 +1,6 @@
 // telegram-webhook/worker.js with Tribute.tg integration
 // Receives every Telegram update on /tg and handles onboarding and lesson routing
-// Force redeploy: fixing Cloudflare API entitlements error
+// Force redeploy: fixing parse_mode Markdown formatting
 
 // Import funnel logging helper
 // const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js'); // Commented out - file doesn't exist
