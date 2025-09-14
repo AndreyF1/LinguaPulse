@@ -599,11 +599,13 @@ if (update.message?.text === '/feedback') {
               let processedReply = reply;
               let parseMode = 'Markdown';
               
-              // Если есть спойлеры, используем HTML (проще чем MarkdownV2)
+              // Если есть спойлеры, используем MarkdownV2 (поддерживает ||spoiler||)
               if (reply.includes('||')) {
-                processedReply = reply.replace(/\|\|(.*?)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
-                processedReply = processedReply.replace(/\*(.*?)\*/g, '<b>$1</b>');
-                parseMode = 'HTML';
+                console.log(`🔒 [${chatId}] Found spoilers! Using MarkdownV2`);
+                parseMode = 'MarkdownV2';
+                console.log(`🔒 [${chatId}] Using parse_mode: ${parseMode}`);
+              } else {
+                console.log(`📝 [${chatId}] No spoilers found, using Markdown`);
               }
               
               await sendMessageViaTelegram(chatId, processedReply, env, {
@@ -644,11 +646,9 @@ if (update.message?.text === '/feedback') {
                 let processedPart = parts[i];
                 let parseMode = 'Markdown';
                 
-                // Если есть спойлеры в этой части, используем HTML (проще чем MarkdownV2)
+                // Если есть спойлеры в этой части, используем MarkdownV2
                 if (parts[i].includes('||')) {
-                  processedPart = parts[i].replace(/\|\|(.*?)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
-                  processedPart = processedPart.replace(/\*(.*?)\*/g, '<b>$1</b>');
-                  parseMode = 'HTML';
+                  parseMode = 'MarkdownV2';
                 }
                 
                 const options = isLast ? {
