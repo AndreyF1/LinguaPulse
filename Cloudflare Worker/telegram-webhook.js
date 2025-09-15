@@ -641,7 +641,8 @@ if (update.message?.text === '/feedback') {
                 // Получаем финальный фидбэк
                 const feedbackResponse = await callLambdaFunction('onboarding', {
                   user_id: chatId,
-                  action: 'generate_dialog_feedback'
+                  action: 'generate_dialog_feedback',
+                  user_lang: userLang
                 }, env);
                 
                 if (feedbackResponse && feedbackResponse.feedback) {

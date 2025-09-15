@@ -348,6 +348,7 @@ def lambda_handler(event, context):
     # 8. Генерация финального фидбэка для диалога
     if 'action' in body and body['action'] == 'generate_dialog_feedback':
         user_id = body.get('user_id')
+        user_lang = body.get('user_lang', 'ru')  # Default to Russian
         
         if not user_id:
             return error_response('user_id is required')
@@ -355,8 +356,32 @@ def lambda_handler(event, context):
         try:
             print(f"Generating dialog feedback for user {user_id}")
             
-            # Генерируем финальный фидбэк через OpenAI
-            feedback_prompt = """Generate a brief final feedback for an English conversation practice session. Write in Russian.
+            # Генерируем финальный фидбэк через OpenAI в зависимости от языка пользователя
+            if user_lang == 'en':
+                feedback_prompt = """Generate a brief final feedback for a TEXT-BASED English conversation practice session. Write in English.
+
+IMPORTANT: This was a TEXT conversation only - DO NOT mention pronunciation, speaking, or audio skills.
+
+Structure:
+🎉 **Great work!**
+
+Thank you for an interesting dialogue! [brief praise]
+
+📝 **Main observations:**
+- [1-2 most critical recurring errors in WRITING/GRAMMAR only, if any, or positive observations]
+
+📊 **Your results:**
+- **Writing:** [score]/100
+- **Vocabulary:** [score]/100  
+- **Grammar:** [score]/100
+
+💡 [Encouraging closing message about WRITTEN English skills]
+
+Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Focus only on text-based skills - grammar, vocabulary, and written communication."""
+            else:
+                feedback_prompt = """Generate a brief final feedback for a TEXT-BASED English conversation practice session. Write in Russian.
+
+IMPORTANT: This was a TEXT conversation only - DO NOT mention pronunciation, speaking, or audio skills.
 
 Structure:
 🎉 **Отличная работа!**
@@ -364,16 +389,16 @@ Structure:
 Спасибо за интересный диалог! [brief praise]
 
 📝 **Основные наблюдения:**
-- [1-2 most critical recurring errors, if any, or positive observations]
+- [1-2 most critical recurring errors in WRITING/GRAMMAR only, if any, or positive observations]
 
 📊 **Ваши результаты:**
 - **Письмо:** [score]/100
 - **Словарный запас:** [score]/100  
 - **Грамматика:** [score]/100
 
-💡 [Encouraging closing message]
+💡 [Encouraging closing message about WRITTEN English skills]
 
-Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95."""
+Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Focus only on text-based skills - grammar, vocabulary, and written communication."""
             
             # Создаем специальный промпт для фидбэка без ограничений general режима
             openai_api_key = os.environ.get('OPENAI_API_KEY')
