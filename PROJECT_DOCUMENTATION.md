@@ -8,7 +8,7 @@
 - **Multiple AI modes** instead of single universal prompt
 - **Translation mode**: Auto-detects language and translates bidirectionally
 - **Grammar mode**: Structured grammar explanations with examples and practice
-- **Text dialog mode**: Conversational English practice (pending implementation)
+- **Text dialog mode**: ✅ **FULLY IMPLEMENTED** - Interactive English conversation practice
 - **Audio dialog mode**: Speaking practice (pending implementation)
 
 #### 2. User Interface
@@ -83,6 +83,42 @@ if (reply.includes('||')) {
 - Single asterisks `*word*` for headers (Telegram-compatible)
 - Broad grammar definition (includes prepositions, articles, etc.)
 
+### Text Dialog Mode Implementation (COMPLETE)
+
+**Core Features**:
+- ✅ **English-only conversations** with Russian translations in spoilers
+- ✅ **Continuous dialogue flow** - not disconnected messages
+- ✅ **Per-message feedback** - grammar and vocabulary corrections
+- ✅ **Automatic termination** after 20 bot responses
+- ✅ **User-initiated ending** - "Let's wrap up" / "I need to go"
+- ✅ **Final comprehensive feedback** with 100-point scores
+- ✅ **Topic suggestions** - Interactive conversation starters
+- ✅ **Split message system** - Feedback + Dialog as separate messages
+
+**Technical Implementation**:
+```
+Dialog Flow:
+1. Bot starts with topic suggestions
+2. User responds → Bot gives feedback + continues dialog
+3. After 20 responses OR user requests ending
+4. Bot says goodbye with ---END_DIALOG--- marker
+5. System generates final feedback with scores
+6. Returns to mode selection
+```
+
+**Message Structure**:
+```
+Feedback: Quick grammar/vocabulary notes
+---SPLIT---
+Dialog: English response ||Russian translation||
+---END_DIALOG--- (when terminating)
+```
+
+**State Management**:
+- Dialog counter stored in Cloudflare KV (1-hour expiry)
+- User level fetched from Supabase for language adaptation
+- Mode persistence across conversation
+
 ---
 
 ## 📁 File Structure
@@ -127,7 +163,7 @@ npx wrangler deploy
 ## 🔧 Configuration
 
 ### Environment Variables
-- **Cloudflare KV**: `CHAT_KV` for session storage
+- **Cloudflare KV**: `USER_MODES` for session storage and dialog counters
 - **AWS Lambda**: `AWS_LAMBDA_URL` for backend processing
 - **Telegram**: `TELEGRAM_BOT_TOKEN` for API access
 - **Supabase**: Database credentials for user data
@@ -228,5 +264,26 @@ npx wrangler deploy
 
 ---
 
-*Documentation updated: September 14, 2025*  
-*Status: ✅ SPOILERS WORKING, SYSTEM STABLE*
+*Documentation updated: September 15, 2025*  
+*Status: ✅ TEXT DIALOG MODE COMPLETE, ALL SYSTEMS STABLE*
+
+## 🎉 Latest Achievements (September 15, 2025)
+
+### Text Dialog Mode - FULLY FUNCTIONAL ✅
+- **Interactive conversations** with topic suggestions  
+- **Smart message splitting** (feedback + dialog)
+- **Graceful dialog termination** with comprehensive feedback
+- **100-point scoring system** for writing, vocabulary, grammar
+- **Seamless mode transitions** back to selection menu
+
+### Telegram Formatting - PERFECTED ✅
+- **Bold text**: `*text*` works reliably 
+- **Spoilers**: `||text||` converted to HTML perfectly
+- **Mixed formatting**: Smart parse mode detection
+- **No visual artifacts**: Clean user experience
+
+### Infrastructure - ROCK SOLID ✅
+- **CI/CD Pipeline**: Automatic deployments working flawlessly
+- **Error Handling**: Comprehensive try-catch with fallbacks
+- **State Management**: KV storage for dialog counters
+- **Database Integration**: Supabase user levels and preferences
