@@ -1038,6 +1038,32 @@ As soon as we open audio lessons — we'll send an invitation.`
             parse_mode: 'Markdown'
           });
           
+          // Для text_dialog отправляем начальное сообщение от бота
+          if (mode === 'text_dialog') {
+            // Небольшая задержка для лучшего UX
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            const startMessage = userLang === 'en' 
+              ? "Hello! I'm excited to chat with you in English! 😊 How has your day been so far? ||Привет! Я рад поговорить с тобой на английском! 😊 Как дела сегодня?||"
+              : "Hello! I'm excited to chat with you in English! 😊 How has your day been so far? ||Привет! Я рад поговорить с тобой на английском! 😊 Как дела сегодня?||";
+            
+            // Конвертируем спойлеры для HTML
+            let processedStartMessage = startMessage;
+            let parseMode = 'Markdown';
+            
+            if (startMessage.includes('||')) {
+              processedStartMessage = startMessage.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+              parseMode = 'HTML';
+            }
+            
+            await sendMessageViaTelegram(chatId, processedStartMessage, env, {
+              parse_mode: parseMode,
+              reply_markup: { 
+                inline_keyboard: modeButtons
+              }
+            });
+          }
+          
           // Сохраняем выбранный режим в Supabase через Lambda
           try {
             console.log(`💾 [${chatId}] Saving AI mode '${mode}' to Supabase...`);
