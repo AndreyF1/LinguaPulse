@@ -617,8 +617,11 @@ if (update.message?.text === '/feedback') {
               let processedDialog = dialogMessage;
               let parseMode = 'Markdown';
               
+              // Убираем служебный маркер ---END_DIALOG--- из пользовательского интерфейса
+              processedDialog = processedDialog.replace(/---END_DIALOG---/g, '').trim();
+              
               if (dialogMessage.includes('||')) {
-                processedDialog = dialogMessage.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+                processedDialog = processedDialog.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
                 processedDialog = processedDialog.replace(/\*([^*]+)\*/g, '<b>$1</b>');
                 parseMode = 'HTML';
               }

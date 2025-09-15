@@ -375,7 +375,42 @@ Structure:
 
 Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95."""
             
-            openai_response = get_openai_response(feedback_prompt, 'general')
+            # Создаем специальный промпт для фидбэка без ограничений general режима
+            openai_api_key = os.environ.get('OPENAI_API_KEY')
+            if not openai_api_key:
+                return error_response('OpenAI API key not found')
+            
+            data = {
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful English tutor providing feedback on conversation practice."},
+                    {"role": "user", "content": feedback_prompt}
+                ],
+                "max_tokens": 300,
+                "temperature": 0.7
+            }
+            
+            headers = {
+                'Authorization': f'Bearer {openai_api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            req = urllib.request.Request(
+                'https://api.openai.com/v1/chat/completions', 
+                data=json.dumps(data).encode('utf-8'),
+                headers=headers,
+                method='POST'
+            )
+            
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                if 'choices' in result and len(result['choices']) > 0:
+                    openai_response = {
+                        'success': True, 
+                        'reply': result['choices'][0]['message']['content'].strip()
+                    }
+                else:
+                    openai_response = {'success': False}
             
             if openai_response['success']:
                 return success_response({
