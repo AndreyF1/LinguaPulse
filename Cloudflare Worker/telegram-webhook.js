@@ -595,7 +595,42 @@ if (update.message?.text === '/feedback') {
             const maxLength = 4000; // Оставляем запас для кнопок
             const reply = aiResponse.reply;
             
-            if (reply.length <= maxLength) {
+            // Для текстового диалога - разделяем на два сообщения
+            if (currentMode === 'text_dialog' && reply.includes('---SPLIT---')) {
+              console.log(`💬 [${chatId}] Splitting text_dialog response into two messages`);
+              
+              const parts = reply.split('---SPLIT---');
+              const feedbackMessage = parts[0].trim();
+              const dialogMessage = parts[1].trim();
+              
+              // Отправляем сначала feedback
+              if (feedbackMessage) {
+                await sendMessageViaTelegram(chatId, feedbackMessage, env, {
+                  parse_mode: 'Markdown'
+                });
+                
+                // Небольшая задержка между сообщениями
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+              
+              // Затем отправляем основной диалог с переводом
+              let processedDialog = dialogMessage;
+              let parseMode = 'Markdown';
+              
+              if (dialogMessage.includes('||')) {
+                processedDialog = dialogMessage.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+                processedDialog = processedDialog.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+                parseMode = 'HTML';
+              }
+              
+              await sendMessageViaTelegram(chatId, processedDialog, env, {
+                parse_mode: parseMode,
+                reply_markup: {
+                  inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+                }
+              });
+              
+            } else if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
               let processedReply = reply;
               let parseMode = 'Markdown';
