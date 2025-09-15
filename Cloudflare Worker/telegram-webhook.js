@@ -1133,8 +1133,8 @@ As soon as we open audio lessons — we'll send an invitation.`
             await new Promise(resolve => setTimeout(resolve, 1500));
             
             const startMessage = userLang === 'en' 
-              ? "Hello! I'm excited to chat with you in English! 😊 How has your day been so far? ||Привет! Я рад поговорить с тобой на английском! 😊 Как дела сегодня?||"
-              : "Hello! I'm excited to chat with you in English! 😊 How has your day been so far? ||Привет! Я рад поговорить с тобой на английском! 😊 Как дела сегодня?||";
+              ? "Hello! I'm excited to practice English with you! 😊 What would you like to talk about today? Here are some ideas: daily routine, hobbies, food, travel, or anything else! ||Привет! Я рад практиковать английский с тобой! 😊 О чем хочешь поговорить сегодня? Вот несколько идей: распорядок дня, хобби, еда, путешествия, или что-то другое!||"
+              : "Hello! I'm excited to practice English with you! 😊 What would you like to talk about today? Here are some ideas: daily routine, hobbies, food, travel, or anything else! ||Привет! Я рад практиковать английский с тобой! 😊 О чем хочешь поговорить сегодня? Вот несколько идей: распорядок дня, хобби, еда, путешествия, или что-то другое!||";
             
             // Конвертируем спойлеры для HTML
             let processedStartMessage = startMessage;
