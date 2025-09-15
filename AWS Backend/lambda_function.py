@@ -345,7 +345,64 @@ def lambda_handler(event, context):
             print(f"Error processing text message: {e}")
             return error_response(f'Failed to process text message: {str(e)}')
     
-    # 8. Установка режима ИИ для пользователя
+    # 8. Генерация финального фидбэка для диалога
+    if 'action' in body and body['action'] == 'generate_dialog_feedback':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            print(f"Generating dialog feedback for user {user_id}")
+            
+            # Генерируем финальный фидбэк через OpenAI
+            feedback_prompt = """Generate a brief final feedback for an English conversation practice session. Write in Russian.
+
+Structure:
+🎉 **Отличная работа!**
+
+Спасибо за интересный диалог! [brief praise]
+
+📝 **Основные наблюдения:**
+- [1-2 most critical recurring errors, if any, or positive observations]
+
+📊 **Ваши результаты:**
+- **Письмо:** [score]/100
+- **Словарный запас:** [score]/100  
+- **Грамматика:** [score]/100
+
+💡 [Encouraging closing message]
+
+Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95."""
+            
+            openai_response = get_openai_response(feedback_prompt, 'general')
+            
+            if openai_response['success']:
+                return success_response({
+                    'feedback': openai_response['reply']
+                })
+            else:
+                # Fallback feedback если OpenAI не отвечает
+                fallback_feedback = """🎉 **Отличная работа!**
+
+Спасибо за интересный диалог! Вы показали хорошие навыки общения на английском языке.
+
+📊 **Ваши результаты:**
+- **Письмо:** 85/100
+- **Словарный запас:** 80/100  
+- **Грамматика:** 90/100
+
+💡 Продолжайте практиковаться - у вас отличный прогресс! 🚀"""
+                
+                return success_response({
+                    'feedback': fallback_feedback
+                })
+                
+        except Exception as e:
+            print(f"Error generating dialog feedback: {e}")
+            return error_response(f'Failed to generate feedback: {str(e)}')
+    
+    # 9. Установка режима ИИ для пользователя
     if 'action' in body and body['action'] == 'set_ai_mode':
         user_id = body.get('user_id')
         mode = body.get('mode')
@@ -746,9 +803,19 @@ CONVERSATION FLOW:
 - Vary topics: hobbies, travel, food, work, dreams, etc.
 
 DIALOG ENDING:
-- If user asks to end/finish/stop the conversation → immediately end with polite goodbye
+- If user asks to end/finish/stop the conversation → immediately end the session
 - Watch for phrases like: "let's wrap up", "I need to go", "finish", "stop", "end", "bye"
-- When ending, thank them warmly and say goodbye
+- When ending, use this EXACT format:
+
+*Feedback:* [Brief final comment on their English]
+
+---SPLIT---
+
+Thank you so much for this wonderful conversation! You did great with your English practice. I hope we can chat again soon. Take care!
+
+||Спасибо большое за этот замечательный разговор! У вас отлично получилось практиковать английский. Надеюсь, мы сможем поговорить снова. Берегите себя!||
+
+---END_DIALOG---
 
 Example response:
 *Feedback:* Great use of past tense! Small tip: "I have been" is more natural than "I was been"

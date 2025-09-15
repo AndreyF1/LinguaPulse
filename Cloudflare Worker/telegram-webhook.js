@@ -623,12 +623,63 @@ if (update.message?.text === '/feedback') {
                 parseMode = 'HTML';
               }
               
-              await sendMessageViaTelegram(chatId, processedDialog, env, {
-                parse_mode: parseMode,
-                reply_markup: {
-                  inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+              // Проверяем, нужно ли завершить диалог
+              if (reply.includes('---END_DIALOG---')) {
+                console.log(`🏁 [${chatId}] Dialog ending detected!`);
+                
+                // Отправляем основной диалог БЕЗ кнопки смены режима
+                await sendMessageViaTelegram(chatId, processedDialog, env, {
+                  parse_mode: parseMode
+                });
+                
+                // Небольшая задержка перед финальным фидбэком
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Получаем финальный фидбэк
+                const feedbackResponse = await callLambdaFunction('onboarding', {
+                  user_id: chatId,
+                  action: 'generate_dialog_feedback'
+                }, env);
+                
+                if (feedbackResponse && feedbackResponse.feedback) {
+                  await sendMessageViaTelegram(chatId, feedbackResponse.feedback, env, {
+                    parse_mode: 'Markdown'
+                  });
                 }
-              });
+                
+                // Небольшая задержка перед показом кнопок
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Показываем кнопки выбора режима
+                const modeButtons = userLang === 'en' ? [
+                  [{ text: "📝 Text Translation", callback_data: "ai_mode:translation" }],
+                  [{ text: "📚 Grammar", callback_data: "ai_mode:grammar" }],
+                  [{ text: "💬 Text Dialog", callback_data: "ai_mode:text_dialog" }],
+                  [{ text: "🎤 Audio Dialog", callback_data: "ai_mode:audio_dialog" }]
+                ] : [
+                  [{ text: "📝 Перевод текста", callback_data: "ai_mode:translation" }],
+                  [{ text: "📚 Грамматика", callback_data: "ai_mode:grammar" }],
+                  [{ text: "💬 Текстовый диалог", callback_data: "ai_mode:text_dialog" }],
+                  [{ text: "🎤 Аудио-диалог", callback_data: "ai_mode:audio_dialog" }]
+                ];
+                
+                const modeSelectionText = userLang === 'en' 
+                  ? "Please select your AI mode:" 
+                  : "Выберите режим ИИ:";
+                
+                await sendMessageViaTelegram(chatId, modeSelectionText, env, {
+                  reply_markup: { inline_keyboard: modeButtons }
+                });
+                
+              } else {
+                // Обычный диалог - показываем кнопку смены режима
+                await sendMessageViaTelegram(chatId, processedDialog, env, {
+                  parse_mode: parseMode,
+                  reply_markup: {
+                    inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
+                  }
+                });
+              }
               
             } else if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
