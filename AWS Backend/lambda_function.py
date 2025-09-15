@@ -844,4 +844,4 @@ def log_text_usage(user_id, supabase_url, supabase_key):
     except Exception as e:
         print(f"Error logging text usage: {e}")
         # Не возвращаем ошибку, так как это не критично для пользователя
-# Test comment
+# Lambda deployment trigger comment - updated for grammar spoilers fix
