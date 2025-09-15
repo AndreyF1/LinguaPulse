@@ -403,15 +403,15 @@ if (update.message?.text === '/feedback') {
           const messageId = update.message.message_id;
           const processingKey = `processing_msg:${chatId}:${messageId}`;
           
-          if (env.USER_MODES) {
-            const alreadyProcessed = await env.USER_MODES.get(processingKey);
+          if (env.CHAT_KV) {
+            const alreadyProcessed = await env.CHAT_KV.get(processingKey);
             if (alreadyProcessed) {
               console.log(`❌ Message ${messageId} already processed, skipping duplicate`);
               return new Response('OK - duplicate message skipped');
             }
             
             // Mark message as being processed (expire in 5 minutes)
-            await env.USER_MODES.put(processingKey, Date.now().toString(), { expirationTtl: 300 });
+            await env.CHAT_KV.put(processingKey, Date.now().toString(), { expirationTtl: 300 });
             console.log(`✅ Message ${messageId} marked as processing`);
           }
           
@@ -420,10 +420,10 @@ if (update.message?.text === '/feedback') {
           // FIRST: Check for active lesson sessions
           console.log(`=== CHECKING ACTIVE SESSIONS ===`);
           
-          if (env.USER_MODES) {
+          if (env.CHAT_KV) {
             // Check lesson0 session
-            const lesson0Session = await env.USER_MODES.get(`session:${chatId}`);
-            const lesson0History = await env.USER_MODES.get(`hist:${chatId}`);
+            const lesson0Session = await env.CHAT_KV.get(`session:${chatId}`);
+            const lesson0History = await env.CHAT_KV.get(`hist:${chatId}`);
             
             console.log(`Lesson0 session exists: ${!!lesson0Session}`);
             console.log(`Lesson0 history exists: ${!!lesson0History}`);
@@ -434,8 +434,8 @@ if (update.message?.text === '/feedback') {
             }
             
             // Check main_lesson session
-            const mainLessonSession = await env.USER_MODES.get(`main_session:${chatId}`);
-            const mainLessonHistory = await env.USER_MODES.get(`main_hist:${chatId}`);
+            const mainLessonSession = await env.CHAT_KV.get(`main_session:${chatId}`);
+            const mainLessonHistory = await env.CHAT_KV.get(`main_hist:${chatId}`);
             
             console.log(`Main lesson session exists: ${!!mainLessonSession}`);
             console.log(`Main lesson history exists: ${!!mainLessonHistory}`);
@@ -570,35 +570,13 @@ if (update.message?.text === '/feedback') {
             }
           }
           
-          // Для текстового диалога - отслеживаем количество сообщений
-          let dialogCount = 0;
-          if (currentMode === 'text_dialog') {
-            try {
-              const countStr = await env.USER_MODES.get(`dialog_count:${chatId}`);
-              dialogCount = countStr ? parseInt(countStr) : 0;
-              dialogCount++;
-              
-              // Сохраняем новый счетчик (истекает через 1 час)
-              await env.USER_MODES.put(`dialog_count:${chatId}`, dialogCount.toString(), { expirationTtl: 3600 });
-              console.log(`💬 [${chatId}] Dialog message count: ${dialogCount}/20`);
-              
-              // Если достигли лимита, переключаем на завершение диалога
-              if (dialogCount >= 20) {
-                console.log(`🏁 [${chatId}] Dialog limit reached, forcing goodbye`);
-              }
-            } catch (error) {
-              console.error(`❌ [${chatId}] Error managing dialog count:`, error);
-            }
-          }
-          
           // Отправляем сообщение в Lambda для обработки через OpenAI
           console.log(`🔄 [LAMBDA] Processing text message for user ${chatId} in mode: ${currentMode}`);
           const aiResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
             action: 'process_text_message',
             message: update.message.text,
-            mode: currentMode,
-            dialog_count: dialogCount // Передаём счётчик для text_dialog режима
+            mode: currentMode
           }, env);
           
           if (aiResponse && aiResponse.success) {
@@ -617,47 +595,7 @@ if (update.message?.text === '/feedback') {
             const maxLength = 4000; // Оставляем запас для кнопок
             const reply = aiResponse.reply;
             
-            // ОТЛАДКА: проверяем что приходит от ИИ
-            console.log(`🔍 [${chatId}] AI response length: ${reply.length}`);
-            console.log(`🔍 [${chatId}] Contains ||: ${reply.includes('||')}`);
-            console.log(`🔍 [${chatId}] First 300 chars:`, reply.substring(0, 300));
-            
-            // Для текстового диалога - разделяем на два сообщения
-            if (currentMode === 'text_dialog' && reply.includes('---SPLIT---')) {
-              console.log(`💬 [${chatId}] Splitting text_dialog response into two messages`);
-              
-              const parts = reply.split('---SPLIT---');
-              const feedbackMessage = parts[0].trim();
-              const dialogMessage = parts[1].trim();
-              
-              // Отправляем сначала feedback
-              if (feedbackMessage) {
-                await sendMessageViaTelegram(chatId, feedbackMessage, env, {
-                  parse_mode: 'Markdown'
-                });
-                
-                // Небольшая задержка между сообщениями
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
-              
-              // Затем отправляем основной диалог с переводом
-              let processedDialog = dialogMessage;
-              let parseMode = 'Markdown';
-              
-              if (dialogMessage.includes('||')) {
-                processedDialog = dialogMessage.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
-                processedDialog = processedDialog.replace(/\*([^*]+)\*/g, '<b>$1</b>');
-                parseMode = 'HTML';
-              }
-              
-              await sendMessageViaTelegram(chatId, processedDialog, env, {
-                parse_mode: parseMode,
-                reply_markup: {
-                  inline_keyboard: [[{ text: changeModeButtonText, callback_data: "text_helper:start" }]]
-                }
-              });
-              
-            } else if (reply.length <= maxLength) {
+            if (reply.length <= maxLength) {
               // Короткое сообщение - отправляем как есть
               let processedReply = reply;
               let parseMode = 'Markdown';
@@ -1048,16 +986,6 @@ As soon as we open audio lessons — we'll send an invitation.`
           const mode = update.callback_query.data.split(':')[1]; // Извлекаем режим из callback_data
           console.log(`🎯 [${chatId}] Selected AI mode: ${mode}`);
           
-          // Если выбран текстовый диалог - сбрасываем счётчик
-          if (mode === 'text_dialog') {
-            try {
-              await env.USER_MODES.delete(`dialog_count:${chatId}`);
-              console.log(`🔄 [${chatId}] Dialog counter reset for new conversation`);
-            } catch (error) {
-              console.error(`❌ [${chatId}] Error resetting dialog counter:`, error);
-            }
-          }
-          
           // Получаем язык интерфейса пользователя
           const userResponse = await callLambdaFunction('onboarding', {
             user_id: chatId,
@@ -1083,8 +1011,8 @@ As soon as we open audio lessons — we'll send an invitation.`
               break;
             case 'text_dialog':
               instructionMessage = userLang === 'en' 
-                ? `💬 **Text Dialog Mode**\n\nLet's have a natural conversation in English! I'll:\n• Give feedback on your grammar and vocabulary\n• Ask follow-up questions to keep the chat flowing\n• Provide Russian translations in spoilers\n\nJust start chatting about anything you like!`
-                : `💬 **Режим текстового диалога**\n\nДавай поговорим на английском естественно! Я буду:\n• Давать обратную связь по грамматике и лексике\n• Задавать вопросы для поддержания беседы\n• Предоставлять переводы на русский в спойлерах\n\nПросто начни говорить о чём угодно!`;
+                ? `💬 **Text Dialog Mode**\n\nLet's have a conversation in English! I'll help you practice while chatting naturally.`
+                : `💬 **Режим текстового диалога**\n\nДавай поговорим на английском! Я помогу тебе практиковаться в естественном общении.`;
               break;
             case 'audio_dialog':
               instructionMessage = userLang === 'en' 
@@ -1182,7 +1110,7 @@ As soon as we open audio lessons — we'll send an invitation.`
           const lessonStartLockKey = `lesson_start_lock:${chatId}`;
           
           // Check if we have KV storage available for the lock
-          let kvStorage = env.USER_MODES || env.USER_PROFILE || env.TEST_KV;
+          let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
           if (!kvStorage) {
             console.error(`❌ [${chatId}] No KV storage available for duplication protection`);
             // Continue without lock as fallback
