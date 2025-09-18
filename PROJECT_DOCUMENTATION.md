@@ -1,6 +1,6 @@
 # LinguaPulse Project Documentation
 
-## 📋 Current Status (September 14, 2025)
+## 📋 Current Status (September 18, 2025)
 
 ### ✅ Completed Features
 
@@ -9,7 +9,7 @@
 - **Translation mode**: Auto-detects language and translates bidirectionally
 - **Grammar mode**: Structured grammar explanations with examples and practice
 - **Text dialog mode**: ✅ **FULLY IMPLEMENTED** - Interactive English conversation practice
-- **Audio dialog mode**: Speaking practice (pending implementation)
+- **Audio dialog mode**: Waitlist signup available (full implementation pending)
 
 #### 2. User Interface
 - **Mode selection UI**: Buttons after "Ask AI" for mode selection
@@ -264,8 +264,8 @@ npx wrangler deploy
 
 ---
 
-*Documentation updated: September 15, 2025*  
-*Status: ✅ TEXT DIALOG MODE COMPLETE, ALL SYSTEMS STABLE*
+*Documentation updated: September 18, 2025*  
+*Status: ✅ ALL AI MODES OPERATIONAL, ACCESS CONTROL PERFECTED*
 
 ## 🎉 Latest Achievements (September 15, 2025)
 
@@ -287,3 +287,332 @@ npx wrangler deploy
 - **Error Handling**: Comprehensive try-catch with fallbacks
 - **State Management**: KV storage for dialog counters
 - **Database Integration**: Supabase user levels and preferences
+
+---
+
+## 🔥 SEPTEMBER 18, 2025 - MAJOR UPDATES
+
+### 🔐 Access Control System - COMPLETELY REDESIGNED
+**Problem**: Users with active subscriptions couldn't access AI modes  
+**Solution**: Dual-field access checking system
+
+```python
+# New access logic checks BOTH fields
+def check_text_trial_access(user_id, supabase_url, supabase_key):
+    text_trial_ends_at = user.get('text_trial_ends_at')
+    package_expires_at = user.get('package_expires_at') 
+    
+    # Grant access if EITHER field is valid
+    if (text_trial_ends_at and text_trial_ends_at > now) or \
+       (package_expires_at and package_expires_at > now):
+        return {'has_access': True}
+```
+
+**Impact**:
+- ✅ **Trial users** get access via `text_trial_ends_at`
+- ✅ **Subscribers** get access via `package_expires_at`  
+- ✅ **Any active access** grants full AI mode functionality
+
+### 🌐 Multilingual Final Feedback - IMPLEMENTED
+**Feature**: Text dialog feedback adapts to user's interface language
+
+```python
+if user_lang == 'en':
+    feedback_prompt = """Generate feedback in English with:
+    🎉 **Great work!** 
+    📝 **Main observations:** [writing/grammar only]
+    📊 **Your results:** Writing/Vocabulary/Grammar scores"""
+else:
+    feedback_prompt = """Generate feedback in Russian with:
+    🎉 **Отличная работа!**
+    📝 **Основные наблюдения:** [только письмо/грамматика]  
+    📊 **Ваши результаты:** Письмо/Словарь/Грамматика"""
+```
+
+**Languages Supported**:
+- 🇺🇸 **English Interface**: Feedback in English
+- 🇷🇺 **Russian Interface**: Feedback in Russian
+- 🎯 **Text-only focus**: No pronunciation mentions
+
+### 🎤 Audio Dialog Waitlist - ENHANCED
+**New Feature**: Dedicated waitlist signup for audio mode users
+
+```javascript
+// Audio dialog mode now shows TWO buttons:
+if (mode === 'audio_dialog') {
+    const waitlistButtonText = userLang === 'en' 
+        ? "🚀 Join Waitlist" 
+        : "🚀 Записаться в ожидание";
+    
+    modeButtons.unshift([{ 
+        text: waitlistButtonText, 
+        callback_data: "audio_practice:signup" 
+    }]);
+}
+```
+
+**User Experience Flow**:
+1. User selects "🎤 Audio Dialog"
+2. Sees: "This mode will be available soon!"
+3. **NEW**: "🚀 Join Waitlist" button (first position)
+4. "🔄 Change AI Mode" button (second position)
+5. Clicking waitlist → Sets `waitlist_voice = TRUE`
+6. Confirmation: "You're on the list! 🚀"
+
+---
+
+## 🏗️ CURRENT SYSTEM ARCHITECTURE
+
+### 📊 Component Overview
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Telegram      │───▶│  Cloudflare      │───▶│   AWS Lambda    │
+│   Bot API       │    │  Workers         │    │   (AI Engine)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │                        │
+                                ▼                        ▼
+                       ┌──────────────────┐    ┌─────────────────┐
+                       │  Cloudflare KV   │    │   Supabase      │
+                       │  (Sessions)      │    │   (User Data)   │
+                       └──────────────────┘    └─────────────────┘
+```
+
+### 🔧 Cloudflare Worker (`telegram-webhook.js`)
+**Role**: Primary webhook handler and traffic router
+
+**Key Functions**:
+- Message deduplication and validation
+- AI mode selection and persistence  
+- Dialog state management (counters, termination)
+- Message formatting (HTML/Markdown conversion)
+- Waitlist signup handling
+- Error handling and fallback responses
+
+**Critical Code Patterns**:
+```javascript
+// Message splitting for text dialogs
+if (currentMode === 'text_dialog' && reply.includes('---SPLIT---')) {
+    const parts = reply.split('---SPLIT---');
+    const feedbackMessage = parts[0].trim();
+    const dialogMessage = parts[1].trim();
+    // Send as separate messages with delay
+}
+
+// Smart parse mode detection
+if (reply.includes('||')) {
+    processedReply = reply.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+    processedReply = processedReply.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+    parseMode = 'HTML';
+} else {
+    parseMode = 'Markdown';
+}
+
+// Dialog termination handling
+if (reply.includes('---END_DIALOG---')) {
+    await env.USER_MODES.delete(`dialog_count:${chatId}`);
+    // Generate final feedback via Lambda
+    const feedbackResponse = await callLambdaFunction('onboarding', {
+        action: 'generate_dialog_feedback',
+        user_lang: userLang
+    }, env);
+}
+```
+
+### 🧠 AWS Lambda (`lambda_function.py`)
+**Role**: AI processing and prompt management
+
+**Key Functions**:
+- OpenAI API integration with mode-specific prompts
+- User access validation (dual-field checking)
+- Supabase database operations
+- Final feedback generation with language adaptation
+- Error handling and logging
+
+**AI Mode Prompts**:
+```python
+AI_PROMPTS = {
+    'translation': """Auto-detect source language and provide translation...""",
+    
+    'grammar': """Structure: *Rule* *Form* *Use & Contrast* *Examples* 
+                 *Common mistakes* *Mini-practice* *Answer key* with ||spoilers||""",
+    
+    'text_dialog': """English conversation partner with:
+                      - Feedback before each response
+                      - Russian translations in ||spoilers||
+                      - Natural follow-up questions
+                      - Dialog termination handling""",
+                      
+    'general': """Fallback mode with language detection and formatting rules"""
+}
+```
+
+**Access Control Logic**:
+```python
+def check_text_trial_access(user_id, supabase_url, supabase_key):
+    # Fetch both access fields
+    text_trial_ends_at = user.get('text_trial_ends_at')
+    package_expires_at = user.get('package_expires_at')
+    
+    # Check trial access
+    if text_trial_ends_at:
+        trial_end = datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00'))
+        if now < trial_end:
+            return {'has_access': True}
+    
+    # Check subscription access
+    if package_expires_at:
+        package_end = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+        if now < package_end:
+            return {'has_access': True}
+    
+    # No access - return localized message
+    return {'has_access': False, 'message': localized_error}
+```
+
+### 🗄️ Database Schema (Supabase)
+**Critical Tables & Fields**:
+
+```sql
+-- users table (main user profiles)
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    telegram_id BIGINT UNIQUE,
+    
+    -- Access control fields
+    text_trial_ends_at TIMESTAMPTZ,    -- 7-day trial access
+    package_expires_at TIMESTAMPTZ,    -- Subscription access
+    waitlist_voice BOOLEAN DEFAULT false,
+    
+    -- User preferences  
+    interface_language VARCHAR DEFAULT 'ru',
+    current_level VARCHAR,              -- Beginner/Intermediate/Advanced
+    ai_mode VARCHAR,                   -- Last selected mode
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- user_survey table (language assessment)
+CREATE TABLE user_survey (
+    telegram_id BIGINT PRIMARY KEY,
+    language_level VARCHAR,            -- User's English proficiency
+    completed_at TIMESTAMPTZ
+);
+```
+
+### 📦 KV Storage Patterns (Cloudflare)
+```javascript
+// Session management
+`main_session:${chatId}` → active lesson session data
+`session:${chatId}` → lesson0 beginner session
+
+// AI mode persistence  
+`ai_mode:${chatId}` → currently selected mode (translation/grammar/text_dialog)
+
+// Dialog state tracking
+`dialog_count:${chatId}` → message counter (1-20) with 1-hour TTL
+
+// Duplicate message prevention
+`msg_${messageId}` → processing flag with 5-minute TTL
+```
+
+---
+
+## 🎭 AI MODE SPECIFICATIONS
+
+### 📝 Translation Mode
+**Trigger**: `ai_mode:translation`  
+**Purpose**: Bidirectional translation with context
+
+**Prompt Features**:
+- Auto-detects source language (English ↔ Russian)
+- Provides translation + cultural context
+- Maintains original formatting
+- Responds in same language as user question
+
+**Example Interaction**:
+```
+User: "Как сказать 'good luck' по-английски?"
+Bot: "Good luck" по-английски остаётся *good luck* 🍀
+     Можно также сказать: *best of luck*, *break a leg* (неформально)
+```
+
+### 📚 Grammar Mode
+**Trigger**: `ai_mode:grammar`  
+**Purpose**: Structured grammar explanations
+
+**Response Template**:
+```
+*Rule*: Core grammatical concept
+*Form/Structure*: Syntax patterns and word order
+*Use & Contrast*: When to use vs alternatives
+*Examples*: 5-7 practical examples with ✅/❌ markers
+*Common mistakes & tips*: Real-world advice
+*Mini-practice (3 items)*: Interactive exercises
+*Answer key*: ||answer1|| ||answer2|| ||answer3||
+```
+
+**Key Features**:
+- Headers use single asterisks: `*Header*`
+- Practice answers hidden in spoilers: `||answer||`
+- Comprehensive coverage (tenses, articles, prepositions, etc.)
+
+### 💬 Text Dialog Mode  
+**Trigger**: `ai_mode:text_dialog`
+**Purpose**: Interactive English conversation practice
+
+**Core Mechanics**:
+```
+Dialog Flow:
+1. Bot starts with topic suggestions
+2. User responds → Bot provides feedback + continues conversation
+3. Counter tracks bot responses (max 20)
+4. User can end anytime ("let's wrap up", "I need to go")
+5. Automatic termination → Final feedback → Mode selection
+```
+
+**Message Structure**:
+```
+*Feedback:* Grammar/vocabulary corrections and praise
+---SPLIT---
+English response with natural follow-up questions
+||Russian translation of the English response||
+```
+
+**State Management**:
+- Dialog counter: `dialog_count:${chatId}` (KV storage, 1-hour TTL)
+- User level adaptation: Fetched from Supabase `user_survey`
+- Termination marker: `---END_DIALOG---` triggers cleanup
+
+**Final Feedback Generation**:
+```python
+# Language-adaptive feedback
+if user_lang == 'en':
+    # English feedback with scores
+    feedback = """🎉 **Great work!**
+                  📝 **Main observations:** [text-based skills only]
+                  📊 **Your results:** Writing/Vocabulary/Grammar scores"""
+else:
+    # Russian feedback with scores  
+    feedback = """🎉 **Отличная работа!**
+                  📝 **Основные наблюдения:** [только текстовые навыки]
+                  📊 **Ваши результаты:** Письмо/Словарь/Грамматика"""
+```
+
+### 🎤 Audio Dialog Mode
+**Trigger**: `ai_mode:audio_dialog`  
+**Purpose**: Speaking practice (future implementation)
+
+**Current Implementation**:
+- Shows "This mode will be available soon!" message
+- Provides waitlist signup button: "🚀 Join Waitlist"
+- Sets `waitlist_voice = TRUE` in database
+- Confirms signup with encouragement message
+- Includes mode change button for alternatives
+
+**Planned Features**:
+- Voice message processing
+- Pronunciation feedback
+- Speaking fluency assessment
+- Real-time conversation practice
