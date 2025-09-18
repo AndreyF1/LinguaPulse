@@ -1117,9 +1117,18 @@ As soon as we open audio lessons — we'll send an invitation.`
           
           // Отправляем инструкцию с кнопкой смены режима
           // Также добавляем кнопку с текущим режимом для дальнейшего использования
-          const modeButtons = [
+          let modeButtons = [
             [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
           ];
+          
+          // Для audio_dialog добавляем кнопку записи в ожидание
+          if (mode === 'audio_dialog') {
+            const waitlistButtonText = userLang === 'en' 
+              ? "🚀 Join Waitlist" 
+              : "🚀 Записаться в ожидание";
+            
+            modeButtons.unshift([{ text: waitlistButtonText, callback_data: "audio_practice:signup" }]);
+          }
 
           await sendMessageViaTelegram(chatId, instructionMessage, env, {
             reply_markup: { 
