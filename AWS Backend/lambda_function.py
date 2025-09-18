@@ -721,7 +721,7 @@ def get_product_info(product_id, supabase_url, supabase_key):
 def check_text_trial_access(user_id, supabase_url, supabase_key):
     """Проверяет доступ к текстовому помощнику"""
     try:
-        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=text_trial_ends_at,interface_language"
+        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=text_trial_ends_at,package_expires_at,interface_language"
         headers = {
             'Authorization': f'Bearer {supabase_key}',
             'apikey': supabase_key
@@ -736,14 +736,34 @@ def check_text_trial_access(user_id, supabase_url, supabase_key):
                 if users:
                     user = users[0]
                     text_trial_ends_at = user.get('text_trial_ends_at')
+                    package_expires_at = user.get('package_expires_at')
                     interface_language = user.get('interface_language', 'ru')
                     
+                    now = datetime.now()
+                    has_access = False
+                    
+                    # Проверяем text_trial_ends_at
                     if text_trial_ends_at:
-                        trial_end = datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00'))
-                        now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.now()
-                        
-                        if now < trial_end:
-                            return {'has_access': True}
+                        try:
+                            trial_end = datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00'))
+                            trial_now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.now()
+                            if trial_now < trial_end:
+                                has_access = True
+                        except Exception as e:
+                            print(f"Error parsing text_trial_ends_at: {e}")
+                    
+                    # Проверяем package_expires_at
+                    if not has_access and package_expires_at:
+                        try:
+                            package_end = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+                            package_now = datetime.now(package_end.tzinfo) if package_end.tzinfo else datetime.now()
+                            if package_now < package_end:
+                                has_access = True
+                        except Exception as e:
+                            print(f"Error parsing package_expires_at: {e}")
+                    
+                    if has_access:
+                        return {'has_access': True}
                     
                     # Нет доступа - вернуть локализованное сообщение
                     if interface_language == 'en':
