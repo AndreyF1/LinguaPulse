@@ -353,6 +353,7 @@ def lambda_handler(event, context):
             return error_response('user_id is required')
         
         try:
+            from datetime import datetime, timedelta
             print(f"Getting profile for user {user_id}")
             
             # Получаем данные пользователя из Supabase
