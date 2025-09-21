@@ -664,11 +664,9 @@ def lambda_handler(event, context):
                                         try:
                                             current_expires_date = datetime.fromisoformat(current_expires_at.replace('Z', '+00:00'))
                                             # Если текущая дата истечения в будущем, продляем от неё
-                                            if current_expires_date > now:
-                                                new_expires_date = current_expires_date + timedelta(days=duration_days)
-                                            else:
-                                                # Если истекла, продляем от даты истечения (не от текущего момента)
-                                                new_expires_date = current_expires_date + timedelta(days=duration_days)
+                                            # ВСЕГДА продляем от существующей даты в таблице, независимо от того активна подписка или нет
+                                            new_expires_date = current_expires_date + timedelta(days=duration_days)
+                                            print(f"📅 ДАТА РАСЧЕТ: {current_expires_at} + {duration_days} дней = {new_expires_date.isoformat()}")
                                         except Exception as e:
                                             print(f"Error parsing current_expires_at '{current_expires_at}': {e}")
                                             # Если ошибка парсинга, продляем от текущего момента
