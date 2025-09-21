@@ -345,7 +345,231 @@ def lambda_handler(event, context):
             print(f"Error processing text message: {e}")
             return error_response(f'Failed to process text message: {str(e)}')
     
-    # 8. Генерация финального фидбэка для диалога
+    # 8. Получение профиля пользователя для команды /profile
+    if 'action' in body and body['action'] == 'get_profile':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            print(f"Getting profile for user {user_id}")
+            
+            # Получаем данные пользователя из Supabase
+            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=*"
+            headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key
+            }
+            
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                
+                if response_text:
+                    users = json.loads(response_text)
+                    if users:
+                        user_data = users[0]
+                        
+                        # Обработка логики lessons_left при истечении package_expires_at
+                        package_expires_at = user_data.get('package_expires_at')
+                        lessons_left = user_data.get('lessons_left', 0)
+                        
+                        # Если подписка истекла, обнуляем lessons_left
+                        if package_expires_at and lessons_left > 0:
+                            try:
+                                package_end = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+                                now = datetime.now(package_end.tzinfo) if package_end.tzinfo else datetime.now()
+                                
+                                if now >= package_end:  # Подписка истекла
+                                    print(f"Package expired for user {user_id}, resetting lessons_left to 0")
+                                    
+                                    # Обновляем lessons_left в базе
+                                    update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+                                    update_data = json.dumps({'lessons_left': 0}).encode('utf-8')
+                                    update_headers = {
+                                        'Authorization': f'Bearer {supabase_key}',
+                                        'apikey': supabase_key,
+                                        'Content-Type': 'application/json'
+                                    }
+                                    
+                                    update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+                                    urllib.request.urlopen(update_req)
+                                    
+                                    # Обновляем локальные данные
+                                    user_data['lessons_left'] = 0
+                            except Exception as e:
+                                print(f"Error processing package expiry: {e}")
+                        
+                        # Определяем доступ к различным функциям
+                        now = datetime.now()
+                        
+                        # Доступ к аудио-урокам
+                        has_audio_access = False
+                        if package_expires_at and user_data.get('lessons_left', 0) > 0:
+                            try:
+                                package_end = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+                                package_now = datetime.now(package_end.tzinfo) if package_end.tzinfo else datetime.now()
+                                has_audio_access = package_now < package_end
+                            except Exception as e:
+                                print(f"Error parsing package_expires_at for audio access: {e}")
+                        
+                        # Доступ к текстовым функциям
+                        has_text_access = False
+                        text_trial_ends_at = user_data.get('text_trial_ends_at')
+                        
+                        # Проверяем text_trial_ends_at
+                        if text_trial_ends_at:
+                            try:
+                                trial_end = datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00'))
+                                trial_now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.now()
+                                if trial_now < trial_end:
+                                    has_text_access = True
+                            except Exception as e:
+                                print(f"Error parsing text_trial_ends_at: {e}")
+                        
+                        # Проверяем package_expires_at для текстового доступа
+                        if not has_text_access and package_expires_at:
+                            try:
+                                package_end = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+                                package_now = datetime.now(package_end.tzinfo) if package_end.tzinfo else datetime.now()
+                                if package_now < package_end:
+                                    has_text_access = True
+                            except Exception as e:
+                                print(f"Error parsing package_expires_at for text access: {e}")
+                        
+                        # Определяем дату доступа (берем более позднюю)
+                        access_date = None
+                        if text_trial_ends_at or package_expires_at:
+                            dates = []
+                            if text_trial_ends_at:
+                                try:
+                                    dates.append(datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00')))
+                                except:
+                                    pass
+                            if package_expires_at:
+                                try:
+                                    dates.append(datetime.fromisoformat(package_expires_at.replace('Z', '+00:00')))
+                                except:
+                                    pass
+                            if dates:
+                                access_date = max(dates)
+                        
+                        return {
+                            'statusCode': 200,
+                            'body': json.dumps({
+                                'success': True,
+                                'user_data': user_data,
+                                'has_audio_access': has_audio_access,
+                                'has_text_access': has_text_access,
+                                'access_date': access_date.isoformat() if access_date else None
+                            })
+                        }
+            
+            # Пользователь не найден
+            return {
+                'statusCode': 404,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'User not found'
+                })
+            }
+            
+        except Exception as e:
+            print(f"Error getting profile: {e}")
+            return error_response(f'Error getting profile: {str(e)}')
+    
+    # 9. Обновление streak при завершении текстового диалога
+    if 'action' in body and body['action'] == 'update_text_dialog_streak':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            print(f"Updating text dialog streak for user {user_id}")
+            
+            # Получаем текущие данные пользователя
+            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=current_streak,last_lesson_date"
+            headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key
+            }
+            
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                
+                if response_text:
+                    users = json.loads(response_text)
+                    if users:
+                        user_data = users[0]
+                        current_streak = user_data.get('current_streak', 0)
+                        last_lesson_date = user_data.get('last_lesson_date')
+                        
+                        # Определяем, нужно ли увеличивать streak
+                        today = datetime.now().date()
+                        should_update_streak = True
+                        
+                        if last_lesson_date:
+                            try:
+                                last_date = datetime.fromisoformat(last_lesson_date).date()
+                                # Если уже занимались сегодня, не увеличиваем streak
+                                if last_date == today:
+                                    should_update_streak = False
+                                    print(f"User {user_id} already practiced today, not updating streak")
+                                # Если последний раз занимались вчера, увеличиваем streak
+                                elif last_date == today - timedelta(days=1):
+                                    current_streak += 1
+                                    print(f"User {user_id} practiced yesterday, increasing streak to {current_streak}")
+                                # Если пропустили дни, streak = 1
+                                elif last_date < today - timedelta(days=1):
+                                    current_streak = 1
+                                    print(f"User {user_id} missed days, resetting streak to 1")
+                            except Exception as e:
+                                print(f"Error parsing last_lesson_date: {e}")
+                                # Если ошибка парсинга, устанавливаем streak = 1
+                                current_streak = 1
+                        else:
+                            # Первый раз занимается
+                            current_streak = 1
+                            print(f"User {user_id} first time practicing, setting streak to 1")
+                        
+                        # Обновляем данные в базе только если нужно
+                        if should_update_streak:
+                            update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+                            update_data = json.dumps({
+                                'current_streak': current_streak,
+                                'last_lesson_date': today.isoformat()
+                            }).encode('utf-8')
+                            update_headers = {
+                                'Authorization': f'Bearer {supabase_key}',
+                                'apikey': supabase_key,
+                                'Content-Type': 'application/json'
+                            }
+                            
+                            update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+                            urllib.request.urlopen(update_req)
+                            
+                            print(f"Successfully updated streak for user {user_id}: {current_streak}")
+                        
+                        return {
+                            'statusCode': 200,
+                            'body': json.dumps({
+                                'success': True,
+                                'streak_updated': should_update_streak,
+                                'new_streak': current_streak
+                            })
+                        }
+            
+            # Пользователь не найден
+            return error_response('User not found')
+            
+        except Exception as e:
+            print(f"Error updating text dialog streak: {e}")
+            return error_response(f'Error updating streak: {str(e)}')
+    
+    # 10. Генерация финального фидбэка для диалога
     if 'action' in body and body['action'] == 'generate_dialog_feedback':
         user_id = body.get('user_id')
         user_lang = body.get('user_lang', 'ru')  # Default to Russian

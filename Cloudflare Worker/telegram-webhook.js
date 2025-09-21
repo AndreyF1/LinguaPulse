@@ -212,95 +212,119 @@ if (update.message?.text === '/feedback') {
 
       // Handle /profile command - show user-friendly profile data
       if (update.message?.text === '/profile') {
-        // Get user's interface language for localization
-        let userLang = 'en'; // Default to English
         try {
-          const { results: langResults } = await env.USER_DB
-            .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-            .bind(parseInt(chatId, 10))
-            .all();
-          if (langResults.length > 0) {
-            userLang = langResults[0].interface_language;
-          }
-        } catch (error) {
-          console.error('Error getting user language:', error);
-        }
-        
-        // Get user profile and survey data
-        const { results: profileResults } = await env.USER_DB
-          .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
-          .bind(parseInt(chatId, 10))
-          .all();
-        
-        const { results: surveyResults } = await env.USER_DB
-          .prepare('SELECT language_level, completed_at FROM user_survey WHERE telegram_id = ?')
-          .bind(parseInt(chatId, 10))
-          .all();
-        
-        const profile = profileResults[0] || {};
-        const surveyLevel = surveyResults.length > 0 ? surveyResults[0].language_level : 'Intermediate';
-        
-        // Basic profile info (use survey completion date instead of legacy tested_at)
-        const testedAt = surveyResults.length > 0 && surveyResults[0].completed_at
-          ? new Date(surveyResults[0].completed_at).toLocaleDateString()
-          : 'N/A';
-        const lessonsTotal = profile.number_of_lessons || 0;
-        const lessonsStreak = profile.lessons_in_row || 0;
-        
-        // Check subscription status (simple version)
-        const now = new Date();
-        const hasActiveSubscription = profile.subscription_expired_at && 
-                                    (new Date(profile.subscription_expired_at) > now);
-        
-        // Localized texts based on user's interface language
-        const texts = userLang === 'ru' ? {
-          profileTitle: '📊 *Ваш языковой профиль*',
-          level: '🎯 *Уровень:*',
-          subscription: '💳 *Подписка:*',
-          totalLessons: '📚 *Всего уроков:*',
-          currentStreak: '🔥 *Текущая серия:*',
-          days: 'дней',
-          active: 'Активна',
-          inactive: 'Неактивна - Подпишитесь для продолжения обучения'
-        } : {
-          profileTitle: '📊 *Your Language Profile*',
-          level: '🎯 *Level:*',
-          subscription: '💳 *Subscription:*',
-          totalLessons: '📚 *Total lessons:*',
-          currentStreak: '🔥 *Current streak:*',
-          days: 'days',
-          active: 'Active',
-          inactive: 'Inactive - Subscribe to continue learning'
-        };
-        
-        const subscriptionStatus = hasActiveSubscription ? texts.active : texts.inactive;
-        
-        let message = `${texts.profileTitle}\n\n` +
-          `${texts.level} ${surveyLevel}\n` +
-          `${texts.subscription} ${subscriptionStatus}\n` +
-          `${texts.totalLessons} ${lessonsTotal}\n` +
-          `${texts.currentStreak} ${lessonsStreak} ${texts.days}\n\n`;
-        
-        // Show profile with appropriate options based on subscription status
-        if (hasActiveSubscription) {
-          // For subscribed users, don't show subscription buttons
-          await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
-        } else {
-          // For non-subscribed users, show localized subscription button
-          const subscribeButtonText = userLang === 'ru' ? 'Подписаться за 600₽/месяц' : 'Subscribe for 600₽/month';
+          console.log(`🔍 [${chatId}] Getting profile data from Lambda`);
           
-          // Get tribute link
-          let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || "https://t.me/tribute/app?startapp=swvs";
-          if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
-            tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
+          // Получаем данные профиля через Lambda
+          const profileResponse = await callLambdaFunction('onboarding', {
+            user_id: chatId,
+            action: 'get_profile'
+          }, env);
+          
+          if (!profileResponse || !profileResponse.success) {
+            const errorText = "❌ Профиль не найден. Пожалуйста, начните с команды /start";
+            await sendMessageViaTelegram(chatId, errorText, env);
+            return new Response('OK');
           }
+          
+          const userData = profileResponse.user_data;
+          const hasAudioAccess = profileResponse.has_audio_access;
+          const hasTextAccess = profileResponse.has_text_access;
+          const accessDate = profileResponse.access_date;
+          
+          // Определяем язык интерфейса
+          const userLang = userData.interface_language || 'ru';
+          
+          // Локализованные тексты
+          const texts = userLang === 'ru' ? {
+            profileTitle: '👤 *Ваш профиль*',
+            username: '📝 *Имя:*',
+            level: '🎯 *Уровень:*',
+            lessonsLeft: '📚 *Аудио-уроков осталось:*',
+            accessUntil: '⏰ *Доступ до:*',
+            totalLessons: '🎓 *Всего аудио-уроков пройдено:*',
+            currentStreak: '🔥 *Текущая серия:*',
+            days: 'дней',
+            startAudioLesson: '🎤 Начать аудио-урок',
+            buyAudioLessons: '💰 Купить аудио-уроки',
+            startTextDialog: '💬 Начать текстовый диалог',
+            buyPremium: '⭐ Купить премиум',
+            chooseAIMode: '🤖 Выбрать режим ИИ',
+            comingSoon: 'Функционал скоро будет доступен! Всем желающим будет предоставлен бесплатный триал.',
+            noAccess: 'Нет доступа'
+          } : {
+            profileTitle: '👤 *Your Profile*',
+            username: '📝 *Name:*',
+            level: '🎯 *Level:*',
+            lessonsLeft: '📚 *Audio lessons left:*',
+            accessUntil: '⏰ *Access until:*',
+            totalLessons: '🎓 *Total audio lessons completed:*',
+            currentStreak: '🔥 *Current streak:*',
+            days: 'days',
+            startAudioLesson: '🎤 Start Audio Lesson',
+            buyAudioLessons: '💰 Buy Audio Lessons',
+            startTextDialog: '💬 Start Text Dialog',
+            buyPremium: '⭐ Buy Premium',
+            chooseAIMode: '🤖 Choose AI Mode',
+            comingSoon: 'This feature will be available soon! Everyone interested will get a free trial.',
+            noAccess: 'No access'
+          };
+          
+          // Формируем сообщение профиля
+          const username = userData.username || `User ${chatId}`;
+          const currentLevel = userData.current_level || 'Intermediate';
+          const lessonsLeft = userData.lessons_left || 0;
+          const totalLessonsCompleted = userData.total_lessons_completed || 0;
+          const currentStreak = userData.current_streak || 0;
+          
+          // Форматируем дату доступа
+          let accessDateText = texts.noAccess;
+          if (accessDate) {
+            try {
+              const date = new Date(accessDate);
+              accessDateText = date.toLocaleDateString(userLang === 'ru' ? 'ru-RU' : 'en-US');
+            } catch (e) {
+              console.error('Error formatting access date:', e);
+            }
+          }
+          
+          let message = `${texts.profileTitle}\n\n` +
+            `${texts.username} ${username}\n` +
+            `${texts.level} ${currentLevel}\n` +
+            `${texts.lessonsLeft} ${lessonsLeft}\n` +
+            `${texts.accessUntil} ${accessDateText}\n` +
+            `${texts.totalLessons} ${totalLessonsCompleted}\n` +
+            `${texts.currentStreak} ${currentStreak} ${texts.days}\n`;
+          
+          // Создаем кнопки в зависимости от доступа
+          const buttons = [];
+          
+          // Кнопка 1: Аудио-урок или покупка аудио-уроков
+          if (hasAudioAccess && lessonsLeft > 0) {
+            buttons.push([{ text: texts.startAudioLesson, callback_data: "profile:start_audio" }]);
+          } else {
+            buttons.push([{ text: texts.buyAudioLessons, callback_data: "profile:buy_audio" }]);
+          }
+          
+          // Кнопка 2: Текстовый диалог или покупка премиума
+          if (hasTextAccess) {
+            buttons.push([{ text: texts.startTextDialog, callback_data: "ai_mode:text_dialog" }]);
+          } else {
+            buttons.push([{ text: texts.buyPremium, callback_data: "profile:buy_premium" }]);
+          }
+          
+          // Кнопка 3: Выбор режима ИИ
+          buttons.push([{ text: texts.chooseAIMode, callback_data: "text_helper:start" }]);
           
           await sendMessageViaTelegram(chatId, message, env, {
             parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [[{ text: subscribeButtonText, url: tributeAppLink }]]
-            }
+            reply_markup: { inline_keyboard: buttons }
           });
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error in /profile command:`, error);
+          const errorText = "❌ Произошла ошибка при получении профиля. Попробуйте позже.";
+          await sendMessageViaTelegram(chatId, errorText, env);
         }
         
         return new Response('OK');
@@ -638,6 +662,23 @@ if (update.message?.text === '/feedback') {
                 // Небольшая задержка перед финальным фидбэком
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 
+                // Обновляем streak за завершение текстового диалога
+                try {
+                  console.log(`📈 [${chatId}] Updating text dialog streak`);
+                  const streakResponse = await callLambdaFunction('onboarding', {
+                    user_id: chatId,
+                    action: 'update_text_dialog_streak'
+                  }, env);
+                  
+                  if (streakResponse && streakResponse.success) {
+                    console.log(`✅ [${chatId}] Streak updated: ${streakResponse.new_streak} (updated: ${streakResponse.streak_updated})`);
+                  } else {
+                    console.error(`❌ [${chatId}] Failed to update streak:`, streakResponse);
+                  }
+                } catch (streakError) {
+                  console.error(`❌ [${chatId}] Error updating streak:`, streakError);
+                }
+                
                 // Получаем финальный фидбэк
                 const feedbackResponse = await callLambdaFunction('onboarding', {
                   user_id: chatId,
@@ -973,7 +1014,57 @@ The first users who sign up for the list will get a series of audio lessons for 
           return new Response('OK');
         }
         
-      // 1.6. Handle audio practice waitlist and text helper buttons
+      // 1.6. Handle profile callback buttons
+      if (update.callback_query?.data?.startsWith('profile:')) {
+        console.log(`🎯 PROFILE CALLBACK: "${update.callback_query.data}" from user ${chatId}`);
+        
+        try {
+          await callTelegram('answerCallbackQuery', {
+            callback_query_id: update.callback_query.id
+          }, env);
+          
+          const action = update.callback_query.data.split(':')[1];
+          
+          if (action === 'start_audio') {
+            // Заглушка для аудио-урока
+            const userLang = 'ru'; // Можно получить из профиля, но для простоты
+            const message = userLang === 'ru' 
+              ? "🎤 Функционал аудио-уроков скоро будет доступен! Всем желающим будет предоставлен бесплатный триал."
+              : "🎤 Audio lesson functionality will be available soon! Everyone interested will get a free trial.";
+            
+            await sendMessageViaTelegram(chatId, message, env);
+            
+          } else if (action === 'buy_audio' || action === 'buy_premium') {
+            // Перенаправляем на покупку
+            const userLang = 'ru'; // Можно получить из профиля
+            const buttonText = userLang === 'ru' ? 'Купить подписку' : 'Buy Subscription';
+            
+            let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || "https://t.me/tribute/app?startapp=swvs";
+            if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
+              tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
+            }
+            
+            const message = userLang === 'ru' 
+              ? "💰 Для доступа к полному функционалу необходима подписка:"
+              : "💰 A subscription is required for full functionality:";
+            
+            await sendMessageViaTelegram(chatId, message, env, {
+              reply_markup: {
+                inline_keyboard: [[{ text: buttonText, url: tributeAppLink }]]
+              }
+            });
+          }
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error handling profile callback:`, error);
+          const errorText = "❌ Произошла ошибка. Попробуйте еще раз.";
+          await sendMessageViaTelegram(chatId, errorText, env);
+        }
+        
+        return new Response('OK');
+      }
+
+      // 1.7. Handle audio practice waitlist and text helper buttons
       if (update.callback_query?.data === 'audio_practice:signup' || 
           update.callback_query?.data === 'text_helper:start') {
         
