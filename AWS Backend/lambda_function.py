@@ -651,7 +651,7 @@ def lambda_handler(event, context):
                                     current_expires_at = current_user.get('package_expires_at')
                                     
                                     # Вычисляем новые значения
-                                    new_lessons = current_lessons + starter_pack.get('lessons_count', 0)
+                                    new_lessons = current_lessons + starter_pack.get('lessons_granted', 0)
                                     
                                     # Для даты берем максимум из текущей и новой
                                     from datetime import datetime, timedelta
@@ -684,7 +684,7 @@ def lambda_handler(event, context):
                                     urllib.request.urlopen(update_req)
                                     
                                     starter_pack_granted = True
-                                    print(f"Starter pack granted to user {user_id}: +{starter_pack.get('lessons_count', 0)} lessons, +{duration_days} days")
+                                    print(f"Starter pack granted to user {user_id}: +{starter_pack.get('lessons_granted', 0)} lessons, +{duration_days} days")
                         
                 except Exception as e:
                     print(f"Error granting starter pack to user {user_id}: {e}")
