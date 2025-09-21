@@ -61,7 +61,7 @@ export default {
       }
 
       // Handle /help command, unknown commands, and regular text messages
-const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help', '/feedback'];
+const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help', '/feedback', '/mode'];
 
 // Handle /feedback command
 if (update.message?.text === '/feedback') {
@@ -324,6 +324,60 @@ if (update.message?.text === '/feedback') {
         } catch (error) {
           console.error(`❌ [${chatId}] Error in /profile command:`, error);
           const errorText = "❌ Произошла ошибка при получении профиля. Попробуйте позже.";
+          await sendMessageViaTelegram(chatId, errorText, env);
+        }
+        
+        return new Response('OK');
+      }
+
+      // Handle /mode command - show AI mode selection
+      if (update.message?.text === '/mode') {
+        try {
+          console.log(`🤖 [${chatId}] Processing /mode command`);
+          
+          // Получаем язык интерфейса пользователя
+          let userLang = 'ru';
+          try {
+            const profileResponse = await callLambdaFunction('onboarding', {
+              user_id: chatId,
+              action: 'get_profile'
+            }, env);
+            
+            if (profileResponse && profileResponse.success) {
+              userLang = profileResponse.user_data.interface_language || 'ru';
+            }
+          } catch (error) {
+            console.error(`⚠️ [${chatId}] Could not get user language for /mode:`, error);
+            // Продолжаем с русским по умолчанию
+          }
+          
+          // Создаем кнопки выбора режима
+          const modeButtons = userLang === 'en' 
+            ? [
+                [{ text: "📝 Text Translation", callback_data: "ai_mode:translation" }],
+                [{ text: "📚 Grammar", callback_data: "ai_mode:grammar" }],
+                [{ text: "💬 Text Dialog", callback_data: "ai_mode:text_dialog" }],
+                [{ text: "🎤 Audio Dialog", callback_data: "ai_mode:audio_dialog" }]
+              ]
+            : [
+                [{ text: "📝 Перевод текста", callback_data: "ai_mode:translation" }],
+                [{ text: "📚 Грамматика", callback_data: "ai_mode:grammar" }],
+                [{ text: "💬 Текстовый диалог", callback_data: "ai_mode:text_dialog" }],
+                [{ text: "🎤 Аудио-диалог", callback_data: "ai_mode:audio_dialog" }]
+              ];
+          
+          const modeMessage = userLang === 'en' 
+            ? "🤖 **Choose AI Mode:**\n\nSelect the mode that best fits your learning needs:"
+            : "🤖 **Выберите режим ИИ:**\n\nВыберите режим, который лучше всего подходит для ваших целей обучения:";
+          
+          await sendMessageViaTelegram(chatId, modeMessage, env, {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: modeButtons }
+          });
+          
+        } catch (error) {
+          console.error(`❌ [${chatId}] Error in /mode command:`, error);
+          const errorText = "❌ Произошла ошибка. Попробуйте еще раз.";
           await sendMessageViaTelegram(chatId, errorText, env);
         }
         
