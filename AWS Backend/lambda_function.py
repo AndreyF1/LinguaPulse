@@ -629,15 +629,16 @@ def lambda_handler(event, context):
             starter_pack_granted = False
             if is_first_feedback:
                 try:
-                    # Ищем Starter pack в products (предполагаем, что название содержит "starter")
-                    products_url = f"{supabase_url}/rest/v1/products?name=ilike.*starter*"
+                    # Используем правильный ID Starter pack (тот же что и в complete_survey)
+                    starter_pack_id = "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5"
+                    products_url = f"{supabase_url}/rest/v1/products?id=eq.{starter_pack_id}"
                     products_req = urllib.request.Request(products_url, headers=headers)
                     with urllib.request.urlopen(products_req) as response:
                         response_text = response.read().decode('utf-8')
                         products = json.loads(response_text) if response_text else []
                         
                         if products:
-                            starter_pack = products[0]  # Берем первый найденный starter pack
+                            starter_pack = products[0]  # Правильный Starter pack по ID
                             
                             # Получаем текущие данные пользователя
                             current_user_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=lessons_left,package_expires_at"
