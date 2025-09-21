@@ -87,8 +87,8 @@ if (update.message?.text === '/feedback') {
     await env.USER_MODES.put(`feedback_waiting:${chatId}`, 'true', { expirationTtl: 3600 }); // 1 час
     
     const feedbackMessage = userLang === 'en' 
-      ? "💬 **Leave your feedback in the next message. For feedback, we give free lessons 🎁**\n\nShare your thoughts, suggestions, or experience with LinguaPulse:"
-      : "💬 **Оставьте свой отзыв в ответном сообщении. За фидбэк мы дарим бесплатные уроки 🎁**\n\nПоделитесь своими мыслями, предложениями или опытом использования LinguaPulse:";
+      ? "💬 **Leave your feedback in the next message. For your FIRST feedback, we give free lessons 🎁**\n\nShare your thoughts, suggestions, or experience with LinguaPulse:"
+      : "💬 **Оставьте свой отзыв в ответном сообщении. За *ПЕРВЫЙ* фидбэк мы дарим бесплатные уроки 🎁**\n\nПоделитесь своими мыслями, предложениями или опытом использования LinguaPulse:";
     
     await sendMessageViaTelegram(chatId, feedbackMessage, env, {
       parse_mode: 'Markdown'

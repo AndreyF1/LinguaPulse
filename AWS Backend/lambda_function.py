@@ -653,18 +653,29 @@ def lambda_handler(event, context):
                                     # Вычисляем новые значения
                                     new_lessons = current_lessons + starter_pack.get('lessons_granted', 0)
                                     
-                                    # Для даты берем максимум из текущей и новой
+                                    # Логика продления package_expires_at
                                     from datetime import datetime, timedelta
                                     duration_days = starter_pack.get('duration_days', 30)
-                                    new_expires_date = datetime.now() + timedelta(days=duration_days)
+                                    now = datetime.now()
                                     
                                     if current_expires_at:
                                         try:
                                             current_expires_date = datetime.fromisoformat(current_expires_at.replace('Z', '+00:00'))
-                                            if current_expires_date > new_expires_date:
+                                            # Если текущая дата истечения в будущем, продляем от неё
+                                            if current_expires_date > now:
                                                 new_expires_date = current_expires_date + timedelta(days=duration_days)
-                                        except:
-                                            pass  # Используем новую дату
+                                            else:
+                                                # Если истекла, продляем от текущего момента
+                                                new_expires_date = now + timedelta(days=duration_days)
+                                        except Exception as e:
+                                            print(f"Error parsing current_expires_at '{current_expires_at}': {e}")
+                                            # Если ошибка парсинга, продляем от текущего момента
+                                            new_expires_date = now + timedelta(days=duration_days)
+                                    else:
+                                        # Если package_expires_at не установлен, устанавливаем от текущего момента
+                                        new_expires_date = now + timedelta(days=duration_days)
+                                    
+                                    print(f"Updating package_expires_at: current='{current_expires_at}', new='{new_expires_date.isoformat()}', duration_days={duration_days}")
                                     
                                     # Обновляем пользователя
                                     update_data = {
