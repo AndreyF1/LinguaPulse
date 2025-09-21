@@ -666,8 +666,8 @@ def lambda_handler(event, context):
                                             if current_expires_date > now:
                                                 new_expires_date = current_expires_date + timedelta(days=duration_days)
                                             else:
-                                                # Если истекла, продляем от текущего момента
-                                                new_expires_date = now + timedelta(days=duration_days)
+                                                # Если истекла, продляем от даты истечения (не от текущего момента)
+                                                new_expires_date = current_expires_date + timedelta(days=duration_days)
                                         except Exception as e:
                                             print(f"Error parsing current_expires_at '{current_expires_at}': {e}")
                                             # Если ошибка парсинга, продляем от текущего момента
