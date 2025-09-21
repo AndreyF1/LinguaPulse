@@ -569,7 +569,141 @@ def lambda_handler(event, context):
             print(f"Error updating text dialog streak: {e}")
             return error_response(f'Error updating streak: {str(e)}')
     
-    # 10. Генерация финального фидбэка для диалога
+    # 10. Сохранение feedback пользователя с начислением Starter pack
+    if 'action' in body and body['action'] == 'save_feedback':
+        user_id = body.get('user_id')
+        feedback_text = body.get('feedback_text', '').strip()
+        
+        if not user_id or not feedback_text:
+            return error_response('user_id and feedback_text are required')
+        
+        try:
+            print(f"Saving feedback for user {user_id}")
+            
+            # Проверяем, оставлял ли пользователь фидбэк ранее
+            check_url = f"{supabase_url}/rest/v1/feedback?telegram_id=eq.{user_id}&select=id"
+            headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key
+            }
+            
+            req = urllib.request.Request(check_url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                existing_feedback = json.loads(response_text) if response_text else []
+                is_first_feedback = len(existing_feedback) == 0
+            
+            # Получаем user_id (UUID) из users таблицы
+            user_uuid = None
+            user_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=id"
+            user_req = urllib.request.Request(user_url, headers=headers)
+            with urllib.request.urlopen(user_req) as response:
+                response_text = response.read().decode('utf-8')
+                users = json.loads(response_text) if response_text else []
+                if users:
+                    user_uuid = users[0]['id']
+            
+            # Сохраняем feedback в базу
+            feedback_data = {
+                'user_id': user_uuid,
+                'telegram_id': int(user_id),
+                'text': feedback_text,
+                'created_at': 'now()'
+            }
+            
+            feedback_url = f"{supabase_url}/rest/v1/feedback"
+            feedback_json = json.dumps(feedback_data).encode('utf-8')
+            feedback_headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key,
+                'Content-Type': 'application/json'
+            }
+            
+            feedback_req = urllib.request.Request(feedback_url, data=feedback_json, headers=feedback_headers, method='POST')
+            urllib.request.urlopen(feedback_req)
+            
+            print(f"Feedback saved for user {user_id}, first_feedback: {is_first_feedback}")
+            
+            # Если это первый фидбэк, начисляем Starter pack
+            starter_pack_granted = False
+            if is_first_feedback:
+                try:
+                    # Ищем Starter pack в products (предполагаем, что название содержит "starter")
+                    products_url = f"{supabase_url}/rest/v1/products?name=ilike.*starter*"
+                    products_req = urllib.request.Request(products_url, headers=headers)
+                    with urllib.request.urlopen(products_req) as response:
+                        response_text = response.read().decode('utf-8')
+                        products = json.loads(response_text) if response_text else []
+                        
+                        if products:
+                            starter_pack = products[0]  # Берем первый найденный starter pack
+                            
+                            # Получаем текущие данные пользователя
+                            current_user_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=lessons_left,package_expires_at"
+                            current_req = urllib.request.Request(current_user_url, headers=headers)
+                            with urllib.request.urlopen(current_req) as response:
+                                response_text = response.read().decode('utf-8')
+                                current_users = json.loads(response_text) if response_text else []
+                                
+                                if current_users:
+                                    current_user = current_users[0]
+                                    current_lessons = current_user.get('lessons_left', 0)
+                                    current_expires_at = current_user.get('package_expires_at')
+                                    
+                                    # Вычисляем новые значения
+                                    new_lessons = current_lessons + starter_pack.get('lessons_count', 0)
+                                    
+                                    # Для даты берем максимум из текущей и новой
+                                    from datetime import datetime, timedelta
+                                    duration_days = starter_pack.get('duration_days', 30)
+                                    new_expires_date = datetime.now() + timedelta(days=duration_days)
+                                    
+                                    if current_expires_at:
+                                        try:
+                                            current_expires_date = datetime.fromisoformat(current_expires_at.replace('Z', '+00:00'))
+                                            if current_expires_date > new_expires_date:
+                                                new_expires_date = current_expires_date + timedelta(days=duration_days)
+                                        except:
+                                            pass  # Используем новую дату
+                                    
+                                    # Обновляем пользователя
+                                    update_data = {
+                                        'lessons_left': new_lessons,
+                                        'package_expires_at': new_expires_date.isoformat()
+                                    }
+                                    
+                                    update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+                                    update_json = json.dumps(update_data).encode('utf-8')
+                                    update_headers = {
+                                        'Authorization': f'Bearer {supabase_key}',
+                                        'apikey': supabase_key,
+                                        'Content-Type': 'application/json'
+                                    }
+                                    
+                                    update_req = urllib.request.Request(update_url, data=update_json, headers=update_headers, method='PATCH')
+                                    urllib.request.urlopen(update_req)
+                                    
+                                    starter_pack_granted = True
+                                    print(f"Starter pack granted to user {user_id}: +{starter_pack.get('lessons_count', 0)} lessons, +{duration_days} days")
+                        
+                except Exception as e:
+                    print(f"Error granting starter pack to user {user_id}: {e}")
+                    # Не прерываем выполнение, фидбэк уже сохранен
+            
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': True,
+                    'is_first_feedback': is_first_feedback,
+                    'starter_pack_granted': starter_pack_granted
+                })
+            }
+            
+        except Exception as e:
+            print(f"Error saving feedback: {e}")
+            return error_response(f'Error saving feedback: {str(e)}')
+    
+    # 11. Генерация финального фидбэка для диалога
     if 'action' in body and body['action'] == 'generate_dialog_feedback':
         user_id = body.get('user_id')
         user_lang = body.get('user_lang', 'ru')  # Default to Russian

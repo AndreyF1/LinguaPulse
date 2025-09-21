@@ -65,49 +65,42 @@ const supportedCommands = ['/start', '/profile', '/lesson', '/talk', '/help', '/
 
 // Handle /feedback command
 if (update.message?.text === '/feedback') {
-  // Helper functions for /feedback localization
-  async function getUserLanguageForFeedback() {
+  try {
+    console.log(`💬 [${chatId}] Processing /feedback command`);
+    
+    // Получаем язык интерфейса пользователя
+    let userLang = 'ru';
     try {
-      const { results } = await env.USER_DB
-        .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-        .bind(parseInt(chatId, 10))
-        .all();
-      return results.length > 0 ? results[0].interface_language : 'en';
-    } catch (error) {
-      console.error('Error getting user language for /feedback:', error);
-      return 'en';
-    }
-  }
-
-  const feedbackTexts = {
-    en: {
-      title: "💬 *Join our feedback channel to share your thoughts and suggestions!*",
-      description: "Your feedback helps us improve LinguaPulse and make it better for everyone.",
-      button: "Join Feedback Channel"
-    },
-    ru: {
-      title: "💬 *Присоединяйтесь к нашему каналу обратной связи, чтобы поделиться мыслями и предложениями!*",
-      description: "Ваша обратная связь помогает нам улучшать LinguaPulse и делать его лучше для всех.",
-      button: "Присоединиться к каналу обратной связи"
-    }
-  };
-
-  function getFeedbackText(lang, key) {
-    return feedbackTexts[lang]?.[key] || feedbackTexts.en[key] || key;
-  }
-
-  const userLang = await getUserLanguageForFeedback();
-  await sendMessageViaTelegram(chatId, 
-    `${getFeedbackText(userLang, 'title')}\n\n${getFeedbackText(userLang, 'description')}`,
-    env,
-    { 
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{ text: getFeedbackText(userLang, 'button'), url: "https://t.me/+sBmchJHjPKwyMDVi" }]]
+      const profileResponse = await callLambdaFunction('onboarding', {
+        user_id: chatId,
+        action: 'get_profile'
+      }, env);
+      
+      if (profileResponse && profileResponse.success) {
+        userLang = profileResponse.user_data.interface_language || 'ru';
       }
+      } catch (error) {
+      console.error(`⚠️ [${chatId}] Could not get user language for /feedback:`, error);
     }
-  );
-  return new Response('OK');
+    
+    // Устанавливаем состояние ожидания фидбэка
+    await env.USER_MODES.put(`feedback_waiting:${chatId}`, 'true', { expirationTtl: 3600 }); // 1 час
+    
+    const feedbackMessage = userLang === 'en' 
+      ? "💬 **Leave your feedback in the next message. For feedback, we give free lessons 🎁**\n\nShare your thoughts, suggestions, or experience with LinguaPulse:"
+      : "💬 **Оставьте свой отзыв в ответном сообщении. За фидбэк мы дарим бесплатные уроки 🎁**\n\nПоделитесь своими мыслями, предложениями или опытом использования LinguaPulse:";
+    
+    await sendMessageViaTelegram(chatId, feedbackMessage, env, {
+      parse_mode: 'Markdown'
+    });
+    
+  } catch (error) {
+    console.error(`❌ [${chatId}] Error in /feedback command:`, error);
+    const errorText = "❌ Произошла ошибка. Попробуйте еще раз.";
+    await sendMessageViaTelegram(chatId, errorText, env);
+    }
+    
+    return new Response('OK');
 }
 
 // ВРЕМЕННО УДАЛЕНО - старая логика обработки /help команд
@@ -236,15 +229,15 @@ if (update.message?.text === '/feedback') {
           const userLang = userData.interface_language || 'ru';
           
           // Локализованные тексты
-          const texts = userLang === 'ru' ? {
+        const texts = userLang === 'ru' ? {
             profileTitle: '👤 *Ваш профиль*',
             username: '📝 *Имя:*',
-            level: '🎯 *Уровень:*',
+          level: '🎯 *Уровень:*',
             lessonsLeft: '📚 *Аудио-уроков осталось:*',
             accessUntil: '⏰ *Доступ до:*',
             totalLessons: '🎓 *Всего аудио-уроков пройдено:*',
-            currentStreak: '🔥 *Текущая серия:*',
-            days: 'дней',
+          currentStreak: '🔥 *Текущая серия:*',
+          days: 'дней',
             startAudioLesson: '🎤 Начать аудио-урок',
             buyAudioLessons: '💰 Купить аудио-уроки',
             startTextDialog: '💬 Начать текстовый диалог',
@@ -255,12 +248,12 @@ if (update.message?.text === '/feedback') {
           } : {
             profileTitle: '👤 *Your Profile*',
             username: '📝 *Name:*',
-            level: '🎯 *Level:*',
+          level: '🎯 *Level:*',
             lessonsLeft: '📚 *Audio lessons left:*',
             accessUntil: '⏰ *Access until:*',
             totalLessons: '🎓 *Total audio lessons completed:*',
-            currentStreak: '🔥 *Current streak:*',
-            days: 'days',
+          currentStreak: '🔥 *Current streak:*',
+          days: 'days',
             startAudioLesson: '🎤 Start Audio Lesson',
             buyAudioLessons: '💰 Buy Audio Lessons',
             startTextDialog: '💬 Start Text Dialog',
@@ -287,8 +280,8 @@ if (update.message?.text === '/feedback') {
               console.error('Error formatting access date:', e);
             }
           }
-          
-          let message = `${texts.profileTitle}\n\n` +
+        
+        let message = `${texts.profileTitle}\n\n` +
             `${texts.username} ${username}\n` +
             `${texts.level} ${currentLevel}\n` +
             `${texts.lessonsLeft} ${lessonsLeft}\n` +
@@ -302,7 +295,7 @@ if (update.message?.text === '/feedback') {
           // Кнопка 1: Аудио-урок или покупка аудио-уроков
           if (hasAudioAccess && lessonsLeft > 0) {
             buttons.push([{ text: texts.startAudioLesson, callback_data: "profile:start_audio" }]);
-          } else {
+        } else {
             buttons.push([{ text: texts.buyAudioLessons, callback_data: "profile:buy_audio" }]);
           }
           
@@ -598,6 +591,80 @@ if (update.message?.text === '/feedback') {
         console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
         
         try {
+          // Проверяем, ожидаем ли мы feedback от пользователя
+          const feedbackWaiting = await env.USER_MODES.get(`feedback_waiting:${chatId}`);
+          if (feedbackWaiting === 'true') {
+            console.log(`💬 [${chatId}] Processing feedback: "${update.message.text}"`);
+            
+            // Удаляем состояние ожидания
+            await env.USER_MODES.delete(`feedback_waiting:${chatId}`);
+            
+            // Сохраняем feedback через Lambda
+            try {
+              const feedbackResponse = await callLambdaFunction('onboarding', {
+                user_id: chatId,
+                action: 'save_feedback',
+                feedback_text: update.message.text
+              }, env);
+              
+              if (feedbackResponse && feedbackResponse.success) {
+                console.log(`✅ [${chatId}] Feedback saved successfully`);
+                
+                // Получаем язык интерфейса для ответа
+                let userLang = 'ru';
+                try {
+                  const profileResponse = await callLambdaFunction('onboarding', {
+                    user_id: chatId,
+                    action: 'get_profile'
+                  }, env);
+                  
+                  if (profileResponse && profileResponse.success) {
+                    userLang = profileResponse.user_data.interface_language || 'ru';
+                  }
+                } catch (error) {
+                  console.error(`⚠️ [${chatId}] Could not get user language for feedback response:`, error);
+                }
+                
+                // Формируем ответ в зависимости от того, первый ли это фидбэк
+                let responseMessage;
+                if (feedbackResponse.is_first_feedback && feedbackResponse.starter_pack_granted) {
+                  responseMessage = userLang === 'en' 
+                    ? "🎉 **Thank you for your feedback!**\n\nAs a thank you, we've added free lessons to your account. Additional premium access has been granted! 🎁"
+                    : "🎉 **Спасибо за ваш отзыв!**\n\nВ благодарность мы добавили бесплатные уроки на ваш аккаунт. Дополнительный премиум доступ предоставлен! 🎁";
+                } else if (feedbackResponse.is_first_feedback) {
+                  responseMessage = userLang === 'en' 
+                    ? "🎉 **Thank you for your first feedback!**\n\nWe appreciate your input and will use it to improve LinguaPulse."
+                    : "🎉 **Спасибо за ваш первый отзыв!**\n\nМы ценим ваше мнение и используем его для улучшения LinguaPulse.";
+                } else {
+                  responseMessage = userLang === 'en' 
+                    ? "💬 **Thank you for your feedback!**\n\nWe appreciate your continued input."
+                    : "💬 **Спасибо за ваш отзыв!**\n\nМы ценим ваше постоянное участие.";
+                }
+                
+                // Кнопка выбора режима ИИ
+                const modeButtonText = userLang === 'en' ? "🤖 Choose AI Mode" : "🤖 Выбрать режим ИИ";
+                
+                await sendMessageViaTelegram(chatId, responseMessage, env, {
+                  parse_mode: 'Markdown',
+                  reply_markup: {
+                    inline_keyboard: [[{ text: modeButtonText, callback_data: "text_helper:start" }]]
+                  }
+                });
+                
+              } else {
+                console.error(`❌ [${chatId}] Failed to save feedback:`, feedbackResponse);
+                const errorText = "❌ Произошла ошибка при сохранении отзыва. Попробуйте позже.";
+                await sendMessageViaTelegram(chatId, errorText, env);
+              }
+              
+            } catch (feedbackError) {
+              console.error(`❌ [${chatId}] Error saving feedback:`, feedbackError);
+              const errorText = "❌ Произошла ошибка при сохранении отзыва. Попробуйте позже.";
+              await sendMessageViaTelegram(chatId, errorText, env);
+            }
+            
+            return new Response('OK');
+          }
           // Получаем сохраненный режим из KV storage
           let currentMode = 'translation'; // по умолчанию
           
@@ -1065,8 +1132,8 @@ The first users who sign up for the list will get a series of audio lessons for 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-          return new Response('OK');
-        }
+            return new Response('OK');
+          }
         
       // 1.6. Handle profile callback buttons
       if (update.callback_query?.data?.startsWith('profile:')) {
@@ -1205,9 +1272,9 @@ As soon as we open audio lessons — we'll send an invitation.`
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-        return new Response('OK');
-      }
-
+          return new Response('OK');
+        }
+        
       // 1.7. Handle AI mode selection
       if (update.callback_query?.data?.startsWith('ai_mode:')) {
         console.log(`🤖 AI MODE SELECTION: "${update.callback_query.data}" from user ${chatId}`);
