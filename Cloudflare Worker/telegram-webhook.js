@@ -1475,6 +1475,11 @@ As soon as we open audio lessons — we'll send an invitation.`
                     instructionMessage = interface_language === 'en' 
                       ? `🎤 **Audio Dialog Mode**\n\nGreat! You have ${lessons_left} audio lessons available. Let's start practicing with voice messages!`
                       : `🎤 **Режим аудио-диалога**\n\nОтлично! У вас доступно ${lessons_left} аудио-уроков. Давайте начнем практиковаться с голосовыми сообщениями!`;
+                    
+                    // При наличии доступа - только кнопка смены режима (без дополнительных кнопок)
+                    modeButtons = [
+                      [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
+                    ];
                   } else {
                     // Нет доступа - показываем детальную информацию
                     const expireDate = package_expires_at ? new Date(package_expires_at).toLocaleDateString('ru-RU') : 'не активна';
@@ -1518,14 +1523,8 @@ As soon as we open audio lessons — we'll send an invitation.`
             [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
           ];
           
-          // Для audio_dialog добавляем кнопку записи в ожидание
-          if (mode === 'audio_dialog') {
-            const waitlistButtonText = userLang === 'en' 
-              ? "🚀 Join Waitlist" 
-              : "🚀 Записаться в ожидание";
-            
-            modeButtons.unshift([{ text: waitlistButtonText, callback_data: "audio_practice:signup" }]);
-          }
+          // Для audio_dialog кнопки уже настроены в switch case выше
+          // (либо кнопка "Добавить уроки" при отсутствии доступа, либо без дополнительных кнопок при наличии доступа)
 
           await sendMessageViaTelegram(chatId, instructionMessage, env, {
             reply_markup: { 
