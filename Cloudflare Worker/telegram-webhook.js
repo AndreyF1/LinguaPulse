@@ -1317,9 +1317,53 @@ As soon as we open audio lessons — we'll send an invitation.`
                 : `💬 **Режим текстового диалога**\n\nДавай поговорим на английском! Я помогу тебе практиковаться в естественном общении.`;
               break;
             case 'audio_dialog':
-              instructionMessage = userLang === 'en' 
-                ? `🎤 **Audio Dialog Mode**\n\nThis mode will be available soon! For now, try other modes.`
-                : `🎤 **Режим аудио-диалога**\n\nЭтот режим скоро будет доступен! Пока попробуй другие режимы.`;
+              // Проверяем доступ к аудио-урокам
+              console.log(`🎤 [${chatId}] Checking audio access for user`);
+              
+              try {
+                const accessResponse = await callLambdaFunction('onboarding', {
+                  user_id: chatId,
+                  action: 'check_audio_access'
+                }, env);
+                
+                if (accessResponse && accessResponse.success) {
+                  const { has_access, lessons_left, package_expires_at, interface_language } = accessResponse;
+                  
+                  if (has_access) {
+                    // Есть доступ - показываем сообщение о запуске
+                    instructionMessage = interface_language === 'en' 
+                      ? `🎤 **Audio Dialog Mode**\n\nGreat! You have ${lessons_left} audio lessons available. Let's start practicing with voice messages!`
+                      : `🎤 **Режим аудио-диалога**\n\nОтлично! У вас доступно ${lessons_left} аудио-уроков. Давайте начнем практиковаться с голосовыми сообщениями!`;
+                  } else {
+                    // Нет доступа - показываем детальную информацию
+                    const expireDate = package_expires_at ? new Date(package_expires_at).toLocaleDateString('ru-RU') : 'не активна';
+                    
+                    instructionMessage = interface_language === 'en' 
+                      ? `🎤 **Audio Dialog Mode**\n\n❌ **No audio lessons available**\n\n📊 **Current status:**\n• Audio lessons left: ${lessons_left}\n• Subscription expires: ${expireDate}\n\nTo access audio lessons, you need both active lessons and an active subscription.`
+                      : `🎤 **Режим аудио-диалога**\n\n❌ **Нет доступных аудио-уроков**\n\n📊 **Текущее состояние:**\n• Осталось аудио-уроков: ${lessons_left}\n• Подписка истекает: ${expireDate}\n\nДля доступа к аудио-урокам нужны и активные уроки, и активная подписка.`;
+                    
+                    // Изменяем кнопки для случая отсутствия доступа
+                    modeButtons = [
+                      [{ 
+                        text: interface_language === 'en' ? "🛒 Add Lessons" : "🛒 Добавить уроки", 
+                        url: "https://linguapulse.ai/paywall" 
+                      }],
+                      [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
+                    ];
+                  }
+                } else {
+                  // Ошибка при проверке доступа
+                  console.error(`❌ [${chatId}] Failed to check audio access:`, accessResponse);
+                  instructionMessage = userLang === 'en' 
+                    ? `🎤 **Audio Dialog Mode**\n\n❌ Unable to check access. Please try again later.`
+                    : `🎤 **Режим аудио-диалога**\n\n❌ Не удалось проверить доступ. Попробуйте позже.`;
+                }
+              } catch (error) {
+                console.error(`❌ [${chatId}] Error checking audio access:`, error);
+                instructionMessage = userLang === 'en' 
+                  ? `🎤 **Audio Dialog Mode**\n\n❌ Technical error. Please try again later.`
+                  : `🎤 **Режим аудио-диалога**\n\n❌ Техническая ошибка. Попробуйте позже.`;
+              }
               break;
             default:
               instructionMessage = userLang === 'en' 
