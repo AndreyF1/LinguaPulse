@@ -761,15 +761,12 @@ def lambda_handler(event, context):
                 if package_expires_at:
                     try:
                         expires_date = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
-                        # ИСПРАВЛЕНИЕ: Сравниваем только даты, игнорируя время
-                        expires_date_only = expires_date.date()
-                        now_date_only = now.date()
-                        has_active_subscription = expires_date_only >= now_date_only
+                        has_active_subscription = expires_date > now
                         print(f"  expires_date (parsed): {expires_date}")
-                        print(f"  expires_date_only: {expires_date_only}")
-                        print(f"  now_date_only: {now_date_only}")
-                        print(f"  expires_date_only >= now_date_only: {expires_date_only >= now_date_only}")
+                        print(f"  now (parsed): {now}")
+                        print(f"  expires_date > now: {expires_date > now}")
                         print(f"  has_active_subscription: {has_active_subscription}")
+                        print(f"  RAW package_expires_at: '{package_expires_at}'")
                     except Exception as e:
                         print(f"❌ Error parsing package_expires_at: {e}")
                 else:
