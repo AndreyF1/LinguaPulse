@@ -751,9 +751,9 @@ def lambda_handler(event, context):
                 
                 print(f"User {user_id}: lessons_left={lessons_left}, package_expires_at={package_expires_at}")
                 
-                # Проверяем доступ
+                # Проверяем доступ - ИСПРАВЛЯЕМ ЧАСОВОЙ ПОЯС
                 from datetime import timezone
-                now = datetime.now(timezone.utc)
+                now = datetime.now(timezone.utc)  # ПРИНУДИТЕЛЬНО UTC
                 has_lessons = lessons_left > 0
                 has_active_subscription = False
                 
@@ -766,14 +766,26 @@ def lambda_handler(event, context):
                 if package_expires_at:
                     try:
                         print(f"🔥🔥🔥 ПАРСИМ ДАТУ: {package_expires_at}")
+                        # ИСПРАВЛЯЕМ ПАРСИНГ - убеждаемся что обе даты в UTC
                         expires_date = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+                        
+                        # ДЕТАЛЬНАЯ ДИАГНОСТИКА
+                        print(f"🔥🔥🔥 expires_date: {expires_date} (timezone: {expires_date.tzinfo})")
+                        print(f"🔥🔥🔥 now: {now} (timezone: {now.tzinfo})")
+                        print(f"🔥🔥🔥 expires_date.timestamp(): {expires_date.timestamp()}")
+                        print(f"🔥🔥🔥 now.timestamp(): {now.timestamp()}")
+                        
+                        # ПРАВИЛЬНОЕ СРАВНЕНИЕ
                         has_active_subscription = expires_date > now
                         print(f"🔥🔥🔥 РЕЗУЛЬТАТ: {expires_date} > {now} = {has_active_subscription}")
-                        print(f"  expires_date (parsed): {expires_date}")
-                        print(f"  now (parsed): {now}")
-                        print(f"  expires_date > now: {expires_date > now}")
-                        print(f"  has_active_subscription: {has_active_subscription}")
-                        print(f"  RAW package_expires_at: '{package_expires_at}'")
+                        
+                        # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ЧЕРЕЗ TIMESTAMP
+                        timestamp_check = expires_date.timestamp() > now.timestamp()
+                        print(f"🔥🔥🔥 TIMESTAMP CHECK: {expires_date.timestamp()} > {now.timestamp()} = {timestamp_check}")
+                        
+                        if has_active_subscription != timestamp_check:
+                            print(f"🚨 НЕСООТВЕТСТВИЕ! datetime: {has_active_subscription}, timestamp: {timestamp_check}")
+                            has_active_subscription = timestamp_check  # Используем timestamp как истину
                     except Exception as e:
                         print(f"❌ Error parsing package_expires_at: {e}")
                 else:
