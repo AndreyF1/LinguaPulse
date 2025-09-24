@@ -718,6 +718,9 @@ def lambda_handler(event, context):
     if 'action' in body and body['action'] == 'check_audio_access':
         user_id = body.get('user_id')
         
+        print(f"🚀 LAMBDA ВЫЗВАНА: check_audio_access для user {user_id}")
+        print(f"🚀 ВЕРСИЯ КОДА: 2025-09-24 19:33 - ДЕТАЛЬНАЯ ДИАГНОСТИКА")
+        
         if not user_id:
             return error_response('user_id is required')
         
