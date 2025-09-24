@@ -1210,6 +1210,68 @@ The first users who sign up for the list will get a series of audio lessons for 
               await sendMessageViaTelegram(chatId, message, env);
             }
             
+          } else if (action === 'show') {
+            // Показать профиль (та же логика что и команда /profile)
+            console.log(`🔍 [${chatId}] Getting profile data from Lambda`);
+            
+            const profileResponse = await callLambdaFunction('onboarding', {
+              user_id: chatId,
+              action: 'get_profile'
+            }, env);
+            
+            if (profileResponse && profileResponse.success) {
+              const profile = profileResponse.profile;
+              const userLang = profile.interface_language || 'ru';
+              
+              // Формируем сообщение профиля
+              const profileMessage = userLang === 'en' 
+                ? `👤 *Your Profile*\n\n📝 *Name:* ${profile.username}\n🎯 *Level:* ${profile.current_level}\n📚 *Audio lessons left:* ${profile.lessons_left}\n⏰ *Access until:* ${profile.access_date}\n🎓 *Total audio lessons completed:* ${profile.total_lessons_completed}\n🔥 *Current streak:* ${profile.current_streak} days\n`
+                : `👤 *Ваш профиль*\n\n📝 *Имя:* ${profile.username}\n🎯 *Уровень:* ${profile.current_level}\n📚 *Аудио-уроков осталось:* ${profile.lessons_left}\n⏰ *Доступ до:* ${profile.access_date}\n🎓 *Всего аудио-уроков пройдено:* ${profile.total_lessons_completed}\n🔥 *Текущая серия:* ${profile.current_streak} дней\n`;
+              
+              // Формируем кнопки
+              const buttons = [];
+              
+              // Кнопка аудио-урока
+              if (profile.has_audio_access) {
+                buttons.push([{ 
+                  text: userLang === 'en' ? "🎤 Start Audio Lesson" : "🎤 Начать аудио-урок", 
+                  callback_data: "profile:start_audio" 
+                }]);
+              } else {
+                buttons.push([{ 
+                  text: userLang === 'en' ? "🛒 Buy Audio Lessons" : "🛒 Купить аудио-уроки", 
+                  callback_data: "profile:buy_audio" 
+                }]);
+              }
+              
+              // Кнопка текстового диалога
+              if (profile.has_text_access) {
+                buttons.push([{ 
+                  text: userLang === 'en' ? "💬 Start Text Dialog" : "💬 Начать текстовый диалог", 
+                  callback_data: "ai_mode:text_dialog" 
+                }]);
+              } else {
+                buttons.push([{ 
+                  text: userLang === 'en' ? "💎 Buy Premium" : "💎 Купить премиум", 
+                  callback_data: "profile:buy_premium" 
+                }]);
+              }
+              
+              // Кнопка выбора режима ИИ
+              buttons.push([{ 
+                text: userLang === 'en' ? "🤖 Choose AI Mode" : "🤖 Выбрать режим ИИ", 
+                callback_data: "text_helper:start" 
+              }]);
+              
+              await sendMessageViaTelegram(chatId, profileMessage, env, {
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: buttons }
+              });
+            } else {
+              const errorText = "❌ Не удалось загрузить профиль. Попробуйте позже.";
+              await sendMessageViaTelegram(chatId, errorText, env);
+            }
+            
           } else if (action === 'buy_audio' || action === 'buy_premium') {
             // Перенаправляем на покупку
             const userLang = 'ru'; // Можно получить из профиля
