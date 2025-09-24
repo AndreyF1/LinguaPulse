@@ -463,7 +463,7 @@ def lambda_handler(event, context):
                                 'user_data': user_data,
                                 'has_audio_access': has_audio_access,
                                 'has_text_access': has_text_access,
-                                'access_date': access_date.isoformat() if access_date else None
+                                'access_date': access_date.strftime('%d.%m.%Y') if access_date else None
                             })
                         }
             
@@ -718,8 +718,9 @@ def lambda_handler(event, context):
     if 'action' in body and body['action'] == 'check_audio_access':
         user_id = body.get('user_id')
         
-        print(f"🚀 LAMBDA ВЫЗВАНА: check_audio_access для user {user_id}")
-        print(f"🚀 ВЕРСИЯ КОДА: 2025-09-24 19:33 - ДЕТАЛЬНАЯ ДИАГНОСТИКА")
+        print(f"🚀🚀🚀 LAMBDA ВЫЗВАНА: check_audio_access для user {user_id}")
+        print(f"🚀🚀🚀 ВЕРСИЯ КОДА: 2025-09-24 19:37 - ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ")
+        print(f"🚀🚀🚀 ПРОБЛЕМА: 27.09.2025 17:19 > 24.09.2025 18:35 должно быть TRUE!")
         
         if not user_id:
             return error_response('user_id is required')

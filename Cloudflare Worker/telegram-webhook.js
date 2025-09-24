@@ -1156,8 +1156,12 @@ The first users who sign up for the list will get a series of audio lessons for 
                 action: 'check_audio_access'
               }, env);
               
+              console.log(`🔍 LAMBDA ОТВЕТ:`, JSON.stringify(accessResponse, null, 2));
+              
               if (accessResponse && accessResponse.success) {
-                const { has_access, lessons_left, package_expires_at, interface_language } = accessResponse;
+                const { has_access, lessons_left, package_expires_at, interface_language, has_lessons, has_active_subscription } = accessResponse;
+                
+                console.log(`🔍 ДЕТАЛИ ДОСТУПА: has_access=${has_access}, lessons=${lessons_left}, expires=${package_expires_at}, has_lessons=${has_lessons}, has_subscription=${has_active_subscription}`);
                 
                 if (has_access) {
                   // Есть доступ - показываем сообщение о запуске
