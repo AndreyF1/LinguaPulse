@@ -1147,13 +1147,68 @@ The first users who sign up for the list will get a series of audio lessons for 
           const action = update.callback_query.data.split(':')[1];
           
           if (action === 'start_audio') {
-            // Заглушка для аудио-урока
-            const userLang = 'ru'; // Можно получить из профиля, но для простоты
-            const message = userLang === 'ru' 
-              ? "🎤 Функционал аудио-уроков скоро будет доступен! Всем желающим будет предоставлен бесплатный триал."
-              : "🎤 Audio lesson functionality will be available soon! Everyone interested will get a free trial.";
+            // Проверяем доступ к аудио-урокам (та же логика что и в ai_mode:audio_dialog)
+            console.log(`🎤 [${chatId}] Checking audio access for profile start_audio`);
             
-            await sendMessageViaTelegram(chatId, message, env);
+            try {
+              const accessResponse = await callLambdaFunction('onboarding', {
+                user_id: chatId,
+                action: 'check_audio_access'
+              }, env);
+              
+              if (accessResponse && accessResponse.success) {
+                const { has_access, lessons_left, package_expires_at, interface_language } = accessResponse;
+                
+                if (has_access) {
+                  // Есть доступ - показываем сообщение о запуске
+                  const message = interface_language === 'en' 
+                    ? `🎤 **Audio Lesson Starting**\n\nGreat! You have ${lessons_left} audio lessons available. Let's start practicing with voice messages!`
+                    : `🎤 **Запуск аудио-урока**\n\nОтлично! У вас доступно ${lessons_left} аудио-уроков. Давайте начнем практиковаться с голосовыми сообщениями!`;
+                  
+                  await sendMessageViaTelegram(chatId, message, env, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                      inline_keyboard: [[
+                        { text: interface_language === 'en' ? "🔄 Back to Profile" : "🔄 Назад к профилю", callback_data: "profile:show" }
+                      ]]
+                    }
+                  });
+                } else {
+                  // Нет доступа - показываем детальную информацию
+                  const expireDate = package_expires_at ? new Date(package_expires_at).toLocaleDateString('ru-RU') : 'не активна';
+                  
+                  const message = interface_language === 'en' 
+                    ? `🎤 **Audio Lesson**\n\n❌ **No audio lessons available**\n\n📊 **Current status:**\n• Audio lessons left: ${lessons_left}\n• Subscription expires: ${expireDate}\n\nTo access audio lessons, you need both active lessons and an active subscription.`
+                    : `🎤 **Аудио-урок**\n\n❌ **Нет доступных аудио-уроков**\n\n📊 **Текущее состояние:**\n• Осталось аудио-уроков: ${lessons_left}\n• Подписка истекает: ${expireDate}\n\nДля доступа к аудио-урокам нужны и активные уроки, и активная подписка.`;
+                  
+                  await sendMessageViaTelegram(chatId, message, env, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                      inline_keyboard: [
+                        [{ 
+                          text: interface_language === 'en' ? "🛒 Add Lessons" : "🛒 Добавить уроки", 
+                          url: "https://linguapulse.ai/paywall" 
+                        }],
+                        [{ text: interface_language === 'en' ? "🔄 Back to Profile" : "🔄 Назад к профилю", callback_data: "profile:show" }]
+                      ]
+                    }
+                  });
+                }
+              } else {
+                // Ошибка при проверке доступа
+                console.error(`❌ [${chatId}] Failed to check audio access:`, accessResponse);
+                const message = interface_language === 'en' 
+                  ? `🎤 **Audio Lesson**\n\n❌ Unable to check access. Please try again later.`
+                  : `🎤 **Аудио-урок**\n\n❌ Не удалось проверить доступ. Попробуйте позже.`;
+                
+                await sendMessageViaTelegram(chatId, message, env);
+              }
+            } catch (error) {
+              console.error(`❌ [${chatId}] Error checking audio access:`, error);
+              const message = `🎤 **Аудио-урок**\n\n❌ Техническая ошибка. Попробуйте позже.`;
+              
+              await sendMessageViaTelegram(chatId, message, env);
+            }
             
           } else if (action === 'buy_audio' || action === 'buy_premium') {
             // Перенаправляем на покупку
