@@ -752,18 +752,28 @@ def lambda_handler(event, context):
                 has_lessons = lessons_left > 0
                 has_active_subscription = False
                 
+                print(f"🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ДОСТУПА:")
+                print(f"  now (local): {now}")
+                print(f"  lessons_left: {lessons_left}")
+                print(f"  has_lessons: {has_lessons}")
+                print(f"  package_expires_at (raw): '{package_expires_at}'")
+                
                 if package_expires_at:
                     try:
                         expires_date = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
                         has_active_subscription = expires_date > now
-                        print(f"Subscription expires: {expires_date}, active: {has_active_subscription}")
+                        print(f"  expires_date (parsed): {expires_date}")
+                        print(f"  expires_date > now: {expires_date > now}")
+                        print(f"  has_active_subscription: {has_active_subscription}")
                     except Exception as e:
-                        print(f"Error parsing package_expires_at: {e}")
+                        print(f"❌ Error parsing package_expires_at: {e}")
+                else:
+                    print(f"  package_expires_at is None/empty")
                 
                 # Доступ есть если есть уроки И активная подписка
                 has_access = has_lessons and has_active_subscription
                 
-                print(f"Audio access check result: has_access={has_access} (lessons={has_lessons}, subscription={has_active_subscription})")
+                print(f"🎯 ИТОГОВЫЙ РЕЗУЛЬТАТ: has_access={has_access} (lessons={has_lessons} AND subscription={has_active_subscription})")
                 
                 return {
                     'statusCode': 200,
