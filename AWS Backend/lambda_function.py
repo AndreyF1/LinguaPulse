@@ -714,7 +714,75 @@ def lambda_handler(event, context):
             print(f"Error saving feedback: {e}")
             return error_response(f'Error saving feedback: {str(e)}')
     
-    # 11. Генерация финального фидбэка для диалога
+    # 11. Проверка доступа к аудио-урокам
+    if 'action' in body and body['action'] == 'check_audio_access':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            from datetime import datetime, timedelta
+            print(f"Checking audio access for user {user_id}")
+            
+            # Получаем данные пользователя из Supabase
+            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+            headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key
+            }
+            
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                users = json.loads(response_text) if response_text else []
+                
+                if not users:
+                    return error_response('User not found')
+                
+                user = users[0]
+                lessons_left = user.get('lessons_left', 0)
+                package_expires_at = user.get('package_expires_at')
+                interface_language = user.get('interface_language', 'ru')
+                
+                print(f"User {user_id}: lessons_left={lessons_left}, package_expires_at={package_expires_at}")
+                
+                # Проверяем доступ
+                now = datetime.now()
+                has_lessons = lessons_left > 0
+                has_active_subscription = False
+                
+                if package_expires_at:
+                    try:
+                        expires_date = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+                        has_active_subscription = expires_date > now
+                        print(f"Subscription expires: {expires_date}, active: {has_active_subscription}")
+                    except Exception as e:
+                        print(f"Error parsing package_expires_at: {e}")
+                
+                # Доступ есть если есть уроки И активная подписка
+                has_access = has_lessons and has_active_subscription
+                
+                print(f"Audio access check result: has_access={has_access} (lessons={has_lessons}, subscription={has_active_subscription})")
+                
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'success': True,
+                        'has_access': has_access,
+                        'lessons_left': lessons_left,
+                        'package_expires_at': package_expires_at,
+                        'interface_language': interface_language,
+                        'has_lessons': has_lessons,
+                        'has_active_subscription': has_active_subscription
+                    })
+                }
+                
+        except Exception as e:
+            print(f"Error checking audio access: {e}")
+            return error_response(f'Error checking audio access: {str(e)}')
+    
+    # 12. Генерация финального фидбэка для диалога
     if 'action' in body and body['action'] == 'generate_dialog_feedback':
         user_id = body.get('user_id')
         user_lang = body.get('user_lang', 'ru')  # Default to Russian
