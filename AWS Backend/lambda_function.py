@@ -786,6 +786,24 @@ def lambda_handler(event, context):
                         if has_active_subscription != timestamp_check:
                             print(f"🚨 НЕСООТВЕТСТВИЕ! datetime: {has_active_subscription}, timestamp: {timestamp_check}")
                             has_active_subscription = timestamp_check  # Используем timestamp как истину
+                        
+                        # ПРИНУДИТЕЛЬНО ТЕСТИРУЕМ БЕЗ ХАРДКОДА
+                        print(f"🎯 ФИНАЛЬНЫЙ РЕЗУЛЬТАТ БЕЗ ХАРДКОДА: has_active_subscription = {has_active_subscription}")
+                        
+                        # ЕСЛИ РЕЗУЛЬТАТ FALSE - ВЫВОДИМ ДЕТАЛЬНУЮ ДИАГНОСТИКУ
+                        if not has_active_subscription:
+                            print(f"❌ ДОСТУП ОТКЛОНЕН!")
+                            print(f"   expires_date: {expires_date}")
+                            print(f"   now: {now}")
+                            print(f"   expires_date.year: {expires_date.year}")
+                            print(f"   expires_date.month: {expires_date.month}")
+                            print(f"   expires_date.day: {expires_date.day}")
+                            print(f"   now.year: {now.year}")
+                            print(f"   now.month: {now.month}")
+                            print(f"   now.day: {now.day}")
+                            print(f"   Разница в днях: {(expires_date - now).days}")
+                        else:
+                            print(f"✅ ДОСТУП РАЗРЕШЕН!")
                     except Exception as e:
                         print(f"❌ Error parsing package_expires_at: {e}")
                 else:
