@@ -752,20 +752,23 @@ def lambda_handler(event, context):
                 print(f"User {user_id}: lessons_left={lessons_left}, package_expires_at={package_expires_at}")
                 
                 # Проверяем доступ
-                now = datetime.now()
+                from datetime import timezone
+                now = datetime.now(timezone.utc)
                 has_lessons = lessons_left > 0
                 has_active_subscription = False
                 
                 print(f"🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ДОСТУПА:")
-                print(f"  now (local): {now}")
+                print(f"  now (UTC): {now}")
                 print(f"  lessons_left: {lessons_left}")
                 print(f"  has_lessons: {has_lessons}")
                 print(f"  package_expires_at (raw): '{package_expires_at}'")
                 
                 if package_expires_at:
                     try:
+                        print(f"🔥🔥🔥 ПАРСИМ ДАТУ: {package_expires_at}")
                         expires_date = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
                         has_active_subscription = expires_date > now
+                        print(f"🔥🔥🔥 РЕЗУЛЬТАТ: {expires_date} > {now} = {has_active_subscription}")
                         print(f"  expires_date (parsed): {expires_date}")
                         print(f"  now (parsed): {now}")
                         print(f"  expires_date > now: {expires_date > now}")
