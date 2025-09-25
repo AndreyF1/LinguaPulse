@@ -489,7 +489,91 @@ if (update.message?.text === '/feedback') {
           console.log(`=== CHECKING ACTIVE SESSIONS ===`);
           
           if (env.USER_MODES) {
-            // Check lesson0 session
+            // FIRST: Check for audio_dialog mode (NEW AUDIO SYSTEM)
+            const currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
+            console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
+            
+            if (currentMode === 'audio_dialog') {
+              console.log(`🎤 [${chatId}] Processing voice message in audio_dialog mode`);
+              
+              // Process voice message in audio_dialog mode
+              try {
+                // 1. Download and transcribe voice message
+                const voiceFileId = update.message.voice.file_id;
+                console.log(`🎤 [${chatId}] Transcribing voice message: ${voiceFileId}`);
+                
+                // Get file URL from Telegram
+                const fileResponse = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${voiceFileId}`);
+                const fileData = await fileResponse.json();
+                
+                if (!fileData.ok) {
+                  throw new Error(`Failed to get file info: ${fileData.description}`);
+                }
+                
+                const fileUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${fileData.result.file_path}`;
+                
+                // Download voice file
+                const voiceResponse = await fetch(fileUrl);
+                const voiceBuffer = await voiceResponse.arrayBuffer();
+                
+                // Transcribe with OpenAI Whisper
+                const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${env.OPENAI_KEY}`,
+                  },
+                  body: (() => {
+                    const formData = new FormData();
+                    formData.append('file', new File([voiceBuffer], 'voice.ogg', { type: 'audio/ogg' }));
+                    formData.append('model', 'whisper-1');
+                    formData.append('language', 'en');
+                    return formData;
+                  })()
+                });
+                
+                const transcriptionData = await transcriptionResponse.json();
+                
+                if (!transcriptionResponse.ok) {
+                  throw new Error(`Transcription failed: ${transcriptionData.error?.message || 'Unknown error'}`);
+                }
+                
+                const userText = transcriptionData.text;
+                console.log(`🎤 [${chatId}] Transcribed text: "${userText}"`);
+                
+                // 2. Get AI response via Lambda
+                const aiResponse = await callLambdaFunction('onboarding', {
+                  user_id: chatId,
+                  action: 'process_text_message',
+                  message: userText,
+                  mode: 'audio_dialog'
+                }, env);
+                
+                if (aiResponse?.success && aiResponse.reply) {
+                  const aiText = aiResponse.reply;
+                  console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
+                  
+                  // 3. Convert AI response to voice and send
+                  const success = await safeSendTTS(chatId, aiText, env);
+                  
+                  if (!success) {
+                    // Fallback to text if TTS fails
+                    await sendMessageViaTelegram(chatId, `❌ Ошибка аудио-системы. Текстовый ответ:\n\n${aiText}`, env);
+                  }
+                } else {
+                  throw new Error('Failed to get AI response');
+                }
+                
+                console.log(`✅ [${chatId}] Audio dialog voice message processed successfully`);
+                return new Response('OK');
+                
+              } catch (error) {
+                console.error(`❌ [${chatId}] Error processing audio dialog voice message:`, error);
+                await sendMessageViaTelegram(chatId, '❌ Произошла ошибка при обработке голосового сообщения. Попробуйте еще раз.', env);
+                return new Response('OK');
+              }
+            }
+            
+            // Check lesson0 session (LEGACY)
             const lesson0Session = await env.USER_MODES.get(`session:${chatId}`);
             const lesson0History = await env.USER_MODES.get(`hist:${chatId}`);
             
@@ -501,7 +585,7 @@ if (update.message?.text === '/feedback') {
               return forward(env.LESSON0, update);
             }
             
-            // Check main_lesson session
+            // Check main_lesson session (LEGACY)
             const mainLessonSession = await env.USER_MODES.get(`main_session:${chatId}`);
             const mainLessonHistory = await env.USER_MODES.get(`main_hist:${chatId}`);
             
@@ -3130,12 +3214,40 @@ async function safeSendTTS(chatId, text, env) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Send text transcription under spoiler
-      console.log(`📝 [${chatId}] Sending text transcription under spoiler`);
-      const transcriptionMessage = `<tg-spoiler>${t}</tg-spoiler>`;
+      console.log(`📝 [${chatId}] Sending text transcription and translation`);
+      
+      // Send English transcription
+      const transcriptionMessage = `English:\n<tg-spoiler>${t}</tg-spoiler>`;
       await sendMessageViaTelegram(chatId, transcriptionMessage, env, {
         parse_mode: 'HTML'
       });
-      console.log(`✅ [${chatId}] Transcription sent successfully`);
+      
+      // Add small delay between messages
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Generate Russian translation via Lambda
+      const translationPayload = {
+        user_id: chatId,
+        action: 'process_text_message',
+        message: `Translate to Russian: "${t}"`,
+        mode: 'translation'
+      };
+      
+      try {
+        const translationResponse = await callLambdaFunction(translationPayload, env);
+        if (translationResponse && translationResponse.response) {
+          const russianTranslation = translationResponse.response;
+          const translationMessage = `Перевод:\n<tg-spoiler>${russianTranslation}</tg-spoiler>`;
+          await sendMessageViaTelegram(chatId, translationMessage, env, {
+            parse_mode: 'HTML'
+          });
+          console.log(`✅ [${chatId}] Transcription and translation sent successfully`);
+        }
+      } catch (error) {
+        console.error(`❌ [${chatId}] Translation error:`, error);
+        // Send just transcription if translation fails
+        console.log(`✅ [${chatId}] Transcription sent successfully (translation failed)`);
+      }
       
       return true;
     } catch (e) {
