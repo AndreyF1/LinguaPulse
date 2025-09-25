@@ -539,6 +539,69 @@ if (update.message?.text === '/feedback') {
                 const userText = transcriptionData.text;
                 console.log(`🎤 [${chatId}] Transcribed text: "${userText}"`);
                 
+                // Check message count limit (15 messages from bot max)
+                const messageCountKey = `audio_dialog_count:${chatId}`;
+                let messageCount = parseInt(await env.CHAT_KV.get(messageCountKey) || '0');
+                console.log(`🔢 [${chatId}] Current audio dialog message count: ${messageCount}/15`);
+                
+                if (messageCount >= 15) {
+                  // End dialog and provide final feedback
+                  console.log(`🏁 [${chatId}] Audio dialog limit reached (15 messages), ending session`);
+                  
+                  // Clear session data
+                  await env.CHAT_KV.delete(messageCountKey);
+                  await env.CHAT_KV.delete(`ai_mode:${chatId}`);
+                  
+                  // Send farewell message
+                  const farewellText = "That's all for today's audio lesson! You did great. Let's continue our practice tomorrow. Have a wonderful day!";
+                  await safeSendTTS(chatId, farewellText, env);
+                  
+                  // Generate final feedback via Lambda (like text dialog)
+                  try {
+                    const feedbackResponse = await callLambdaFunction('onboarding', {
+                      user_id: chatId,
+                      action: 'generate_dialog_feedback',
+                      mode: 'audio_dialog'
+                    }, env);
+                    
+                    if (feedbackResponse?.success && feedbackResponse.feedback) {
+                      await sendMessageViaTelegram(chatId, feedbackResponse.feedback, env);
+                    }
+                  } catch (error) {
+                    console.error(`❌ [${chatId}] Error generating final feedback:`, error);
+                  }
+                  
+                  // Update streak for audio dialog completion
+                  try {
+                    await callLambdaFunction('onboarding', {
+                      user_id: chatId,
+                      action: 'update_text_dialog_streak'
+                    }, env);
+                  } catch (error) {
+                    console.error(`❌ [${chatId}] Error updating streak:`, error);
+                  }
+                  
+                  // Show mode selection buttons
+                  await sendMessageViaTelegram(chatId, 'Выберите режим ИИ:', env, {
+                    reply_markup: {
+                      inline_keyboard: [[
+                        { text: '🔤 Перевод', callback_data: 'ai_mode:translation' },
+                        { text: '📝 Грамматика', callback_data: 'ai_mode:grammar' }
+                      ], [
+                        { text: '💬 Текстовый диалог', callback_data: 'ai_mode:text_dialog' },
+                        { text: '🎤 Аудио-диалог', callback_data: 'ai_mode:audio_dialog' }
+                      ]]
+                    }
+                  });
+                  
+                  return new Response('OK');
+                }
+                
+                // Increment message count
+                messageCount++;
+                await env.CHAT_KV.put(messageCountKey, messageCount.toString());
+                console.log(`📈 [${chatId}] Incremented audio dialog count to: ${messageCount}/15`);
+                
                 // 2. Get AI response via direct OpenAI API (like main-lesson.js - NO FEEDBACK)
                 const aiText = await generateSimpleConversationResponse(userText, chatId, env);
                 console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
