@@ -19,8 +19,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          workingDirectory: 'Cloudflare Worker'
-          command: deploy --compatibility-date 2025-01-01
+          command: deploy --env webhook --compatibility-date 2025-01-01
         continue-on-error: true
         id: deploy_attempt1
         
@@ -36,5 +35,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          workingDirectory: 'Cloudflare Worker'
-          command: deploy
+          command: deploy --env webhook
