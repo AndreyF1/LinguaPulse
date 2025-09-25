@@ -1161,19 +1161,77 @@ The first users who sign up for the list will get a series of audio lessons for 
                 console.log(`🔍 ДЕТАЛИ ДОСТУПА: has_access=${has_access}, lessons=${lessons_left}, expires=${package_expires_at}, has_lessons=${has_lessons}, has_subscription=${has_active_subscription}`);
                 
                 if (has_access) {
-                  // Есть доступ - показываем сообщение о запуске
-                  const message = interface_language === 'en' 
-                    ? `🎤 **Audio Lesson Starting**\n\nGreat! You have ${lessons_left} audio lessons available. Let's start practicing with voice messages!`
-                    : `🎤 **Запуск аудио-урока**\n\nОтлично! У вас доступно ${lessons_left} аудио-уроков. Давайте начнем практиковаться с голосовыми сообщениями!`;
+                  console.log(`✅ [${chatId}] Audio access confirmed, switching to audio_dialog mode`);
                   
-                  await sendMessageViaTelegram(chatId, message, env, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                      inline_keyboard: [[
-                        { text: interface_language === 'en' ? "🔄 Back to Profile" : "🔄 Назад к профилю", callback_data: "profile:show" }
-                      ]]
-                    }
+                  // 1. Сохраняем режим в KV и Supabase
+                  await env.CHAT_KV.put(`ai_mode:${chatId}`, 'audio_dialog');
+                  console.log(`💾 [${chatId}] Audio dialog mode saved to KV`);
+                  
+                  await callLambdaFunction('onboarding', {
+                    user_id: chatId,
+                    action: 'set_ai_mode',
+                    mode: 'audio_dialog'
+                  }, env);
+                  console.log(`💾 [${chatId}] Audio dialog mode saved to Supabase`);
+                  
+                  // 2. Отправляем сообщение о начале урока
+                  const startMessage = interface_language === 'en' 
+                    ? `🎤 Your audio lesson is starting...`
+                    : `🎤 Ваш аудио-урок начинается...`;
+                  
+                  await sendMessageViaTelegram(chatId, startMessage, env, {
+                    parse_mode: 'Markdown'
                   });
+                  
+                  // 3. Генерируем первое аудио-приветствие
+                  console.log(`🤖 [${chatId}] Generating first audio greeting`);
+                  
+                  try {
+                    // Получаем уровень пользователя
+                    const levelResponse = await callLambdaFunction('onboarding', {
+                      telegram_id: chatId,
+                      action: 'get_user_level'
+                    }, env);
+                    
+                    const userLevel = levelResponse?.level || 'Intermediate';
+                    console.log(`👤 [${chatId}] User level: ${userLevel}`);
+                    
+                    // Генерируем приветствие через Lambda
+                    const greetingResponse = await callLambdaFunction('onboarding', {
+                      user_id: chatId,
+                      action: 'process_text_message',
+                      message: '---START_AUDIO_DIALOG---',
+                      mode: 'audio_dialog',
+                      user_level: userLevel
+                    }, env);
+                    
+                    if (greetingResponse?.success && greetingResponse.reply) {
+                      const greetingText = greetingResponse.reply;
+                      console.log(`🤖 [${chatId}] First greeting generated: "${greetingText.substring(0, 100)}..."`);
+                      
+                      // Отправляем как голосовое сообщение
+                      const ttsSuccess = await safeSendTTS(chatId, greetingText, env);
+                      
+                      if (ttsSuccess) {
+                        console.log(`🎉 [${chatId}] Audio greeting sent successfully!`);
+                      } else {
+                        console.log(`❌ [${chatId}] TTS failed for greeting`);
+                        await sendMessageViaTelegram(chatId, "❌ Ошибка аудио-системы. Попробуйте позже.", env, {
+                          reply_markup: {
+                            inline_keyboard: [[
+                              { text: "🔄 Сменить режим ИИ", callback_data: "text_helper:start" }
+                            ]]
+                          }
+                        });
+                      }
+                    } else {
+                      console.error(`❌ [${chatId}] Failed to generate greeting:`, greetingResponse);
+                      await sendMessageViaTelegram(chatId, "❌ Ошибка генерации приветствия. Попробуйте позже.", env);
+                    }
+                  } catch (error) {
+                    console.error(`❌ [${chatId}] Error generating audio greeting:`, error);
+                    await sendMessageViaTelegram(chatId, "❌ Ошибка аудио-системы. Попробуйте позже.", env);
+                  }
                 } else {
                   // Нет доступа - показываем детальную информацию
                   const expireDate = package_expires_at ? new Date(package_expires_at).toLocaleDateString('ru-RU') : 'не активна';
@@ -2981,3 +3039,114 @@ async function hasActiveSubscription(chatId, env) {
   return false;
 }
 // Test comment
+
+// ==================== AUDIO FUNCTIONS ====================
+// Ported from main-lesson.js for audio dialog functionality
+
+// Generate TTS with OpenAI
+async function openaiTTS(text, env) {
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${env.OPENAI_KEY}`, 
+      'Content-Type': 'application/json' 
+    },
+    body: JSON.stringify({ 
+      model: 'tts-1', 
+      voice: 'sage', 
+      format: 'ogg_opus', 
+      input: text 
+    })
+  });
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`OpenAI TTS error: ${errorText}`);
+  }
+  
+  return res.arrayBuffer();
+}
+
+// Send voice message via Telegram
+async function telegramSendVoice(chatId, buf, dur, env) {
+  const fd = new FormData();
+  fd.append('chat_id', String(chatId));
+  fd.append('duration', dur);
+  fd.append('voice', new File([buf], 'voice.ogg', { type: 'audio/ogg; codecs=opus' }));
+  
+  const res = await fetch(
+    `https://api.telegram.org/bot${env.BOT_TOKEN}/sendVoice`, 
+    { method: 'POST', body: fd }
+  );
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Telegram sendVoice error: ${errorText}`);
+  }
+}
+
+// Calculate audio duration (simplified version)
+function calculateDuration(buf) {
+  // Simple estimation: ~1 second per 1KB for voice messages
+  return Math.max(1, Math.floor(buf.byteLength / 1024));
+}
+
+// Send TTS audio message safely with attempt limiting
+async function safeSendTTS(chatId, text, env) {
+  const t = text.trim();
+  if (!t) {
+    console.log(`safeSendTTS: Empty text provided for user ${chatId}`);
+    return false;
+  }
+
+  console.log(`🎤 [${chatId}] Starting TTS generation for: "${t.substring(0, 50)}${t.length > 50 ? '...' : ''}"`);
+
+  // Limit TTS attempts to 2 per text to avoid excessive costs
+  let attempts = 0;
+  const maxAttempts = 2;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    console.log(`🔊 [${chatId}] TTS attempt ${attempts}/${maxAttempts}`);
+    
+    try {
+      // Step 1: Generate TTS with OpenAI
+      console.log(`🔊 [${chatId}] Step 1: Calling OpenAI TTS`);
+      const rawBuf = await openaiTTS(t, env);
+      console.log(`✅ [${chatId}] OpenAI TTS successful, buffer size: ${rawBuf.byteLength} bytes`);
+      
+      // Step 2: Calculate duration and send (skip Transloadit conversion for now)
+      const dur = calculateDuration(rawBuf);
+      console.log(`📱 [${chatId}] Step 2: Sending voice message to Telegram (duration: ${dur}s)`);
+      await telegramSendVoice(chatId, rawBuf, dur, env);
+      console.log(`🎉 [${chatId}] Voice message sent successfully!`);
+      
+      // Add a small delay after sending audio to prevent flooding
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      return true;
+    } catch (e) {
+      console.error(`❌ [${chatId}] TTS attempt ${attempts} failed:`, e.message);
+      
+      if (attempts >= maxAttempts) {
+        console.error(`🚫 [${chatId}] All TTS attempts exhausted, falling back to text`);
+        
+        // Fallback to text if all TTS attempts fail
+        try {
+          console.log(`📝 [${chatId}] Falling back to text message`);
+          await sendMessageViaTelegram(chatId, "📝 " + t, {}, env);
+          console.log(`✅ [${chatId}] Fallback text message sent successfully`);
+          return true; // Text was sent successfully
+        } catch (fallbackError) {
+          console.error(`❌ [${chatId}] Fallback text message also failed:`, fallbackError);
+          return false;
+        }
+      }
+      
+      // Continue to next attempt
+      console.log(`🔄 [${chatId}] Retrying TTS generation...`);
+    }
+  }
+  
+  return false;
+}

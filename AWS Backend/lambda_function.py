@@ -2,7 +2,10 @@ import json
 import os
 import urllib.request
 import urllib.parse
-from datetime import datetime, timedelta
+import requests
+import base64
+import openai
+from datetime import datetime, timedelta, timezone
 
 def lambda_handler(event, context):
     """
@@ -328,8 +331,29 @@ def lambda_handler(event, context):
                     'reply': user_check_response['message']
                 })
             
-            # Получаем ответ от OpenAI с указанным режимом
-            openai_response = get_openai_response(message, mode)
+            # Special handling for audio dialog start
+            if message == '---START_AUDIO_DIALOG---':
+                user_level = body.get('user_level', 'Intermediate')
+                print(f"Generating audio dialog greeting for user level: {user_level}")
+                
+                # Generate personalized audio greeting
+                greeting_prompt = f"""You are an English conversation tutor. Generate a friendly, natural greeting to start an audio conversation practice session.
+
+User's English level: {user_level}
+
+Requirements:
+- Keep it conversational and encouraging
+- Adapt language complexity to the user's level
+- Ask an engaging question to start the conversation
+- Keep it under 50 words
+- Be warm and supportive
+
+Generate ONLY the greeting text, nothing else."""
+
+                openai_response = get_openai_response(greeting_prompt, 'audio_dialog')
+            else:
+                # Получаем ответ от OpenAI с указанным режимом
+                openai_response = get_openai_response(message, mode)
             
             if openai_response['success']:
                 # Логируем использование
@@ -1031,6 +1055,53 @@ Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Fo
             print(f"Error getting AI mode: {e}")
             return success_response({
                 'ai_mode': 'translation'  # Fallback to default
+            })
+    
+    # New action 'get_user_level' - get user's language level from survey
+    if 'action' in body and body['action'] == 'get_user_level':
+        telegram_id = body.get('telegram_id')
+        
+        if not telegram_id:
+            return error_response('telegram_id is required')
+        
+        try:
+            print(f"Getting user level for telegram_id: {telegram_id}")
+            
+            # Get user level from user_survey table
+            req = urllib.request.Request(
+                f"{supabase_url}/rest/v1/user_survey?telegram_id=eq.{telegram_id}&select=language_level",
+                headers={
+                    'apikey': supabase_key,
+                    'Authorization': f'Bearer {supabase_key}',
+                    'Content-Type': 'application/json'
+                }
+            )
+            
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                if response_text:
+                    surveys = json.loads(response_text)
+                    if surveys:
+                        level = surveys[0].get('language_level', 'Intermediate')
+                        print(f"Retrieved level '{level}' for user {telegram_id}")
+                        return success_response({
+                            'level': level
+                        })
+                    else:
+                        print(f"No survey found for user {telegram_id}, returning default")
+                        return success_response({
+                            'level': 'Intermediate'
+                        })
+                else:
+                    print(f"Empty response from Supabase for user {telegram_id}")
+                    return success_response({
+                        'level': 'Intermediate'
+                    })
+
+        except Exception as e:
+            print(f"Error getting user level: {e}")
+            return success_response({
+                'level': 'Intermediate'  # Fallback to default
             })
     
     return {

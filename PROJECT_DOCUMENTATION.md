@@ -1,6 +1,6 @@
 # LinguaPulse Project Documentation
 
-## 📋 Current Status (September 18, 2025)
+## 📋 Current Status (September 25, 2025)
 
 ### ✅ Completed Features
 
@@ -9,7 +9,7 @@
 - **Translation mode**: Auto-detects language and translates bidirectionally
 - **Grammar mode**: Structured grammar explanations with examples and practice
 - **Text dialog mode**: ✅ **FULLY IMPLEMENTED** - Interactive English conversation practice
-- **Audio dialog mode**: Waitlist signup available (full implementation pending)
+- **Audio dialog mode**: ✅ **ACCESS CONTROL IMPLEMENTED** - Audio lesson access validation, TTS integration in progress
 
 #### 2. User Interface
 - **Mode selection UI**: Buttons after "Ask AI" for mode selection
@@ -28,12 +28,72 @@
 - **Smart parsing**: Auto-detects spoilers and switches parse mode accordingly
 - **Language-aware responses**: AI responds in same language as user question
 
-#### 5. Infrastructure
-- **Cloudflare Workers**: Main webhook handler
-- **AWS Lambda**: AI processing backend
-- **GitHub Actions CI/CD**: Automated deployment pipeline
-- **Supabase Database**: User data and settings storage
-- **KV Storage**: Session management and mode persistence
+#### 5. User Profile System ✅ **NEW**
+- **`/profile` command**: Comprehensive user dashboard with lessons, subscription, streak
+- **Dynamic buttons**: Audio/Text lesson access based on subscription status
+- **Date formatting**: User-friendly date display (DD.MM.YYYY format)
+- **Access validation**: Real-time lesson and subscription checks
+- **Streak tracking**: Daily practice streak with automatic updates
+
+#### 6. Feedback System ✅ **NEW**
+- **`/feedback` command**: User feedback collection with rewards
+- **First-time bonus**: Automatic "Starter pack" grant for first feedback
+- **Database integration**: Feedback stored in Supabase with user tracking
+- **Reward system**: Lessons and subscription extension for feedback
+
+#### 7. Infrastructure
+- **Cloudflare Workers**: Main webhook handler with audio functions
+- **AWS Lambda**: AI processing backend with TTS generation
+- **GitHub Actions CI/CD**: ✅ **FIXED** - Automated deployment with proper token permissions
+- **Supabase Database**: User data, products, feedback storage
+- **KV Storage**: Session management, mode persistence, dialog counters
+
+---
+
+## 🚀 Recent Major Updates (September 2025)
+
+### CI/CD Pipeline Fix ✅ **CRITICAL**
+**Problem**: GitHub Actions workflow not triggering after repository restructure
+**Root Cause**: 
+- Workflow configured to trigger only on `Cloudflare Worker/**` path changes
+- CI/CD file changes didn't match trigger pattern
+- GitHub token lacked `workflow` scope permissions
+
+**Solution**:
+```yaml
+# .github/workflows/deploy-cloudflare.yml
+on:
+  push:
+    paths:
+      - 'Cloudflare Worker/**'  # Only triggers on Worker changes
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger option
+```
+
+**Token Fix**: Updated GitHub PAT with `workflow` scope permissions
+**Result**: ✅ Automated deployment now works correctly
+
+### Audio Lessons Infrastructure ✅ **IN PROGRESS**
+**Architecture**:
+- **TTS Generation**: OpenAI TTS API integration in AWS Lambda
+- **Audio Format**: Opus format for Telegram voice messages
+- **Access Control**: `lessons_left > 0` AND `package_expires_at > now()`
+- **User Flow**: Profile → Start Audio → AI greeting → Voice conversation
+
+**Current Status**:
+- ✅ Access validation implemented
+- ✅ Lambda TTS action created (`generate_tts`)
+- ✅ Audio functions module prepared (`Cloudflare Worker/audio-functions.js`)
+- ❌ **CURRENT ISSUE**: Lambda TTS errors - `requests` module and OpenAI API key issues
+- 🔄 **NEXT**: Fix Lambda imports and TTS generation
+
+**Known Issues**:
+```
+❌ [Lambda TTS] HTTP error: 400 - "TTS generation error: name 'requests' is not defined"
+❌ [Lambda TTS] HTTP error: 400 - "TTS generation error: No module named 'requests'"
+```
+
+**Debug Status**: Lambda function needs import fixes and environment variable validation
 
 ---
 
