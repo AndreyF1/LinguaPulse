@@ -72,7 +72,7 @@ if (update.message?.text === '/feedback') {
     // Получаем язык интерфейса пользователя
     let userLang = 'ru';
     try {
-      const profileResponse = await callLambdaFunction('onboarding', {
+      const profileResponse = await callLambdaFunction('shared', {
         user_id: chatId,
         action: 'get_profile'
       }, env);
@@ -210,7 +210,7 @@ if (update.message?.text === '/feedback') {
           console.log(`🔍 [${chatId}] Getting profile data from Lambda`);
           
           // Получаем данные профиля через Lambda
-          const profileResponse = await callLambdaFunction('onboarding', {
+          const profileResponse = await callLambdaFunction('shared', {
             user_id: chatId,
             action: 'get_profile'
           }, env);
@@ -400,10 +400,10 @@ if (update.message?.text === '/feedback') {
         try {
           // 1. Проверяем существование пользователя в Supabase через Lambda
           console.log(`📤 [${chatId}] Checking if user exists in Supabase`);
-          const checkResponse = await callLambdaFunction('onboarding', {
-            user_id: chatId,
-            action: 'check_user'
-          }, env);
+            const checkResponse = await callLambdaFunction('shared', {
+              user_id: chatId,
+              action: 'check_user'
+            }, env);
           
           const checkBody = checkResponse;
           console.log(`✅ [${chatId}] User check response:`, checkBody);
@@ -578,7 +578,7 @@ if (update.message?.text === '/feedback') {
                   // Decrease lessons_left immediately (anti-abuse) - but dialog continues!
                   try {
                     console.log(`📉 [${chatId}] ANTI-ABUSE: Decreasing lessons_left by 1 (5+ AUDIO messages used, dialog continues)`);
-                    await callLambdaFunction('onboarding', {
+                    await callLambdaFunction('audio_dialog', {
                 user_id: chatId,
                       action: 'decrease_lessons_left'
                     }, env);
@@ -608,7 +608,7 @@ if (update.message?.text === '/feedback') {
                   if (!lessonAlreadyUsed) {
                     try {
                       console.log(`📉 [${chatId}] Decreasing lessons_left by 1 (audio lesson completed, not yet used)`);
-                      await callLambdaFunction('onboarding', {
+                      await callLambdaFunction('audio_dialog', {
                 user_id: chatId,
                         action: 'decrease_lessons_left'
                       }, env);
@@ -624,7 +624,7 @@ if (update.message?.text === '/feedback') {
                   
                   // Generate final feedback via Lambda (AUDIO dialog)
                   try {
-                    const feedbackResponse = await callLambdaFunction('onboarding', {
+                    const feedbackResponse = await callLambdaFunction('audio_dialog', {
                       user_id: chatId,
                       action: 'generate_dialog_feedback',
                       mode: 'audio_dialog',
@@ -641,7 +641,7 @@ if (update.message?.text === '/feedback') {
                   // Update streak for audio lesson completion
                   try {
                     console.log(`📈 [${chatId}] Updating AUDIO lesson streak (not text)`);
-                    await callLambdaFunction('onboarding', {
+                    await callLambdaFunction('shared', {
                       user_id: chatId,
                       action: 'update_daily_streak'
                     }, env);
@@ -809,7 +809,7 @@ if (update.message?.text === '/feedback') {
             
             // Сохраняем feedback через Lambda
             try {
-              const feedbackResponse = await callLambdaFunction('onboarding', {
+              const feedbackResponse = await callLambdaFunction('shared', {
                 user_id: chatId,
                 action: 'save_feedback',
                 feedback_text: update.message.text
@@ -882,7 +882,7 @@ if (update.message?.text === '/feedback') {
           try {
             console.log(`📖 [${chatId}] Getting AI mode from Supabase...`);
             
-            const modeResponse = await callLambdaFunction('onboarding', {
+            const modeResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'get_ai_mode'
             }, env);
@@ -933,13 +933,13 @@ if (update.message?.text === '/feedback') {
           const lambdaFunction = getLambdaFunctionByMode(currentMode);
           
           if (currentMode === 'translation') {
-            aiResponse = await callLambdaFunction(lambdaFunction, {
+            aiResponse = await callLambdaFunction('translation', {
               action: 'translate',
               text: update.message.text,
               target_language: 'Russian' // TODO: detect language
             }, env);
           } else if (currentMode === 'grammar') {
-            aiResponse = await callLambdaFunction(lambdaFunction, {
+            aiResponse = await callLambdaFunction('grammar', {
               action: 'check_grammar',
               text: update.message.text,
               user_id: chatId
@@ -949,7 +949,7 @@ if (update.message?.text === '/feedback') {
             const dialogCount = parseInt(await env.CHAT_KV.get(`dialog_count:${chatId}`) || '1');
             const userLevel = 'Intermediate'; // TODO: get from user profile
             
-            aiResponse = await callLambdaFunction(lambdaFunction, {
+            aiResponse = await callLambdaFunction('text_dialog', {
               action: 'process_dialog',
               text: update.message.text,
               user_id: chatId,
@@ -970,7 +970,7 @@ if (update.message?.text === '/feedback') {
             console.log(`✅ [${chatId}] AI response received`);
 
             // Получаем язык интерфейса пользователя для кнопки
-            const userResponse = await callLambdaFunction('onboarding', {
+            const userResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'check_user'
             }, env);
@@ -1043,7 +1043,7 @@ if (update.message?.text === '/feedback') {
                 }
                 
                 // Получаем финальный фидбэк
-                const feedbackResponse = await callLambdaFunction('onboarding', {
+                const feedbackResponse = await callLambdaFunction('text_dialog', {
                   user_id: chatId,
                   action: 'generate_dialog_feedback',
                   user_lang: userLang
@@ -1217,7 +1217,7 @@ if (update.message?.text === '/feedback') {
             });
             
             // Создаем пользователя в Supabase через Lambda
-            const createResponse = await callLambdaFunction('onboarding', {
+            const createResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'start_survey',
               interface_language: selectedLanguage,
@@ -1229,7 +1229,7 @@ if (update.message?.text === '/feedback') {
             
             if (createBody.success) {
               // Получаем первый вопрос опросника из Lambda
-              const questionResponse = await callLambdaFunction('onboarding', {
+              const questionResponse = await callLambdaFunction('shared', {
                 action: 'get_survey_question',
                 question_type: 'language_level',
                 language: selectedLanguage
@@ -1290,7 +1290,7 @@ if (update.message?.text === '/feedback') {
             
             if (nextQuestion) {
               // Есть следующий вопрос - показываем его
-              const questionResponse = await callLambdaFunction('onboarding', {
+              const questionResponse = await callLambdaFunction('shared', {
                 action: 'get_survey_question',
                 question_type: nextQuestion,
                 language: interfaceLanguage // Используем выбранный язык интерфейса
@@ -1314,7 +1314,7 @@ if (update.message?.text === '/feedback') {
               }
             } else {
               // Опросник завершен - сохраняем только language_level
-              const completeResponse = await callLambdaFunction('onboarding', {
+              const completeResponse = await callLambdaFunction('shared', {
                 user_id: chatId,
                 action: 'complete_survey',
                 language_level: languageLevel // Только уровень языка
@@ -1393,7 +1393,7 @@ The first users who sign up for the list will get a series of audio lessons for 
             console.log(`🎤 [${chatId}] Checking audio access for profile start_audio`);
             
             try {
-              const accessResponse = await callLambdaFunction('onboarding', {
+              const accessResponse = await callLambdaFunction('audio_dialog', {
                 user_id: chatId,
                 action: 'check_audio_access'
               }, env);
@@ -1419,7 +1419,7 @@ The first users who sign up for the list will get a series of audio lessons for 
                   await env.CHAT_KV.put(`ai_mode:${chatId}`, 'audio_dialog');
                   console.log(`💾 [${chatId}] Audio dialog mode saved to KV`);
                   
-                  await callLambdaFunction('onboarding', {
+                  await callLambdaFunction('shared', {
                     user_id: chatId,
                     action: 'set_ai_mode',
                     mode: 'audio_dialog'
@@ -1683,7 +1683,7 @@ As soon as we open audio lessons — we'll send an invitation.`
             console.log(`💬 [${chatId}] Showing AI mode selection`);
             
             // Получаем язык интерфейса пользователя
-            const userResponse = await callLambdaFunction('onboarding', {
+            const userResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'check_user'
             }, env);
@@ -3051,11 +3051,22 @@ async function callLambdaFunction(functionName, payload, env) {
   try {
     console.log(`🔄 [LAMBDA] Calling ${functionName} with payload:`, JSON.stringify(payload).substring(0, 300));
     
-    // Use environment variable for Lambda URL
-    const lambdaUrl = env[`${functionName.toUpperCase()}_URL`];
+    // Map function names to environment variable names
+    const functionUrlMap = {
+      'shared': 'ONBOARDING_URL',  // shared functions use the old onboarding URL
+      'translation': 'TRANSLATION_URL',
+      'grammar': 'GRAMMAR_URL', 
+      'text_dialog': 'TEXT_DIALOG_URL',
+      'audio_dialog': 'AUDIO_DIALOG_URL',
+      'onboarding': 'ONBOARDING_URL'  // fallback for old calls
+    };
+    
+    const envVarName = functionUrlMap[functionName] || `${functionName.toUpperCase()}_URL`;
+    const lambdaUrl = env[envVarName];
+    
     if (!lambdaUrl) {
-      console.error(`❌ [LAMBDA] ${functionName === 'onboarding' ? 'ONBOARDING_URL' : `${functionName.toUpperCase()}_URL`} not found in environment`);
-      throw new Error(`${functionName === 'onboarding' ? 'ONBOARDING_URL' : `${functionName.toUpperCase()}_URL`} not configured`);
+      console.error(`❌ [LAMBDA] ${envVarName} not found in environment`);
+      throw new Error(`${envVarName} not configured`);
     }
     
     const response = await fetch(lambdaUrl, {
