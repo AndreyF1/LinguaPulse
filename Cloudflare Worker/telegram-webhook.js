@@ -1,6 +1,7 @@
 // telegram-webhook/worker.js with Tribute.tg integration
 // Receives every Telegram update on /tg and handles onboarding and lesson routing
 // Force redeploy: fixing CI/CD env webhook issue
+// CI/CD workflow fixed with new GitHub token - 2025-09-25
 
 // Import funnel logging helper
 // const { safeLogBeginnerFunnelStep } = require('./funnel-logger.js'); // Commented out - file doesn't exist
