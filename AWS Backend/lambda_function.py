@@ -655,7 +655,101 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
             print(f"Error decreasing lessons_left: {e}")
             return error_response(f'Error decreasing lessons: {str(e)}')
     
-    # 11. Сохранение feedback пользователя с начислением Starter pack
+    # 11. Обновление streak и статистики при завершении аудио-урока
+    if 'action' in body and body['action'] == 'update_audio_lesson_streak':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            print(f"Updating audio lesson streak for user {user_id}")
+            
+            # Получаем текущие данные пользователя
+            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=current_streak,last_lesson_date,total_lessons_completed"
+            headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key
+            }
+            
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                users = json.loads(response_text)
+                
+                if users:
+                    user_data = users[0]
+                    current_streak = user_data.get('current_streak', 0)
+                    last_lesson_date_str = user_data.get('last_lesson_date')
+                    total_lessons = user_data.get('total_lessons_completed', 0)
+                    
+                    # Определяем нужно ли обновлять streak
+                    today = datetime.now(timezone.utc).date()
+                    should_update_streak = True
+                    
+                    if last_lesson_date_str:
+                        try:
+                            last_lesson_date = datetime.fromisoformat(last_lesson_date_str.replace('Z', '+00:00')).date()
+                            days_diff = (today - last_lesson_date).days
+                            
+                            if days_diff == 0:
+                                # Уже практиковался сегодня - не обновляем streak
+                                should_update_streak = False
+                                print(f"User {user_id} already practiced today, keeping streak: {current_streak}")
+                            elif days_diff == 1:
+                                # Вчера практиковался - увеличиваем streak
+                                current_streak += 1
+                                print(f"User {user_id} practiced yesterday, incrementing streak to: {current_streak}")
+                            else:
+                                # Пропустил дни - сбрасываем streak
+                                current_streak = 1
+                                print(f"User {user_id} missed days, resetting streak to: 1")
+                        except Exception as e:
+                            print(f"Error parsing last_lesson_date: {e}")
+                            current_streak = 1
+                    else:
+                        # Первая практика
+                        current_streak = 1
+                        print(f"User {user_id} first practice, setting streak to: 1")
+                    
+                    if should_update_streak:
+                        # Обновляем streak, last_lesson_date и total_lessons_completed
+                        update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+                        update_data = json.dumps({
+                            'current_streak': current_streak,
+                            'last_lesson_date': today.isoformat(),
+                            'total_lessons_completed': total_lessons + 1
+                        }).encode('utf-8')
+                        
+                        update_headers = {
+                            'Authorization': f'Bearer {supabase_key}',
+                            'apikey': supabase_key,
+                            'Content-Type': 'application/json'
+                        }
+                        
+                        update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+                        urllib.request.urlopen(update_req)
+                        
+                        print(f"Successfully updated audio lesson stats for user {user_id}: streak={current_streak}, total_lessons={total_lessons + 1}")
+                    
+                    return {
+                        'statusCode': 200,
+                        'body': json.dumps({
+                            'success': True,
+                            'streak_updated': should_update_streak,
+                            'new_streak': current_streak,
+                            'total_lessons': total_lessons + (1 if should_update_streak else 0)
+                        })
+                    }
+            
+            # Пользователь не найден
+            return error_response('User not found')
+            
+        except Exception as e:
+            print(f"Error updating audio lesson streak: {e}")
+            return error_response(f'Error updating audio lesson streak: {str(e)}')
+    
+    # 12. Сохранение feedback пользователя с начислением Starter pack
     if 'action' in body and body['action'] == 'save_feedback':
         user_id = body.get('user_id')
         feedback_text = body.get('feedback_text', '').strip()
@@ -920,37 +1014,63 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
     if 'action' in body and body['action'] == 'generate_dialog_feedback':
         user_id = body.get('user_id')
         user_lang = body.get('user_lang', 'ru')  # Default to Russian
+        mode = body.get('mode', 'text_dialog')  # Default to text dialog
         
         if not user_id:
             return error_response('user_id is required')
         
         try:
-            print(f"Generating dialog feedback for user {user_id}")
+            print(f"Generating dialog feedback for user {user_id}, mode: {mode}")
             
-            # Генерируем финальный фидбэк через OpenAI в зависимости от языка пользователя
-            if user_lang == 'en':
-                feedback_prompt = """Generate a brief final feedback for a TEXT-BASED English conversation practice session. Write in English.
+            # Генерируем финальный фидбэк через OpenAI в зависимости от режима и языка пользователя
+            if mode == 'audio_dialog':
+                # AUDIO DIALOG FEEDBACK
+                if user_lang == 'en':
+                    feedback_prompt = """Generate a brief final feedback for an AUDIO-BASED English conversation practice session. Write in English.
 
-IMPORTANT: This was a TEXT conversation only - DO NOT mention pronunciation, speaking, or audio skills.
+IMPORTANT: This was an AUDIO conversation - focus on speaking, pronunciation, and verbal communication skills.
 
 Structure:
-🎉 **Great work!**
+🎤 Great work!
 
-Thank you for an interesting dialogue! [brief praise]
+Thank you for an interesting audio dialogue! [brief praise]
 
-📝 **Main observations:**
-- [1-2 most critical recurring errors in WRITING/GRAMMAR only, if any, or positive observations]
+🗣️ Main observations:
+- [1-2 most critical observations about SPEAKING/PRONUNCIATION/FLUENCY, if any, or positive observations]
 
-📊 **Your results:**
-- **Writing:** [score]/100
-- **Vocabulary:** [score]/100  
-- **Grammar:** [score]/100
+📊 Your results:
+- Speech: [score]/100
+- Vocabulary: [score]/100  
+- Grammar: [score]/100
 
-💡 [Encouraging closing message about WRITTEN English skills]
+💡 [Encouraging closing message about SPOKEN English skills]
 
-Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Focus only on text-based skills - grammar, vocabulary, and written communication."""
+Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Focus only on audio-based skills - speaking, pronunciation, fluency, and verbal communication."""
+                else:
+                    feedback_prompt = """Generate a brief final feedback for an AUDIO-BASED English conversation practice session. Write in Russian.
+
+IMPORTANT: This was an AUDIO conversation - focus on speaking, pronunciation, and verbal communication skills.
+
+Structure:
+🎤 Отличная работа!
+
+Спасибо за интересный аудио-диалог! [brief praise]
+
+🗣️ Основные наблюдения:
+- [1-2 most critical observations about SPEAKING/PRONUNCIATION/FLUENCY, if any, or positive observations]
+
+📊 Ваши результаты:
+- Речь: [score]/100
+- Словарный запас: [score]/100  
+- Грамматика: [score]/100
+
+💡 [Encouraging closing message about SPOKEN English skills]
+
+Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Focus only on audio-based skills - speaking, pronunciation, fluency, and verbal communication."""
             else:
-                feedback_prompt = """Generate a brief final feedback for a TEXT-BASED English conversation practice session. Write in Russian.
+                # TEXT DIALOG FEEDBACK
+                if user_lang == 'en':
+                    feedback_prompt = """Generate a brief final feedback for a TEXT-BASED English conversation practice session. Write in English.
 
 IMPORTANT: This was a TEXT conversation only - DO NOT mention pronunciation, speaking, or audio skills.
 

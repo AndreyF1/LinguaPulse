@@ -438,7 +438,7 @@ if (update.message?.text === '/feedback') {
               }
             );
                   return new Response('OK');
-                }
+          }
         } catch (lambdaError) {
           console.error(`❌ [${chatId}] Lambda check failed:`, lambdaError);
           // Fallback - показываем выбор языка
@@ -568,7 +568,7 @@ if (update.message?.text === '/feedback') {
                   try {
                     console.log(`📉 [${chatId}] ANTI-ABUSE: Decreasing lessons_left by 1 (5+ AUDIO messages used, dialog continues)`);
                     await callLambdaFunction('onboarding', {
-                      user_id: chatId,
+              user_id: chatId,
                       action: 'decrease_lessons_left'
                     }, env);
                   } catch (error) {
@@ -598,7 +598,7 @@ if (update.message?.text === '/feedback') {
                     try {
                       console.log(`📉 [${chatId}] Decreasing lessons_left by 1 (audio lesson completed, not yet used)`);
                       await callLambdaFunction('onboarding', {
-                        user_id: chatId,
+                user_id: chatId,
                         action: 'decrease_lessons_left'
                       }, env);
                     } catch (error) {
@@ -611,12 +611,13 @@ if (update.message?.text === '/feedback') {
                   // Clean up lesson used flag
                   await env.CHAT_KV.delete(lessonUsedKey);
                   
-                  // Generate final feedback via Lambda (like text dialog)
+                  // Generate final feedback via Lambda (AUDIO dialog)
                   try {
                     const feedbackResponse = await callLambdaFunction('onboarding', {
                       user_id: chatId,
                       action: 'generate_dialog_feedback',
-                      mode: 'audio_dialog'
+                      mode: 'audio_dialog',
+                      user_lang: 'ru'  // TODO: get from user profile
                     }, env);
                     
                     if (feedbackResponse?.success && feedbackResponse.feedback) {
@@ -626,14 +627,14 @@ if (update.message?.text === '/feedback') {
                     console.error(`❌ [${chatId}] Error generating final feedback:`, error);
                   }
                   
-                  // Update streak for audio dialog completion
+                  // Update streak for audio lesson completion
                   try {
                     await callLambdaFunction('onboarding', {
                       user_id: chatId,
-                      action: 'update_text_dialog_streak'
+                      action: 'update_audio_lesson_streak'
                     }, env);
                   } catch (error) {
-                    console.error(`❌ [${chatId}] Error updating streak:`, error);
+                    console.error(`❌ [${chatId}] Error updating audio lesson streak:`, error);
                   }
                   
                   // Show mode selection buttons
