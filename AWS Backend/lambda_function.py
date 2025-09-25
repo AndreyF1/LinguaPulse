@@ -333,19 +333,22 @@ def lambda_handler(event, context):
                 user_level = body.get('user_level', 'Intermediate')
                 print(f"Generating audio dialog greeting for user level: {user_level}")
                 
-                # Generate personalized audio greeting
-                greeting_prompt = f"""You are an English conversation tutor. Generate a friendly, natural greeting to start an audio conversation practice session.
+                # Generate personalized audio greeting with topic suggestions
+                greeting_prompt = f"""You are an English conversation tutor. Generate a friendly greeting to start an audio conversation practice session with topic suggestions.
 
 User's English level: {user_level}
 
 Requirements:
-- Keep it conversational and encouraging
+- Start with a warm, encouraging greeting
 - Adapt language complexity to the user's level
-- Ask an engaging question to start the conversation
-- Keep it under 50 words
-- Be warm and supportive
+- Offer 3-4 conversation topic suggestions (like: travel, hobbies, daily routine, food, etc.)
+- Ask the user to choose a topic or suggest their own
+- Keep it under 80 words total
+- Be enthusiastic and supportive
 
-Generate ONLY the greeting text, nothing else."""
+Example structure: "Hello! I'm excited to practice English with you today! Let's have a great conversation. I can suggest a few topics: [topic 1], [topic 2], [topic 3], or [topic 4]. Which one sounds interesting to you, or would you prefer to talk about something else?"
+
+Generate ONLY the greeting text with topic suggestions, nothing else."""
 
                 openai_response = get_openai_response(greeting_prompt, 'audio_dialog')
             else:
