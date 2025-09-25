@@ -151,13 +151,13 @@ if (update.message?.text === '/feedback') {
           console.error(`❌ [${chatId}] MAIN_LESSON worker is undefined, cannot forward /talk command`);
           console.error(`❌ [${chatId}] Available env services:`, Object.keys(env).filter(key => key.includes('LESSON') || key.includes('TEST')));
           
-          // Check if user has completed the survey
+          // Check if user has completed the survey (quiz_completed_at in users table)
           const { results: surveyCheck } = await env.USER_DB
-            .prepare('SELECT completed_at FROM user_survey WHERE telegram_id = ?')
+            .prepare('SELECT quiz_completed_at FROM users WHERE telegram_id = ?')
             .bind(parseInt(chatId, 10))
             .all();
           
-          if (surveyCheck.length > 0 && surveyCheck[0].completed_at) {
+          if (surveyCheck.length > 0 && surveyCheck[0].quiz_completed_at) {
             // Get user subscription status
             const { results } = await env.USER_DB
               .prepare('SELECT subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
@@ -539,14 +539,21 @@ if (update.message?.text === '/feedback') {
                 const userText = transcriptionData.text;
                 console.log(`🎤 [${chatId}] Transcribed text: "${userText}"`);
                 
-                // Check if user wants to end dialog (exact phrases only)
+                // Check if user wants to end dialog (phrases and simple words)
                 const userTextLower = userText.toLowerCase().trim();
                 const endPhrases = [
                   'end dialog', 'end lesson', 'stop dialog', 'stop lesson',
                   'завершить диалог', 'завершить урок', 'стоп диалог', 'стоп урок',
                   'конец диалога', 'конец урока', 'хватит диалога', 'хватит урока'
                 ];
-                const userWantsToEnd = endPhrases.some(phrase => userTextLower.includes(phrase));
+                const endWords = ['end', 'stop', 'завершить', 'стоп', 'конец', 'хватит'];
+                
+                // Check for exact phrases first, then simple words as whole words
+                const userWantsToEnd = endPhrases.some(phrase => userTextLower.includes(phrase)) ||
+                                     endWords.some(word => {
+                                       const regex = new RegExp(`\\b${word}\\b`, 'i');
+                                       return regex.test(userTextLower);
+                                     });
                 
                 // Check AUDIO message count limit (15 AUDIO messages from bot max)
                 const audioCountKey = `audio_dialog_audio_count:${chatId}`;
@@ -572,7 +579,7 @@ if (update.message?.text === '/feedback') {
                   try {
                     console.log(`📉 [${chatId}] ANTI-ABUSE: Decreasing lessons_left by 1 (5+ AUDIO messages used, dialog continues)`);
                     await callLambdaFunction('onboarding', {
-              user_id: chatId,
+                user_id: chatId,
                       action: 'decrease_lessons_left'
                     }, env);
                   } catch (error) {
@@ -633,9 +640,10 @@ if (update.message?.text === '/feedback') {
                   
                   // Update streak for audio lesson completion
                   try {
+                    console.log(`📈 [${chatId}] Updating AUDIO lesson streak (not text)`);
                     await callLambdaFunction('onboarding', {
                       user_id: chatId,
-                      action: 'update_audio_lesson_streak'
+                      action: 'update_daily_streak'
                     }, env);
                   } catch (error) {
                     console.error(`❌ [${chatId}] Error updating audio lesson streak:`, error);
@@ -783,42 +791,12 @@ if (update.message?.text === '/feedback') {
           let currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
           console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
           
+          // АУДИО-ДИАЛОГ РАБОТАЕТ ТОЛЬКО С ГОЛОСОВЫМИ СООБЩЕНИЯМИ!
+          // Текстовые сообщения в аудио-диалоге игнорируются
           if (currentMode === 'audio_dialog') {
-            console.log(`🎤 [${chatId}] Processing text message in audio_dialog mode`);
-            
-            // Process text message in audio_dialog mode
-            try {
-              // Get AI response via Lambda
-              const aiResponse = await callLambdaFunction('onboarding', {
-                user_id: chatId,
-                action: 'process_text_message',
-                message: update.message.text,
-                mode: 'audio_dialog'
-              }, env);
-              
-              if (aiResponse?.success && aiResponse.reply) {
-                const aiText = aiResponse.reply;
-                console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
-                
-                // Convert AI response to voice and send
-                const success = await safeSendTTS(chatId, aiText, env);
-                
-                if (!success) {
-                  // Fallback to text if TTS fails
-                  await sendMessageViaTelegram(chatId, `❌ Ошибка аудио-системы. Текстовый ответ:\n\n${aiText}`, env);
-                }
-              } else {
-                throw new Error('Failed to get AI response');
-              }
-              
-              console.log(`✅ [${chatId}] Audio dialog text message processed successfully`);
-              return new Response('OK');
-              
-            } catch (error) {
-              console.error(`❌ [${chatId}] Error processing audio dialog text message:`, error);
-              await sendMessageViaTelegram(chatId, '❌ Произошла ошибка при обработке сообщения. Попробуйте еще раз.', env);
+            console.log(`⏭️ [${chatId}] Ignoring text message in audio_dialog mode - audio dialog only accepts voice messages`);
+            await sendMessageViaTelegram(chatId, '🎤 В режиме аудио-диалога отправляйте голосовые сообщения. Для текстового общения переключитесь на другой режим.', env);
             return new Response('OK');
-            }
           }
           
           // Проверяем, ожидаем ли мы feedback от пользователя
@@ -948,14 +926,45 @@ if (update.message?.text === '/feedback') {
             }
           }
           
-          // Отправляем сообщение в Lambda для обработки через OpenAI
+          // Отправляем сообщение в соответствующую Lambda функцию
           console.log(`🔄 [LAMBDA] Processing text message for user ${chatId} in mode: ${currentMode}`);
-          const aiResponse = await callLambdaFunction('onboarding', {
-            user_id: chatId,
-            action: 'process_text_message',
-            message: update.message.text,
-            mode: currentMode
-          }, env);
+          
+          let aiResponse;
+          const lambdaFunction = getLambdaFunctionByMode(currentMode);
+          
+          if (currentMode === 'translation') {
+            aiResponse = await callLambdaFunction(lambdaFunction, {
+              action: 'translate',
+              text: update.message.text,
+              target_language: 'Russian' // TODO: detect language
+            }, env);
+          } else if (currentMode === 'grammar') {
+            aiResponse = await callLambdaFunction(lambdaFunction, {
+              action: 'check_grammar',
+              text: update.message.text,
+              user_id: chatId
+            }, env);
+          } else if (currentMode === 'text_dialog') {
+            // Get dialog count and user level
+            const dialogCount = parseInt(await env.CHAT_KV.get(`dialog_count:${chatId}`) || '1');
+            const userLevel = 'Intermediate'; // TODO: get from user profile
+            
+            aiResponse = await callLambdaFunction(lambdaFunction, {
+              action: 'process_dialog',
+              text: update.message.text,
+              user_id: chatId,
+              dialog_count: dialogCount,
+              user_level: userLevel
+            }, env);
+          } else {
+            // Fallback to old system
+            aiResponse = await callLambdaFunction('onboarding', {
+              user_id: chatId,
+              action: 'process_text_message',
+              message: update.message.text,
+              mode: currentMode
+            }, env);
+          }
           
           if (aiResponse && aiResponse.success) {
             console.log(`✅ [${chatId}] AI response received`);
@@ -1021,7 +1030,7 @@ if (update.message?.text === '/feedback') {
                   console.log(`📈 [${chatId}] Updating text dialog streak`);
                   const streakResponse = await callLambdaFunction('onboarding', {
                     user_id: chatId,
-                    action: 'update_text_dialog_streak'
+                    action: 'update_daily_streak'
                   }, env);
                   
                   if (streakResponse && streakResponse.success) {
@@ -1237,7 +1246,7 @@ if (update.message?.text === '/feedback') {
                   reply_markup: { inline_keyboard: keyboard }
                 });
               } else {
-          await sendMessageViaTelegram(chatId, 
+                await sendMessageViaTelegram(chatId,
                   "❌ Произошла ошибка при загрузке опросника. Попробуйте еще раз.", env);
               }
               } else {
@@ -1365,8 +1374,8 @@ The first users who sign up for the list will get a series of audio lessons for 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-          return new Response('OK');
-        }
+            return new Response('OK');
+          }
         
       // 1.6. Handle profile callback buttons
       if (update.callback_query?.data?.startsWith('profile:')) {
@@ -1430,13 +1439,13 @@ The first users who sign up for the list will get a series of audio lessons for 
                   console.log(`🤖 [${chatId}] Generating first audio greeting`);
                   
                   try {
-                    // Получаем уровень пользователя
-                    const levelResponse = await callLambdaFunction('onboarding', {
-                      telegram_id: chatId,
-                      action: 'get_user_level'
-                    }, env);
+                    // Получаем уровень пользователя из БД
+                    const { results: levelResults } = await env.USER_DB
+                      .prepare('SELECT current_level FROM users WHERE telegram_id = ?')
+                      .bind(parseInt(chatId, 10))
+                      .all();
                     
-                    const userLevel = levelResponse?.level || 'Intermediate';
+                    const userLevel = levelResults.length > 0 ? levelResults[0].current_level : 'Intermediate';
                     console.log(`👤 [${chatId}] User level: ${userLevel}`);
                     
                     // Генерируем приветствие через Lambda
@@ -1806,13 +1815,13 @@ As soon as we open audio lessons — we'll send an invitation.`
                     // Генерируем первое аудио-приветствие
                     console.log(`🤖 [${chatId}] Generating first audio greeting`);
                     
-                    // Получаем уровень пользователя
-                    const levelResponse = await callLambdaFunction('onboarding', {
-                      telegram_id: chatId,
-                      action: 'get_user_level'
-                    }, env);
+                    // Получаем уровень пользователя из БД
+                    const { results: levelResults } = await env.USER_DB
+                      .prepare('SELECT current_level FROM users WHERE telegram_id = ?')
+                      .bind(parseInt(chatId, 10))
+                      .all();
                     
-                    const userLevel = levelResponse?.level || 'Intermediate';
+                    const userLevel = levelResults.length > 0 ? levelResults[0].current_level : 'Intermediate';
                     console.log(`👤 [${chatId}] User level: ${userLevel}`);
                     
                     // Генерируем приветствие через Lambda
@@ -3026,6 +3035,18 @@ async function callTelegram(method, payload, env) {
 }
 
 /* ──── helper: call AWS Lambda function ──── */
+// Роутинг Lambda функций по режимам
+function getLambdaFunctionByMode(mode) {
+  const modeToLambda = {
+    'translation': 'translation',
+    'grammar': 'grammar', 
+    'text_dialog': 'text-dialog',
+    'audio_dialog': 'audio-dialog'
+  };
+  
+  return modeToLambda[mode] || 'onboarding'; // fallback to old function
+}
+
 async function callLambdaFunction(functionName, payload, env) {
   try {
     console.log(`🔄 [LAMBDA] Calling ${functionName} with payload:`, JSON.stringify(payload).substring(0, 300));
@@ -3185,18 +3206,18 @@ async function handleLessonCommand(chatId, env) {
       next_lesson_access_at: profile.next_lesson_access_at
     });
     
-    // Get user's language level from survey
+    // Get user's language level from users table
     const { results: surveyResults } = await env.USER_DB
-      .prepare('SELECT language_level FROM user_survey WHERE telegram_id = ?')
+      .prepare('SELECT current_level FROM users WHERE telegram_id = ?')
       .bind(parseInt(chatId, 10))
       .all();
     
-    const userLevel = surveyResults.length > 0 ? surveyResults[0].language_level : 'Intermediate';
-    console.log(`User ${chatId} language level from survey: ${userLevel}`);
+    const userLevel = surveyResults.length > 0 ? surveyResults[0].current_level : 'Intermediate';
+    console.log(`User ${chatId} language level from users table: ${userLevel}`);
     
-    // Basic profile info (use survey completion date instead of legacy tested_at)
-    const testedAt = surveyResults.length > 0 && surveyResults[0].completed_at
-      ? new Date(surveyResults[0].completed_at).toLocaleDateString()
+    // Basic profile info (use quiz completion date instead of legacy tested_at)
+    const testedAt = surveyResults.length > 0 && surveyResults[0].quiz_completed_at
+      ? new Date(surveyResults[0].quiz_completed_at).toLocaleDateString()
       : 'N/A';
     const lessonsTotal = profile.number_of_lessons || 0;
     const lessonsStreak = profile.lessons_in_row || 0;
@@ -3510,15 +3531,14 @@ async function safeSendTTS(chatId, text, env) {
       
       // Generate Russian translation via Lambda
       const translationPayload = {
-        user_id: chatId,
-        action: 'process_text_message',
-        message: `Translate to Russian: "${t}"`,
-        mode: 'translation'
+        action: 'translate',
+        text: t,
+        target_language: 'Russian'
       };
       
       try {
         console.log(`🔄 [${chatId}] Calling Lambda for translation:`, translationPayload);
-        const translationResponse = await callLambdaFunction('onboarding', translationPayload, env);
+        const translationResponse = await callLambdaFunction('translation', translationPayload, env);
         console.log(`📝 [${chatId}] Translation response:`, translationResponse);
         
         if (translationResponse && translationResponse.reply) {

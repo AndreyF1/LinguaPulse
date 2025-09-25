@@ -260,54 +260,7 @@ def lambda_handler(event, context):
             print(f"Error deactivating user: {e}")
             return error_response(f'Failed to deactivate user: {str(e)}')
     
-    # 6. Добавление пользователя в waitlist для аудио-практики
-    if 'action' in body and body['action'] == 'add_to_waitlist':
-        user_id = body.get('user_id')
-        
-        if not user_id:
-            return error_response('user_id is required')
-        
-        try:
-            print(f"Adding user {user_id} to audio practice waitlist")
-            
-            # Обновляем waitlist_voice = true для пользователя
-            update_data = {
-                'waitlist_voice': True
-            }
-            
-            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {supabase_key}',
-                'apikey': supabase_key,
-                'Prefer': 'return=representation'
-            }
-            
-            req = urllib.request.Request(url, 
-                                       data=json.dumps(update_data).encode('utf-8'),
-                                       headers=headers,
-                                       method='PATCH')
-            
-            with urllib.request.urlopen(req) as response:
-                response_text = response.read().decode('utf-8')
-                print(f"Supabase waitlist update response: {response_text}")
-                
-                if response_text:
-                    user_data = json.loads(response_text)[0] if response_text.startswith('[') else json.loads(response_text)
-                    
-                    return success_response({
-                        'message': 'User added to waitlist successfully',
-                        'user_data': user_data
-                    })
-                else:
-                    return success_response({
-                        'message': 'User added to waitlist successfully'
-                    })
-                
-        except Exception as e:
-            print(f"Error adding user to waitlist: {e}")
-            return error_response(f'Failed to add user to waitlist: {str(e)}')
-    
+    # 6. [REMOVED] add_to_waitlist - legacy functionality
     # 7. Обработка текстовых сообщений через OpenAI
     if 'action' in body and body['action'] == 'process_text_message':
         user_id = body.get('user_id')
@@ -483,10 +436,10 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                                     pass
                             if dates:
                                 access_date = max(dates)
-                        
-                        return {
-                            'statusCode': 200,
-                            'body': json.dumps({
+                
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
                                 'success': True,
                                 'user_data': user_data,
                                 'has_audio_access': has_audio_access,
@@ -508,15 +461,15 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
             print(f"Error getting profile: {e}")
             return error_response(f'Error getting profile: {str(e)}')
     
-    # 9. Обновление streak при завершении текстового диалога
-    if 'action' in body and body['action'] == 'update_text_dialog_streak':
+    # 9. Обновление общего daily streak при использовании любого функционала
+    if 'action' in body and body['action'] == 'update_daily_streak':
         user_id = body.get('user_id')
         
         if not user_id:
             return error_response('user_id is required')
         
         try:
-            print(f"Updating text dialog streak for user {user_id}")
+            print(f"Updating daily streak for user {user_id}")
             
             # Получаем текущие данные пользователя
             url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=current_streak,last_lesson_date"
@@ -582,9 +535,9 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                             
                             print(f"Successfully updated streak for user {user_id}: {current_streak}")
                         
-                        return {
-                            'statusCode': 200,
-                            'body': json.dumps({
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
                                 'success': True,
                                 'streak_updated': should_update_streak,
                                 'new_streak': current_streak
@@ -659,8 +612,8 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
             print(f"Error decreasing lessons_left: {e}")
             return error_response(f'Error decreasing lessons: {str(e)}')
     
-    # 11. Обновление streak и статистики при завершении аудио-урока
-    if 'action' in body and body['action'] == 'update_audio_lesson_streak':
+    # 11. [REMOVED] update_audio_lesson_streak - replaced with update_daily_streak
+    if False:  # 'action' in body and body['action'] == 'update_audio_lesson_streak':
         user_id = body.get('user_id')
         
         if not user_id:
@@ -704,7 +657,7 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                                 # Вчера практиковался - увеличиваем streak
                                 current_streak += 1
                                 print(f"User {user_id} practiced yesterday, incrementing streak to: {current_streak}")
-                            else:
+            else:
                                 # Пропустил дни - сбрасываем streak
                                 current_streak = 1
                                 print(f"User {user_id} missed days, resetting streak to: 1")
@@ -736,9 +689,9 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                         
                         print(f"Successfully updated audio lesson stats for user {user_id}: streak={current_streak}, total_lessons={total_lessons + 1}")
                     
-                    return {
+                return {
                         'statusCode': 200,
-                        'body': json.dumps({
+                    'body': json.dumps({
                             'success': True,
                             'streak_updated': should_update_streak,
                             'new_streak': current_streak,
@@ -1242,53 +1195,7 @@ Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Fo
                 'ai_mode': 'translation'  # Fallback to default
             })
     
-    # New action 'get_user_level' - get user's language level from survey
-    if 'action' in body and body['action'] == 'get_user_level':
-        telegram_id = body.get('telegram_id')
-        
-        if not telegram_id:
-            return error_response('telegram_id is required')
-        
-        try:
-            print(f"Getting user level for telegram_id: {telegram_id}")
-            
-            # Get user level from user_survey table
-            req = urllib.request.Request(
-                f"{supabase_url}/rest/v1/user_survey?telegram_id=eq.{telegram_id}&select=language_level",
-                headers={
-                    'apikey': supabase_key,
-                    'Authorization': f'Bearer {supabase_key}',
-                    'Content-Type': 'application/json'
-                }
-            )
-            
-            with urllib.request.urlopen(req) as response:
-                response_text = response.read().decode('utf-8')
-                if response_text:
-                    surveys = json.loads(response_text)
-                    if surveys:
-                        level = surveys[0].get('language_level', 'Intermediate')
-                        print(f"Retrieved level '{level}' for user {telegram_id}")
-                        return success_response({
-                            'level': level
-                        })
-                    else:
-                        print(f"No survey found for user {telegram_id}, returning default")
-                        return success_response({
-                            'level': 'Intermediate'
-                        })
-                else:
-                    print(f"Empty response from Supabase for user {telegram_id}")
-                    return success_response({
-                        'level': 'Intermediate'
-                    })
-
-        except Exception as e:
-            print(f"Error getting user level: {e}")
-            return success_response({
-                'level': 'Intermediate'  # Fallback to default
-            })
-    
+    # [REMOVED] get_user_level - not used anywhere
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
