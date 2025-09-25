@@ -1277,4 +1277,4 @@ def log_text_usage(user_id, supabase_url, supabase_key):
         'headers': {'Content-Type': 'application/json'},
         'body': json.dumps({'message': 'OK'})
     }
-# Trigger deployment after CI/CD fix - create all Lambda functions NOW - FORCE PUSH
+# Trigger deployment after CI/CD fix - create all Lambda functions NOW - QUOTES FIXED
