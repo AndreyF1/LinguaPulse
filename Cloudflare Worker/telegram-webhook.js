@@ -1625,6 +1625,11 @@ As soon as we open audio lessons — we'll send an invitation.`
           let instructionMessage = '';
           let changeModeButtonText = userLang === 'en' ? "🔄 Change AI Mode" : "🔄 Сменить Режим ИИ";
           
+          // Инициализируем modeButtons заранее
+          let modeButtons = [
+            [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
+          ];
+          
           switch (mode) {
             case 'translation':
               instructionMessage = userLang === 'en' 
@@ -1715,10 +1720,7 @@ As soon as we open audio lessons — we'll send an invitation.`
           }
           
           // Отправляем инструкцию с кнопкой смены режима
-          // Также добавляем кнопку с текущим режимом для дальнейшего использования
-          let modeButtons = [
-            [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
-          ];
+          // modeButtons уже инициализирована выше и может быть изменена в switch case
           
           // Для audio_dialog кнопки уже настроены в switch case выше
           // (либо кнопка "Добавить уроки" при отсутствии доступа, либо без дополнительных кнопок при наличии доступа)
