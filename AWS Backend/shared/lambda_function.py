@@ -23,7 +23,7 @@ def lambda_handler(event, context):
     
     # Получаем Supabase credentials
     supabase_url = os.environ.get('SUPABASE_URL')
-    supabase_key = os.environ.get('SUPABASE_SERVICE_KEY')
+    supabase_key = os.environ.get('SUPABASE_KEY')
     
     if not supabase_url or not supabase_key:
         print("Supabase credentials not found")
@@ -1277,4 +1277,4 @@ def log_text_usage(user_id, supabase_url, supabase_key):
         'headers': {'Content-Type': 'application/json'},
         'body': json.dumps({'message': 'OK'})
     }
-# Trigger deployment after CI/CD fix - create all Lambda functions NOW - DEBUG SECRETS
+# Trigger deployment after CI/CD fix - create all Lambda functions NOW - SECRETS ADDED
