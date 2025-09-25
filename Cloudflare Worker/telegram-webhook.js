@@ -539,27 +539,16 @@ if (update.message?.text === '/feedback') {
                 const userText = transcriptionData.text;
                 console.log(`🎤 [${chatId}] Transcribed text: "${userText}"`);
                 
-                // 2. Get AI response via Lambda
-                const aiResponse = await callLambdaFunction('onboarding', {
-                  user_id: chatId,
-                  action: 'process_text_message',
-                  message: userText,
-                  mode: 'audio_dialog'
-                }, env);
+                // 2. Get AI response via direct OpenAI API (like main-lesson.js - NO FEEDBACK)
+                const aiText = await generateSimpleConversationResponse(userText, chatId, env);
+                console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
+                  
+                // 3. Convert AI response to voice and send
+                const success = await safeSendTTS(chatId, aiText, env);
                 
-                if (aiResponse?.success && aiResponse.reply) {
-                  const aiText = aiResponse.reply;
-                  console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
-                  
-                  // 3. Convert AI response to voice and send
-                  const success = await safeSendTTS(chatId, aiText, env);
-                  
-                  if (!success) {
-                    // Fallback to text if TTS fails
-                    await sendMessageViaTelegram(chatId, `❌ Ошибка аудио-системы. Текстовый ответ:\n\n${aiText}`, env);
-                  }
-                } else {
-                  throw new Error('Failed to get AI response');
+                if (!success) {
+                  // Fallback to text if TTS fails
+                  await sendMessageViaTelegram(chatId, `❌ Ошибка аудио-системы. Текстовый ответ:\n\n${aiText}`, env);
                 }
                 
                 console.log(`✅ [${chatId}] Audio dialog voice message processed successfully`);
@@ -3281,10 +3270,60 @@ async function telegramSendVoice(chatId, buf, dur, env) {
   }
 }
 
-// Calculate audio duration (simplified version)
+// Calculate audio duration (from main-lesson.js)
 function calculateDuration(buf) {
-  // Simple estimation: ~1 second per 1KB for voice messages
-  return Math.max(1, Math.floor(buf.byteLength / 1024));
+  // More accurate duration calculation based on Opus encoding
+  // For Opus format at speech quality, estimate roughly 20KB per second
+  const estimatedSeconds = Math.max(1, Math.round(buf.byteLength / 20000));
+  console.log(`Audio size: ${buf.byteLength} bytes, estimated duration: ${estimatedSeconds} seconds`);
+  return estimatedSeconds;
+}
+
+// Generate conversation response (copied from main-lesson.js - NO FEEDBACK)
+async function generateSimpleConversationResponse(userText, chatId, env) {
+  try {
+    // Simple conversation prompt without feedback (like main-lesson.js)
+    const systemPrompt = "You are a professional English language tutor having a conversation with a paying subscriber. " +
+      "Keep your responses conversational but educational, supportive, and engaging. " +
+      "Ask follow-up questions that challenge the student appropriately for their level. " +
+      "Your goal is to help the student practice their English in a natural way while gradually improving. " +
+      "Keep responses fairly short (1-3 sentences) to maintain a flowing conversation. " +
+      "Try to correct major grammar errors indirectly by rephrasing what they said correctly in your response.";
+    
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userText }
+    ];
+    
+    console.log(`🤖 [${chatId}] Calling OpenAI for simple conversation response`);
+    
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        Authorization: `Bearer ${env.OPENAI_KEY}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 150 // Keep responses short
+      })
+    });
+    
+    if (!res.ok) {
+      throw new Error(`OpenAI API error: ${await res.text()}`);
+    }
+    
+    const j = await res.json();
+    const response = j.choices[0].message.content.trim();
+    console.log(`✅ [${chatId}] Simple conversation response received:`, response);
+    
+    return response;
+  } catch (error) {
+    console.error(`❌ [${chatId}] Error generating conversation response:`, error);
+    return "I'm sorry, I had trouble understanding. Could you try again?";
+  }
 }
 
 // Send TTS audio message safely with attempt limiting
