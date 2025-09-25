@@ -32,7 +32,7 @@ jobs:
           echo "📋 Current Lambda configuration:"
           aws lambda get-function-configuration --function-name linguapulse-onboarding --no-cli-pager | head -10
       
-      - name: Deploy Lambda function
+      - name: Deploy Lambda functions
         run: |
           echo "🔍 Starting Lambda deployment..."
           cd "AWS Backend"
@@ -40,45 +40,98 @@ jobs:
           echo "📋 Files in directory:"
           ls -la
           
-          echo "📦 Creating zip archive..."
-          zip -r lambda_function.zip shared/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
-          echo "✅ Zip created, size: $(ls -lh lambda_function.zip)"
+          # Deploy shared Lambda (main onboarding function)
+          echo "📦 Creating shared Lambda zip archive..."
+          zip -r shared-lambda.zip shared/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
+          echo "✅ Shared zip created, size: $(ls -lh shared-lambda.zip)"
           
-          echo "🧪 Testing zip file validity..."
-          unzip -t lambda_function.zip
-          
-          echo "🚀 Updating Lambda function code..."
+          echo "🚀 Updating shared Lambda function code..."
           if aws lambda update-function-code \
             --function-name linguapulse-onboarding \
-            --zip-file fileb://lambda_function.zip \
+            --zip-file fileb://shared-lambda.zip \
             --no-cli-pager 2>&1; then
-            echo "✅ Lambda code update initiated"
-            
-            echo "⏳ Waiting for Lambda function to become Active..."
+            echo "✅ Shared Lambda code update initiated"
             aws lambda wait function-updated --function-name linguapulse-onboarding
-            
-            echo "✅ Lambda code updated and is now Active"
+            echo "✅ Shared Lambda code updated and is now Active"
           else
-            echo "❌ Failed to update Lambda code, exit code: $?"
-            echo "📋 Lambda function current state:"
-            aws lambda get-function --function-name linguapulse-onboarding --query 'Configuration.State' --output text --no-cli-pager
+            echo "❌ Failed to update shared Lambda code"
             exit 1
           fi
           
-          echo "⚙️  Updating Lambda function configuration..."
+          echo "⚙️  Updating shared Lambda function configuration..."
           if aws lambda update-function-configuration \
             --function-name linguapulse-onboarding \
             --handler shared/lambda_function.lambda_handler \
             --no-cli-pager; then
-            echo "✅ Lambda configuration update initiated"
-            
-            echo "⏳ Waiting for configuration update to complete..."
+            echo "✅ Shared Lambda configuration updated"
             aws lambda wait function-updated --function-name linguapulse-onboarding
-            
-            echo "✅ Lambda configuration updated and function is Active"
           else
-            echo "❌ Failed to update Lambda configuration"
+            echo "❌ Failed to update shared Lambda configuration"
             exit 1
           fi
           
-          echo "✅ Lambda deployment completed successfully!"
+          # Deploy translation Lambda
+          echo "📦 Creating translation Lambda zip archive..."
+          zip -r translation-lambda.zip translation/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
+          echo "✅ Translation zip created"
+          
+          echo "🚀 Updating translation Lambda function code..."
+          if aws lambda update-function-code \
+            --function-name linguapulse-translation \
+            --zip-file fileb://translation-lambda.zip \
+            --no-cli-pager 2>&1; then
+            echo "✅ Translation Lambda updated"
+            aws lambda wait function-updated --function-name linguapulse-translation
+          else
+            echo "⚠️  Translation Lambda update failed (function may not exist yet)"
+          fi
+          
+          # Deploy grammar Lambda
+          echo "📦 Creating grammar Lambda zip archive..."
+          zip -r grammar-lambda.zip grammar/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
+          echo "✅ Grammar zip created"
+          
+          echo "🚀 Updating grammar Lambda function code..."
+          if aws lambda update-function-code \
+            --function-name linguapulse-grammar \
+            --zip-file fileb://grammar-lambda.zip \
+            --no-cli-pager 2>&1; then
+            echo "✅ Grammar Lambda updated"
+            aws lambda wait function-updated --function-name linguapulse-grammar
+          else
+            echo "⚠️  Grammar Lambda update failed (function may not exist yet)"
+          fi
+          
+          # Deploy text_dialog Lambda
+          echo "📦 Creating text_dialog Lambda zip archive..."
+          zip -r text-dialog-lambda.zip text_dialog/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
+          echo "✅ Text dialog zip created"
+          
+          echo "🚀 Updating text_dialog Lambda function code..."
+          if aws lambda update-function-code \
+            --function-name linguapulse-text-dialog \
+            --zip-file fileb://text-dialog-lambda.zip \
+            --no-cli-pager 2>&1; then
+            echo "✅ Text dialog Lambda updated"
+            aws lambda wait function-updated --function-name linguapulse-text-dialog
+          else
+            echo "⚠️  Text dialog Lambda update failed (function may not exist yet)"
+          fi
+          
+          # Deploy audio_dialog Lambda
+          echo "📦 Creating audio_dialog Lambda zip archive..."
+          zip -r audio-dialog-lambda.zip audio_dialog/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
+          echo "✅ Audio dialog zip created"
+          
+          echo "🚀 Updating audio_dialog Lambda function code..."
+          if aws lambda update-function-code \
+            --function-name linguapulse-audio-dialog \
+            --zip-file fileb://audio-dialog-lambda.zip \
+            --no-cli-pager 2>&1; then
+            echo "✅ Audio dialog Lambda updated"
+            aws lambda wait function-updated --function-name linguapulse-audio-dialog
+          else
+            echo "⚠️  Audio dialog Lambda update failed (function may not exist yet)"
+          fi
+          
+          echo "✅ All Lambda deployments completed!"
