@@ -554,6 +554,28 @@ if (update.message?.text === '/feedback') {
                 await env.CHAT_KV.put(messageCountKey, messageCount.toString());
                 console.log(`📈 [${chatId}] Incremented audio dialog count to: ${messageCount}/15`);
                 
+                // ANTI-ABUSE: Mark lesson as used after 5 bot messages
+                const lessonUsedKey = `audio_lesson_used:${chatId}`;
+                const lessonAlreadyUsed = await env.CHAT_KV.get(lessonUsedKey);
+                
+                if (messageCount >= 5 && !lessonAlreadyUsed) {
+                  console.log(`🛡️ [${chatId}] ANTI-ABUSE: 5+ messages reached, marking lesson as USED`);
+                  
+                  // Mark lesson as used to prevent multiple decreases
+                  await env.CHAT_KV.put(lessonUsedKey, 'true');
+                  
+                  // Decrease lessons_left immediately (anti-abuse)
+                  try {
+                    console.log(`📉 [${chatId}] ANTI-ABUSE: Decreasing lessons_left by 1 (5+ messages used)`);
+                    await callLambdaFunction('onboarding', {
+                      user_id: chatId,
+                      action: 'decrease_lessons_left'
+                    }, env);
+                  } catch (error) {
+                    console.error(`❌ [${chatId}] Error decreasing lessons_left (anti-abuse):`, error);
+                  }
+                }
+                
                 if (messageCount >= 15 || userWantsToEnd) {
                   // End dialog and provide final feedback
                   const endReason = userWantsToEnd ? 'user request' : '15 message limit';
@@ -567,16 +589,26 @@ if (update.message?.text === '/feedback') {
                   const farewellText = "That's all for today's audio lesson! You did great. Let's continue our practice tomorrow. Have a wonderful day!";
                   await safeSendTTS(chatId, farewellText, env);
                   
-                  // DECREASE lessons_left by 1 (lesson completed)
-                  try {
-                    console.log(`📉 [${chatId}] Decreasing lessons_left by 1 (audio lesson completed)`);
-                    await callLambdaFunction('onboarding', {
-                      user_id: chatId,
-                      action: 'decrease_lessons_left'
-                    }, env);
-                  } catch (error) {
-                    console.error(`❌ [${chatId}] Error decreasing lessons_left:`, error);
+                  // DECREASE lessons_left by 1 (lesson completed) - ONLY if not already decreased by anti-abuse
+                  const lessonUsedKey = `audio_lesson_used:${chatId}`;
+                  const lessonAlreadyUsed = await env.CHAT_KV.get(lessonUsedKey);
+                  
+                  if (!lessonAlreadyUsed) {
+                    try {
+                      console.log(`📉 [${chatId}] Decreasing lessons_left by 1 (audio lesson completed, not yet used)`);
+                      await callLambdaFunction('onboarding', {
+                        user_id: chatId,
+                        action: 'decrease_lessons_left'
+                      }, env);
+                    } catch (error) {
+                      console.error(`❌ [${chatId}] Error decreasing lessons_left:`, error);
+                    }
+                  } else {
+                    console.log(`✅ [${chatId}] Lesson already marked as used by anti-abuse, skipping decrease`);
                   }
+                  
+                  // Clean up lesson used flag
+                  await env.CHAT_KV.delete(lessonUsedKey);
                   
                   // Generate final feedback via Lambda (like text dialog)
                   try {
