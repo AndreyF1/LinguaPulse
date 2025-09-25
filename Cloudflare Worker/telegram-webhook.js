@@ -1399,6 +1399,13 @@ The first users who sign up for the list will get a series of audio lessons for 
                 if (has_access) {
                   console.log(`✅ [${chatId}] Audio access confirmed, switching to audio_dialog mode`);
                   
+                  // 0. KILL PREVIOUS SESSION - Clear all old audio dialog data
+                  console.log(`🧹 [${chatId}] Cleaning up any previous audio dialog session`);
+                  await env.CHAT_KV.delete(`audio_dialog_count:${chatId}`); // Old counter
+                  await env.CHAT_KV.delete(`audio_dialog_audio_count:${chatId}`); // New counter
+                  await env.CHAT_KV.delete(`audio_lesson_used:${chatId}`); // Anti-abuse flag
+                  console.log(`✅ [${chatId}] Previous session data cleared`);
+                  
                   // 1. Сохраняем режим в KV и Supabase
                   await env.CHAT_KV.put(`ai_mode:${chatId}`, 'audio_dialog');
                   console.log(`💾 [${chatId}] Audio dialog mode saved to KV`);
@@ -1767,6 +1774,13 @@ As soon as we open audio lessons — we'll send an invitation.`
                   const { has_access, lessons_left, package_expires_at, interface_language } = accessResponse;
                   
                   if (has_access) {
+                    // 0. KILL PREVIOUS SESSION - Clear all old audio dialog data
+                    console.log(`🧹 [${chatId}] Cleaning up any previous audio dialog session`);
+                    await env.CHAT_KV.delete(`audio_dialog_count:${chatId}`); // Old counter
+                    await env.CHAT_KV.delete(`audio_dialog_audio_count:${chatId}`); // New counter
+                    await env.CHAT_KV.delete(`audio_lesson_used:${chatId}`); // Anti-abuse flag
+                    console.log(`✅ [${chatId}] Previous session data cleared`);
+                    
                     // СОХРАНЯЕМ РЕЖИМ В KV И SUPABASE!
                     await env.CHAT_KV.put(`ai_mode:${chatId}`, 'audio_dialog');
                     console.log(`💾 [${chatId}] Audio dialog mode saved to KV from ai_mode callback`);
