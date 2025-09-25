@@ -61,7 +61,7 @@ jobs:
                 --zip-file fileb://$zip_file \
                 --timeout 30 \
                 --memory-size 256 \
-                --environment Variables='{"SUPABASE_URL":"${{ secrets.SUPABASE_URL }}","SUPABASE_KEY":"${{ secrets.SUPABASE_KEY }}","OPENAI_API_KEY":"${{ secrets.OPENAI_API_KEY }}"}' \
+                --environment Variables="{\"SUPABASE_URL\":\"${{ secrets.SUPABASE_URL }}\",\"SUPABASE_KEY\":\"${{ secrets.SUPABASE_KEY }}\",\"OPENAI_API_KEY\":\"${{ secrets.OPENAI_API_KEY }}\"}" \
                 --no-cli-pager
               echo "✅ Lambda function $function_name created"
             fi
