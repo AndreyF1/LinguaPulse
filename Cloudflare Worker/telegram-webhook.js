@@ -1673,10 +1673,59 @@ As soon as we open audio lessons — we'll send an invitation.`
                     }, env);
                     console.log(`✅ [${chatId}] AI mode 'audio_dialog' saved to Supabase successfully`);
                     
-                    // Есть доступ - показываем сообщение о запуске
-                    instructionMessage = interface_language === 'en' 
-                      ? `🎤 **Audio Dialog Mode**\n\nGreat! You have ${lessons_left} audio lessons available. Let's start practicing with voice messages!`
-                      : `🎤 **Режим аудио-диалога**\n\nОтлично! У вас доступно ${lessons_left} аудио-уроков. Давайте начнем практиковаться с голосовыми сообщениями!`;
+                    // ЗАПУСКАЕМ АУДИО-УРОК (ТА ЖЕ ЛОГИКА ЧТО И В profile:start_audio)
+                    const startMessage = interface_language === 'en' 
+                      ? `🎤 Your audio lesson is starting...`
+                      : `🎤 Ваш аудио-урок начинается...`;
+                    
+                    await sendMessageViaTelegram(chatId, startMessage, env, {
+                      parse_mode: 'Markdown'
+                    });
+                    
+                    // Генерируем первое аудио-приветствие
+                    console.log(`🤖 [${chatId}] Generating first audio greeting`);
+                    
+                    // Получаем уровень пользователя
+                    const levelResponse = await callLambdaFunction('onboarding', {
+                      telegram_id: chatId,
+                      action: 'get_user_level'
+                    }, env);
+                    
+                    const userLevel = levelResponse?.level || 'Intermediate';
+                    console.log(`👤 [${chatId}] User level: ${userLevel}`);
+                    
+                    // Генерируем приветствие через Lambda
+                    const greetingResponse = await callLambdaFunction('onboarding', {
+                      user_id: chatId,
+                      action: 'process_text_message',
+                      message: '---START_AUDIO_DIALOG---',
+                      mode: 'audio_dialog',
+                      user_level: userLevel
+                    }, env);
+                    
+                    if (greetingResponse && greetingResponse.success) {
+                      const greetingText = greetingResponse.reply;
+                      console.log(`🤖 [${chatId}] First greeting generated: "${greetingText.substring(0, 100)}..."`);
+                      
+                      // Отправляем аудио-приветствие
+                      const success = await safeSendTTS(chatId, greetingText, env);
+                      
+                      if (success) {
+                        console.log(`🎉 [${chatId}] Audio greeting sent successfully!`);
+                        // НЕ ОТПРАВЛЯЕМ instructionMessage - урок уже начался!
+                        instructionMessage = null; // Устанавливаем null чтобы не отправлять сообщение
+                      } else {
+                        console.error(`❌ [${chatId}] Failed to send audio greeting`);
+                        instructionMessage = interface_language === 'en' 
+                          ? `🎤 **Audio Dialog Mode**\n\n❌ Audio system error. Please try again later.`
+                          : `🎤 **Режим аудио-диалога**\n\n❌ Ошибка аудио-системы. Попробуйте позже.`;
+                      }
+                    } else {
+                      console.error(`❌ [${chatId}] Failed to generate greeting:`, greetingResponse);
+                      instructionMessage = interface_language === 'en' 
+                        ? `🎤 **Audio Dialog Mode**\n\n❌ Failed to generate greeting. Please try again later.`
+                        : `🎤 **Режим аудио-диалога**\n\n❌ Ошибка генерации приветствия. Попробуйте позже.`;
+                    }
                     
                     // При наличии доступа - только кнопка смены режима (без дополнительных кнопок)
                     modeButtons = [
@@ -1721,16 +1770,19 @@ As soon as we open audio lessons — we'll send an invitation.`
           
           // Отправляем инструкцию с кнопкой смены режима
           // modeButtons уже инициализирована выше и может быть изменена в switch case
-          
+
           // Для audio_dialog кнопки уже настроены в switch case выше
           // (либо кнопка "Добавить уроки" при отсутствии доступа, либо без дополнительных кнопок при наличии доступа)
 
-          await sendMessageViaTelegram(chatId, instructionMessage, env, {
-            reply_markup: { 
-              inline_keyboard: modeButtons
-            },
-            parse_mode: 'Markdown'
-          });
+          // Отправляем сообщение только если instructionMessage не null (для audio_dialog может быть null если урок уже начался)
+          if (instructionMessage) {
+            await sendMessageViaTelegram(chatId, instructionMessage, env, {
+              reply_markup: { 
+                inline_keyboard: modeButtons
+              },
+              parse_mode: 'Markdown'
+            });
+          }
           
           // Для text_dialog отправляем начальное сообщение от бота
           if (mode === 'text_dialog') {
