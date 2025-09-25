@@ -710,7 +710,7 @@ if (update.message?.text === '/feedback') {
             } catch (error) {
               console.error(`❌ [${chatId}] Error processing audio dialog text message:`, error);
               await sendMessageViaTelegram(chatId, '❌ Произошла ошибка при обработке сообщения. Попробуйте еще раз.', env);
-              return new Response('OK');
+            return new Response('OK');
             }
           }
           
@@ -758,7 +758,7 @@ if (update.message?.text === '/feedback') {
                   responseMessage = userLang === 'en' 
                     ? "🎉 **Thank you for your first feedback!**\n\nWe appreciate your input and will use it to improve LinguaPulse."
                     : "🎉 **Спасибо за ваш первый отзыв!**\n\nМы ценим ваше мнение и используем его для улучшения LinguaPulse.";
-                } else {
+              } else {
                   responseMessage = userLang === 'en' 
                     ? "💬 **Thank you for your feedback!**\n\nWe appreciate your continued input."
                     : "💬 **Спасибо за ваш отзыв!**\n\nМы ценим ваше постоянное участие.";
@@ -774,7 +774,7 @@ if (update.message?.text === '/feedback') {
                   }
                 });
                 
-              } else {
+          } else {
                 console.error(`❌ [${chatId}] Failed to save feedback:`, feedbackResponse);
                 const errorText = "❌ Произошла ошибка при сохранении отзыва. Попробуйте позже.";
                 await sendMessageViaTelegram(chatId, errorText, env);
@@ -1130,7 +1130,7 @@ if (update.message?.text === '/feedback') {
                   reply_markup: { inline_keyboard: keyboard }
                 });
               } else {
-                await sendMessageViaTelegram(chatId,
+          await sendMessageViaTelegram(chatId, 
                   "❌ Произошла ошибка при загрузке опросника. Попробуйте еще раз.", env);
               }
               } else {
@@ -1258,8 +1258,8 @@ The first users who sign up for the list will get a series of audio lessons for 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-            return new Response('OK');
-          }
+          return new Response('OK');
+        }
         
       // 1.6. Handle profile callback buttons
       if (update.callback_query?.data?.startsWith('profile:')) {
@@ -1655,6 +1655,19 @@ As soon as we open audio lessons — we'll send an invitation.`
                   const { has_access, lessons_left, package_expires_at, interface_language } = accessResponse;
                   
                   if (has_access) {
+                    // СОХРАНЯЕМ РЕЖИМ В KV И SUPABASE!
+                    await env.CHAT_KV.put(`ai_mode:${chatId}`, 'audio_dialog');
+                    console.log(`💾 [${chatId}] Audio dialog mode saved to KV from ai_mode callback`);
+                    
+                    // Сохраняем в Supabase
+                    console.log(`💾 [${chatId}] Saving AI mode 'audio_dialog' to Supabase...`);
+                    await callLambdaFunction('onboarding', {
+                      user_id: chatId,
+                      action: 'set_ai_mode',
+                      mode: 'audio_dialog'
+                    }, env);
+                    console.log(`✅ [${chatId}] AI mode 'audio_dialog' saved to Supabase successfully`);
+                    
                     // Есть доступ - показываем сообщение о запуске
                     instructionMessage = interface_language === 'en' 
                       ? `🎤 **Audio Dialog Mode**\n\nGreat! You have ${lessons_left} audio lessons available. Let's start practicing with voice messages!`
