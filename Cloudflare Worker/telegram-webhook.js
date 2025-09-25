@@ -539,14 +539,25 @@ if (update.message?.text === '/feedback') {
                 const userText = transcriptionData.text;
                 console.log(`🎤 [${chatId}] Transcribed text: "${userText}"`);
                 
+                // Check if user wants to end dialog
+                const userTextLower = userText.toLowerCase().trim();
+                const endCommands = ['end', 'stop', 'finish', 'завершить', 'стоп', 'конец', 'хватит'];
+                const userWantsToEnd = endCommands.some(cmd => userTextLower.includes(cmd));
+                
                 // Check message count limit (15 messages from bot max)
                 const messageCountKey = `audio_dialog_count:${chatId}`;
                 let messageCount = parseInt(await env.CHAT_KV.get(messageCountKey) || '0');
                 console.log(`🔢 [${chatId}] Current audio dialog message count: ${messageCount}/15`);
                 
-                if (messageCount >= 15) {
+                // Increment message count FIRST
+                messageCount++;
+                await env.CHAT_KV.put(messageCountKey, messageCount.toString());
+                console.log(`📈 [${chatId}] Incremented audio dialog count to: ${messageCount}/15`);
+                
+                if (messageCount >= 15 || userWantsToEnd) {
                   // End dialog and provide final feedback
-                  console.log(`🏁 [${chatId}] Audio dialog limit reached (15 messages), ending session`);
+                  const endReason = userWantsToEnd ? 'user request' : '15 message limit';
+                  console.log(`🏁 [${chatId}] Audio dialog ending (${endReason}), completing lesson`);
                   
                   // Clear session data
                   await env.CHAT_KV.delete(messageCountKey);
@@ -555,6 +566,17 @@ if (update.message?.text === '/feedback') {
                   // Send farewell message
                   const farewellText = "That's all for today's audio lesson! You did great. Let's continue our practice tomorrow. Have a wonderful day!";
                   await safeSendTTS(chatId, farewellText, env);
+                  
+                  // DECREASE lessons_left by 1 (lesson completed)
+                  try {
+                    console.log(`📉 [${chatId}] Decreasing lessons_left by 1 (audio lesson completed)`);
+                    await callLambdaFunction('onboarding', {
+                      user_id: chatId,
+                      action: 'decrease_lessons_left'
+                    }, env);
+                  } catch (error) {
+                    console.error(`❌ [${chatId}] Error decreasing lessons_left:`, error);
+                  }
                   
                   // Generate final feedback via Lambda (like text dialog)
                   try {
@@ -596,11 +618,6 @@ if (update.message?.text === '/feedback') {
                   
                   return new Response('OK');
                 }
-                
-                // Increment message count
-                messageCount++;
-                await env.CHAT_KV.put(messageCountKey, messageCount.toString());
-                console.log(`📈 [${chatId}] Incremented audio dialog count to: ${messageCount}/15`);
                 
                 // 2. Get AI response via direct OpenAI API (like main-lesson.js - NO FEEDBACK)
                 const aiText = await generateSimpleConversationResponse(userText, chatId, env);

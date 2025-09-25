@@ -594,7 +594,68 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
             print(f"Error updating text dialog streak: {e}")
             return error_response(f'Error updating streak: {str(e)}')
     
-    # 10. Сохранение feedback пользователя с начислением Starter pack
+    # 10. Уменьшение lessons_left при завершении аудио-урока
+    if 'action' in body and body['action'] == 'decrease_lessons_left':
+        user_id = body.get('user_id')
+        
+        if not user_id:
+            return error_response('user_id is required')
+        
+        try:
+            print(f"Decreasing lessons_left for user {user_id}")
+            
+            # Получаем текущее количество уроков
+            url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=lessons_left"
+            headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key
+            }
+            
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                users = json.loads(response_text)
+                
+                if users:
+                    current_lessons = users[0].get('lessons_left', 0)
+                    new_lessons = max(0, current_lessons - 1)  # Не может быть меньше 0
+                    
+                    print(f"User {user_id}: lessons_left {current_lessons} -> {new_lessons}")
+                    
+                    # Обновляем lessons_left
+                    update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+                    update_data = json.dumps({
+                        'lessons_left': new_lessons
+                    }).encode('utf-8')
+                    
+                    update_headers = {
+                        'Authorization': f'Bearer {supabase_key}',
+                        'apikey': supabase_key,
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+                    urllib.request.urlopen(update_req)
+                    
+                    print(f"Successfully decreased lessons_left for user {user_id}: {current_lessons} -> {new_lessons}")
+                    
+                    return {
+                        'statusCode': 200,
+                        'body': json.dumps({
+                            'success': True,
+                            'lessons_left': new_lessons,
+                            'decreased_by': 1
+                        })
+                    }
+            
+            # Пользователь не найден
+            return error_response('User not found')
+            
+        except Exception as e:
+            print(f"Error decreasing lessons_left: {e}")
+            return error_response(f'Error decreasing lessons: {str(e)}')
+    
+    # 11. Сохранение feedback пользователя с начислением Starter pack
     if 'action' in body and body['action'] == 'save_feedback':
         user_id = body.get('user_id')
         feedback_text = body.get('feedback_text', '').strip()
