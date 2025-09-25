@@ -539,10 +539,14 @@ if (update.message?.text === '/feedback') {
                 const userText = transcriptionData.text;
                 console.log(`🎤 [${chatId}] Transcribed text: "${userText}"`);
                 
-                // Check if user wants to end dialog
+                // Check if user wants to end dialog (exact phrases only)
                 const userTextLower = userText.toLowerCase().trim();
-                const endCommands = ['end', 'stop', 'finish', 'завершить', 'стоп', 'конец', 'хватит'];
-                const userWantsToEnd = endCommands.some(cmd => userTextLower.includes(cmd));
+                const endPhrases = [
+                  'end dialog', 'end lesson', 'stop dialog', 'stop lesson',
+                  'завершить диалог', 'завершить урок', 'стоп диалог', 'стоп урок',
+                  'конец диалога', 'конец урока', 'хватит диалога', 'хватит урока'
+                ];
+                const userWantsToEnd = endPhrases.some(phrase => userTextLower.includes(phrase));
                 
                 // Check AUDIO message count limit (15 AUDIO messages from bot max)
                 const audioCountKey = `audio_dialog_audio_count:${chatId}`;
