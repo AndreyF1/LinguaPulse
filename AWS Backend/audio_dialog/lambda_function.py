@@ -27,6 +27,10 @@ def lambda_handler(event, context):
             return handle_generate_greeting(body)
         elif action == 'generate_feedback':
             return handle_generate_feedback(body)
+        elif action == 'decrease_lessons_left':
+            return handle_decrease_lessons_left(body)
+        elif action == 'check_audio_access':
+            return handle_check_audio_access(body)
         else:
             return error_response(f'Unknown action: {action}')
             
@@ -142,3 +146,137 @@ Keep it concise (max 150 words) and encouraging. Give realistic scores 70-95. Fo
     else:
         print(f"❌ Audio dialog feedback failed: {result['error']}")
         return error_response(f"Feedback generation error: {result['error']}")
+
+
+def handle_decrease_lessons_left(body):
+    """Уменьшение lessons_left при завершении аудио-урока"""
+    from database import get_supabase_config
+    import urllib.request
+    import json
+    
+    validation_error = validate_required_fields(body, ['user_id'])
+    if validation_error:
+        return error_response(validation_error)
+    
+    user_id = body['user_id']
+    supabase_url, supabase_key = get_supabase_config()
+    
+    try:
+        print(f"Decreasing lessons_left for user {user_id}")
+        
+        # Получаем текущее количество уроков
+        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=lessons_left"
+        headers = {
+            'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key
+        }
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as response:
+            response_text = response.read().decode('utf-8')
+            users = json.loads(response_text)
+            
+            if users:
+                current_lessons = users[0].get('lessons_left', 0)
+                new_lessons = max(0, current_lessons - 1)  # Не может быть меньше 0
+                
+                print(f"User {user_id}: lessons_left {current_lessons} -> {new_lessons}")
+                
+                # Обновляем lessons_left
+                update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+                update_data = json.dumps({
+                    'lessons_left': new_lessons
+                }).encode('utf-8')
+                
+                update_headers = {
+                    'Authorization': f'Bearer {supabase_key}',
+                    'apikey': supabase_key,
+                    'Content-Type': 'application/json'
+                }
+                
+                update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+                urllib.request.urlopen(update_req)
+                
+                print(f"Successfully decreased lessons_left for user {user_id}: {current_lessons} -> {new_lessons}")
+                
+                return success_response({
+                    'lessons_left': new_lessons,
+                    'decreased_by': 1
+                })
+        
+        # Пользователь не найден
+        return error_response('User not found')
+        
+    except Exception as e:
+        print(f"Error decreasing lessons_left: {e}")
+        return error_response(f'Error decreasing lessons: {str(e)}')
+
+
+def handle_check_audio_access(body):
+    """Проверка доступа к аудио-урокам"""
+    from database import get_supabase_config
+    from datetime import datetime, timezone
+    import urllib.request
+    import json
+    
+    validation_error = validate_required_fields(body, ['user_id'])
+    if validation_error:
+        return error_response(validation_error)
+    
+    user_id = body['user_id']
+    supabase_url, supabase_key = get_supabase_config()
+    
+    try:
+        print(f"Checking audio access for user {user_id}")
+        
+        # Получаем данные пользователя из Supabase
+        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+        headers = {
+            'Authorization': f'Bearer {supabase_key}',
+            'apikey': supabase_key
+        }
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as response:
+            response_text = response.read().decode('utf-8')
+            users = json.loads(response_text) if response_text else []
+            
+            if not users:
+                return error_response('User not found')
+            
+            user = users[0]
+            lessons_left = user.get('lessons_left', 0)
+            package_expires_at = user.get('package_expires_at')
+            interface_language = user.get('interface_language', 'ru')
+            
+            print(f"User {user_id}: lessons_left={lessons_left}, package_expires_at={package_expires_at}")
+            
+            # Проверяем доступ
+            now = datetime.now(timezone.utc)
+            has_lessons = lessons_left > 0
+            has_active_subscription = False
+            
+            if package_expires_at:
+                try:
+                    expires_date = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
+                    has_active_subscription = expires_date > now
+                    print(f"Subscription check: {expires_date} > {now} = {has_active_subscription}")
+                except Exception as e:
+                    print(f"Error parsing package_expires_at: {e}")
+                    has_active_subscription = False
+            
+            # Доступ есть если есть уроки И активная подписка
+            has_access = has_lessons and has_active_subscription
+            
+            print(f"Access result: has_lessons={has_lessons}, has_active_subscription={has_active_subscription}, has_access={has_access}")
+            
+            return success_response({
+                'has_access': has_access,
+                'lessons_left': lessons_left,
+                'has_active_subscription': has_active_subscription,
+                'interface_language': interface_language
+            })
+            
+    except Exception as e:
+        print(f"Error checking audio access: {e}")
+        return error_response(f'Error checking access: {str(e)}')
