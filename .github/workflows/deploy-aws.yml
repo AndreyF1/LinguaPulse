@@ -56,7 +56,7 @@ jobs:
               aws lambda create-function \
                 --function-name $function_name \
                 --runtime python3.9 \
-                --role arn:aws:iam::339713072003:role/lambda-execution-role \
+                --role arn:aws:iam::225989365600:role/service-role/lingua-pulse-api-role-l1bt75fl \
                 --handler $handler \
                 --zip-file fileb://$zip_file \
                 --timeout 30 \
