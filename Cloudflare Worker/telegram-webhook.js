@@ -273,12 +273,8 @@ if (update.message?.text === '/feedback') {
           // Форматируем дату доступа
           let accessDateText = texts.noAccess;
           if (accessDate) {
-            try {
-              const date = new Date(accessDate);
-              accessDateText = date.toLocaleDateString(userLang === 'ru' ? 'ru-RU' : 'en-US');
-            } catch (e) {
-              console.error('Error formatting access date:', e);
-            }
+            // Lambda уже возвращает дату в правильном формате (DD.MM.YYYY)
+            accessDateText = accessDate;
           }
         
         let message = `${texts.profileTitle}\n\n` +
