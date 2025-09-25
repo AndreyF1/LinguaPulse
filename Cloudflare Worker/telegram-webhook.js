@@ -3131,7 +3131,7 @@ async function safeSendTTS(chatId, text, env) {
       
       // Send text transcription under spoiler
       console.log(`📝 [${chatId}] Sending text transcription under spoiler`);
-      const transcriptionMessage = `||${t}||`;
+      const transcriptionMessage = `<tg-spoiler>${t}</tg-spoiler>`;
       await sendMessageViaTelegram(chatId, transcriptionMessage, env, {
         parse_mode: 'HTML'
       });
