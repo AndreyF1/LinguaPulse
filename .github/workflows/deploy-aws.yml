@@ -41,7 +41,7 @@ jobs:
           ls -la
           
           echo "📦 Creating zip archive..."
-          zip -r lambda_function.zip lambda_function.py
+          zip -r lambda_function.zip shared/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
           echo "✅ Zip created, size: $(ls -lh lambda_function.zip)"
           
           echo "🧪 Testing zip file validity..."
@@ -68,7 +68,7 @@ jobs:
           echo "⚙️  Updating Lambda function configuration..."
           if aws lambda update-function-configuration \
             --function-name linguapulse-onboarding \
-            --handler lambda_function.lambda_handler \
+            --handler shared/lambda_function.lambda_handler \
             --no-cli-pager; then
             echo "✅ Lambda configuration update initiated"
             
