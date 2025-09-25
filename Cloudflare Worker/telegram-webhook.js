@@ -544,29 +544,29 @@ if (update.message?.text === '/feedback') {
                 const endCommands = ['end', 'stop', 'finish', 'завершить', 'стоп', 'конец', 'хватит'];
                 const userWantsToEnd = endCommands.some(cmd => userTextLower.includes(cmd));
                 
-                // Check message count limit (15 messages from bot max)
-                const messageCountKey = `audio_dialog_count:${chatId}`;
-                let messageCount = parseInt(await env.CHAT_KV.get(messageCountKey) || '0');
-                console.log(`🔢 [${chatId}] Current audio dialog message count: ${messageCount}/15`);
+                // Check AUDIO message count limit (15 AUDIO messages from bot max)
+                const audioCountKey = `audio_dialog_audio_count:${chatId}`;
+                let audioMessageCount = parseInt(await env.CHAT_KV.get(audioCountKey) || '0');
+                console.log(`🔢 [${chatId}] Current AUDIO message count: ${audioMessageCount}/15`);
                 
-                // Increment message count FIRST
-                messageCount++;
-                await env.CHAT_KV.put(messageCountKey, messageCount.toString());
-                console.log(`📈 [${chatId}] Incremented audio dialog count to: ${messageCount}/15`);
+                // Increment AUDIO message count FIRST (only for actual audio responses)
+                audioMessageCount++;
+                await env.CHAT_KV.put(audioCountKey, audioMessageCount.toString());
+                console.log(`📈 [${chatId}] Incremented AUDIO message count to: ${audioMessageCount}/15`);
                 
-                // ANTI-ABUSE: Mark lesson as used after 5 bot messages
+                // ANTI-ABUSE: Mark lesson as used after 5 AUDIO bot messages (but continue dialog)
                 const lessonUsedKey = `audio_lesson_used:${chatId}`;
                 const lessonAlreadyUsed = await env.CHAT_KV.get(lessonUsedKey);
                 
-                if (messageCount >= 5 && !lessonAlreadyUsed) {
-                  console.log(`🛡️ [${chatId}] ANTI-ABUSE: 5+ messages reached, marking lesson as USED`);
+                if (audioMessageCount >= 5 && !lessonAlreadyUsed) {
+                  console.log(`🛡️ [${chatId}] ANTI-ABUSE: 5+ AUDIO messages reached, marking lesson as USED (dialog continues)`);
                   
                   // Mark lesson as used to prevent multiple decreases
                   await env.CHAT_KV.put(lessonUsedKey, 'true');
                   
-                  // Decrease lessons_left immediately (anti-abuse)
+                  // Decrease lessons_left immediately (anti-abuse) - but dialog continues!
                   try {
-                    console.log(`📉 [${chatId}] ANTI-ABUSE: Decreasing lessons_left by 1 (5+ messages used)`);
+                    console.log(`📉 [${chatId}] ANTI-ABUSE: Decreasing lessons_left by 1 (5+ AUDIO messages used, dialog continues)`);
                     await callLambdaFunction('onboarding', {
                       user_id: chatId,
                       action: 'decrease_lessons_left'
@@ -576,13 +576,14 @@ if (update.message?.text === '/feedback') {
                   }
                 }
                 
-                if (messageCount >= 15 || userWantsToEnd) {
+                // Dialog ends ONLY at 15 AUDIO messages OR user request
+                if (audioMessageCount >= 15 || userWantsToEnd) {
                   // End dialog and provide final feedback
                   const endReason = userWantsToEnd ? 'user request' : '15 message limit';
                   console.log(`🏁 [${chatId}] Audio dialog ending (${endReason}), completing lesson`);
                   
                   // Clear session data
-                  await env.CHAT_KV.delete(messageCountKey);
+                  await env.CHAT_KV.delete(audioCountKey);
                   await env.CHAT_KV.delete(`ai_mode:${chatId}`);
                   
                   // Send farewell message
