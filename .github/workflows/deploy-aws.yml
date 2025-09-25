@@ -40,6 +40,37 @@ jobs:
           echo "📋 Files in directory:"
           ls -la
           
+          # Create Lambda functions if they don't exist
+          echo "🏗️  Creating Lambda functions if needed..."
+          
+          # Function to create Lambda if it doesn't exist
+          create_lambda_if_not_exists() {
+            local function_name=$1
+            local handler=$2
+            local zip_file=$3
+            
+            if aws lambda get-function --function-name $function_name --no-cli-pager >/dev/null 2>&1; then
+              echo "✅ Lambda function $function_name already exists"
+            else
+              echo "🆕 Creating Lambda function $function_name..."
+              aws lambda create-function \
+                --function-name $function_name \
+                --runtime python3.9 \
+                --role arn:aws:iam::339713072003:role/lambda-execution-role \
+                --handler $handler \
+                --zip-file fileb://$zip_file \
+                --timeout 30 \
+                --memory-size 256 \
+                --environment Variables='{
+                  "SUPABASE_URL":"https://hnqkqjqjqjqjqjqjqjqj.supabase.co",
+                  "SUPABASE_KEY":"your-supabase-key",
+                  "OPENAI_API_KEY":"your-openai-key"
+                }' \
+                --no-cli-pager
+              echo "✅ Lambda function $function_name created"
+            fi
+          }
+          
           # Deploy shared Lambda (main onboarding function)
           echo "📦 Creating shared Lambda zip archive..."
           zip -r shared-lambda.zip shared/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
@@ -75,6 +106,9 @@ jobs:
           zip -r translation-lambda.zip translation/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
           echo "✅ Translation zip created"
           
+          # Create translation Lambda if needed
+          create_lambda_if_not_exists "linguapulse-translation" "lambda_function.lambda_handler" "translation-lambda.zip"
+          
           echo "🚀 Updating translation Lambda function code..."
           if aws lambda update-function-code \
             --function-name linguapulse-translation \
@@ -90,6 +124,9 @@ jobs:
           echo "📦 Creating grammar Lambda zip archive..."
           zip -r grammar-lambda.zip grammar/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
           echo "✅ Grammar zip created"
+          
+          # Create grammar Lambda if needed
+          create_lambda_if_not_exists "linguapulse-grammar" "lambda_function.lambda_handler" "grammar-lambda.zip"
           
           echo "🚀 Updating grammar Lambda function code..."
           if aws lambda update-function-code \
@@ -107,6 +144,9 @@ jobs:
           zip -r text-dialog-lambda.zip text_dialog/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
           echo "✅ Text dialog zip created"
           
+          # Create text_dialog Lambda if needed
+          create_lambda_if_not_exists "linguapulse-text-dialog" "lambda_function.lambda_handler" "text-dialog-lambda.zip"
+          
           echo "🚀 Updating text_dialog Lambda function code..."
           if aws lambda update-function-code \
             --function-name linguapulse-text-dialog \
@@ -122,6 +162,9 @@ jobs:
           echo "📦 Creating audio_dialog Lambda zip archive..."
           zip -r audio-dialog-lambda.zip audio_dialog/lambda_function.py shared/database.py shared/openai_client.py shared/utils.py
           echo "✅ Audio dialog zip created"
+          
+          # Create audio_dialog Lambda if needed
+          create_lambda_if_not_exists "linguapulse-audio-dialog" "lambda_function.lambda_handler" "audio-dialog-lambda.zip"
           
           echo "🚀 Updating audio_dialog Lambda function code..."
           if aws lambda update-function-code \
