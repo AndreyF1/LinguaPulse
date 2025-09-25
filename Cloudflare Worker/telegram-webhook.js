@@ -672,6 +672,48 @@ if (update.message?.text === '/feedback') {
         console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
         
         try {
+          // FIRST: Check for audio_dialog mode (NEW AUDIO SYSTEM)
+          const currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
+          console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
+          
+          if (currentMode === 'audio_dialog') {
+            console.log(`🎤 [${chatId}] Processing text message in audio_dialog mode`);
+            
+            // Process text message in audio_dialog mode
+            try {
+              // Get AI response via Lambda
+              const aiResponse = await callLambdaFunction('onboarding', {
+                user_id: chatId,
+                action: 'process_text_message',
+                message: update.message.text,
+                mode: 'audio_dialog'
+              }, env);
+              
+              if (aiResponse?.success && aiResponse.reply) {
+                const aiText = aiResponse.reply;
+                console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
+                
+                // Convert AI response to voice and send
+                const success = await safeSendTTS(chatId, aiText, env);
+                
+                if (!success) {
+                  // Fallback to text if TTS fails
+                  await sendMessageViaTelegram(chatId, `❌ Ошибка аудио-системы. Текстовый ответ:\n\n${aiText}`, env);
+                }
+              } else {
+                throw new Error('Failed to get AI response');
+              }
+              
+              console.log(`✅ [${chatId}] Audio dialog text message processed successfully`);
+              return new Response('OK');
+              
+            } catch (error) {
+              console.error(`❌ [${chatId}] Error processing audio dialog text message:`, error);
+              await sendMessageViaTelegram(chatId, '❌ Произошла ошибка при обработке сообщения. Попробуйте еще раз.', env);
+              return new Response('OK');
+            }
+          }
+          
           // Проверяем, ожидаем ли мы feedback от пользователя
           const feedbackWaiting = await env.USER_MODES.get(`feedback_waiting:${chatId}`);
           if (feedbackWaiting === 'true') {
@@ -3234,14 +3276,19 @@ async function safeSendTTS(chatId, text, env) {
       };
       
       try {
-        const translationResponse = await callLambdaFunction(translationPayload, env);
-        if (translationResponse && translationResponse.response) {
-          const russianTranslation = translationResponse.response;
+        console.log(`🔄 [${chatId}] Calling Lambda for translation:`, translationPayload);
+        const translationResponse = await callLambdaFunction('onboarding', translationPayload, env);
+        console.log(`📝 [${chatId}] Translation response:`, translationResponse);
+        
+        if (translationResponse && translationResponse.reply) {
+          const russianTranslation = translationResponse.reply;
           const translationMessage = `Перевод:\n<tg-spoiler>${russianTranslation}</tg-spoiler>`;
           await sendMessageViaTelegram(chatId, translationMessage, env, {
             parse_mode: 'HTML'
           });
           console.log(`✅ [${chatId}] Transcription and translation sent successfully`);
+        } else {
+          console.error(`❌ [${chatId}] Invalid translation response:`, translationResponse);
         }
       } catch (error) {
         console.error(`❌ [${chatId}] Translation error:`, error);
