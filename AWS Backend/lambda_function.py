@@ -2,9 +2,6 @@ import json
 import os
 import urllib.request
 import urllib.parse
-import requests
-import base64
-import openai
 from datetime import datetime, timedelta, timezone
 
 def lambda_handler(event, context):
