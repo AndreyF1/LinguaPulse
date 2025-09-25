@@ -673,7 +673,7 @@ if (update.message?.text === '/feedback') {
         
         try {
           // FIRST: Check for audio_dialog mode (NEW AUDIO SYSTEM)
-          const currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
+          let currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
           console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
           
           if (currentMode === 'audio_dialog') {
@@ -789,7 +789,10 @@ if (update.message?.text === '/feedback') {
             return new Response('OK');
           }
           // Получаем сохраненный режим из KV storage
-          let currentMode = 'translation'; // по умолчанию
+          // Режим уже определен выше, не переопределяем
+          if (!currentMode) {
+            currentMode = 'translation'; // по умолчанию
+          }
           
           try {
             console.log(`📖 [${chatId}] Getting AI mode from Supabase...`);
