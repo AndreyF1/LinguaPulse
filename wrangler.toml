@@ -23,7 +23,7 @@ keep_vars = true
 # Test Bot Environment
 [env.test-bot]
 name = "linguapulse-test-bot"
-main = "linguapulse-test-bot.js"
+main = "Cloudflare Worker/linguapulse-test-bot.js"
 keep_vars = true
 
 # Enable logs specifically for this environment
@@ -45,7 +45,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Newbies Funnel Environment (replaces test-bot functionality)
 [env.newbies-funnel]
 name = "linguapulse-newbies-funnel-v2"
-main = "newbies-funnel.js"
+main = "Cloudflare Worker/newbies-funnel.js"
 keep_vars = true
 
 # Enable logs specifically for this environment
@@ -106,7 +106,7 @@ service = "main-lesson"
 # Lesson0 Environment
 [env.lesson0]
 name = "linguapulse-lesson0-bot"
-main = "lesson0-bot.js"
+main = "Cloudflare Worker/lesson0-bot.js"
 compatibility_date = "2025-05-17"
 keep_vars = true
 
@@ -140,7 +140,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Main Lesson Environment
 [env.main-lesson]
 name = "main-lesson"
-main = "main-lesson.js"
+main = "Cloudflare Worker/main-lesson.js"
 keep_vars = true
 
 # Enable logs specifically for this environment
@@ -162,7 +162,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Reminder Environment
 [env.reminder]
 name = "reminder"
-main = "reminder.js"
+main = "Cloudflare Worker/reminder.js"
 keep_vars = true
 
 # Enable logs specifically for this environment
@@ -181,7 +181,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Dev Test Bot Environment
 [env.dev-test-bot]
 name = "dev-linguapulse-test-bot"
-main = "linguapulse-test-bot.js"
+main = "Cloudflare Worker/linguapulse-test-bot.js"
 keep_vars = true
 
 [env.dev-test-bot.observability]
@@ -199,7 +199,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Dev Newbies Funnel Environment
 [env.dev-newbies-funnel]
 name = "dev-linguapulse-newbies-funnel"
-main = "newbies-funnel.js"
+main = "Cloudflare Worker/newbies-funnel.js"
 keep_vars = true
 
 [env.dev-newbies-funnel.observability]
@@ -252,7 +252,7 @@ service = "dev-main-lesson"
 # Dev Lesson0 Environment
 [env.dev-lesson0]
 name = "dev-linguapulse-lesson0-bot"
-main = "lesson0-bot.js"
+main = "Cloudflare Worker/lesson0-bot.js"
 compatibility_date = "2025-05-17"
 keep_vars = true
 
@@ -271,7 +271,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Dev Main Lesson Environment
 [env.dev-main-lesson]
 name = "dev-main-lesson"
-main = "main-lesson.js"
+main = "Cloudflare Worker/main-lesson.js"
 keep_vars = true
 
 [env.dev-main-lesson.observability]
@@ -289,7 +289,7 @@ database_id = "47f30572-4b57-4978-890d-4fa880cf1427"
 # Dev Reminder Environment
 [env.dev-reminder]
 name = "dev-reminder"
-main = "reminder.js"
+main = "Cloudflare Worker/reminder.js"
 keep_vars = true
 
 [env.dev-reminder.observability]
