@@ -356,12 +356,12 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                 openai_response = get_openai_response(message, mode)
             
             if openai_response['success']:
-                # Логируем использование ТОЛЬКО для обычных текстовых режимов (НЕ для аудио-диалога и переводов)
-                if mode not in ['audio_dialog', 'translation']:
+                # Логируем использование для ВСЕХ текстовых режимов КРОМЕ переводов (audio_dialog НЕ вызывает process_text_message)
+                if mode != 'translation':
                     log_text_usage(user_id, supabase_url, supabase_key)
                     print(f"✅ Text usage logged for mode: {mode}")
                 else:
-                    print(f"⏭️ Skipping text usage logging for mode: {mode} (audio/translation)")
+                    print(f"⏭️ Skipping text usage logging for translation mode")
                 
                 return success_response({
                     'reply': openai_response['reply']
