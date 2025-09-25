@@ -63,11 +63,22 @@ jobs:
                 --memory-size 256 \
                 --no-cli-pager
               
-              # Set environment variables separately
-              aws lambda update-function-configuration \
-                --function-name $function_name \
-                --environment Variables="{\"SUPABASE_URL\":\"${{ secrets.SUPABASE_URL }}\",\"SUPABASE_KEY\":\"${{ secrets.SUPABASE_KEY }}\",\"OPENAI_API_KEY\":\"${{ secrets.OPENAI_API_KEY }}\"}" \
-                --no-cli-pager
+              # Debug secrets first
+              echo "🔍 Checking secrets..."
+              echo "SUPABASE_URL length: ${#SUPABASE_URL}"
+              echo "SUPABASE_KEY length: ${#SUPABASE_KEY}" 
+              echo "OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
+              
+              # Only set env vars if secrets exist
+              if [[ -n "${{ secrets.SUPABASE_URL }}" && -n "${{ secrets.SUPABASE_KEY }}" && -n "${{ secrets.OPENAI_API_KEY }}" ]]; then
+                echo "✅ Setting environment variables..."
+                aws lambda update-function-configuration \
+                  --function-name $function_name \
+                  --environment Variables='{"SUPABASE_URL":"${{ secrets.SUPABASE_URL }}","SUPABASE_KEY":"${{ secrets.SUPABASE_KEY }}","OPENAI_API_KEY":"${{ secrets.OPENAI_API_KEY }}"}' \
+                  --no-cli-pager
+              else
+                echo "⚠️  Some secrets are empty - skipping environment variables"
+              fi
               echo "✅ Lambda function $function_name created"
             fi
           }
