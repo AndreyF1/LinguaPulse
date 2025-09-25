@@ -1,5 +1,21 @@
 # LinguaPulse Project Documentation
 
+## 🔧 Development Workflow Rules
+
+### CRITICAL: Always commit and push changes
+- **MANDATORY**: After ANY code changes, ALWAYS run: `git add . && git commit -m "..." && git push`
+- **User preference**: User wants to see changes in git repository without having to ask
+- **This is NOT optional** - it's a core workflow requirement
+- **Commit messages**: Should be descriptive and explain what was changed and why
+
+### Code Quality Standards
+- Test changes before committing
+- Use descriptive variable names
+- Add comments for complex logic
+- Follow existing code patterns
+
+---
+
 ## 📋 Current Status (September 25, 2025)
 
 ### ✅ Completed Features
