@@ -488,12 +488,11 @@ if (update.message?.text === '/feedback') {
           // FIRST: Check for active lesson sessions
           console.log(`=== CHECKING ACTIVE SESSIONS ===`);
           
-          if (env.USER_MODES) {
-            // FIRST: Check for audio_dialog mode (NEW AUDIO SYSTEM)
-            const currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
-            console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
-            
-            if (currentMode === 'audio_dialog') {
+          // FIRST: Check for audio_dialog mode (NEW AUDIO SYSTEM)
+          const currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
+          console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
+          
+          if (currentMode === 'audio_dialog') {
               console.log(`🎤 [${chatId}] Processing voice message in audio_dialog mode`);
               
               // Process voice message in audio_dialog mode
@@ -571,8 +570,9 @@ if (update.message?.text === '/feedback') {
                 await sendMessageViaTelegram(chatId, '❌ Произошла ошибка при обработке голосового сообщения. Попробуйте еще раз.', env);
                 return new Response('OK');
               }
-            }
-            
+          }
+          
+          if (env.USER_MODES) {
             // Check lesson0 session (LEGACY)
             const lesson0Session = await env.USER_MODES.get(`session:${chatId}`);
             const lesson0History = await env.USER_MODES.get(`hist:${chatId}`);
