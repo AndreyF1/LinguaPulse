@@ -449,9 +449,12 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
         
         try:
             print(f"Updating daily streak for user {user_id}")
+            print(f"Supabase URL: {supabase_url}")
+            print(f"Supabase Key: {supabase_key[:10]}..." if supabase_key else "None")
             
             # Получаем текущие данные пользователя
             url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=current_streak,last_lesson_date"
+            print(f"Request URL: {url}")
             headers = {
                 'Authorization': f'Bearer {supabase_key}',
                 'apikey': supabase_key
@@ -460,13 +463,16 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req) as response:
                 response_text = response.read().decode('utf-8')
+                print(f"Supabase response: {response_text}")
                 
                 if response_text:
                     users = json.loads(response_text)
+                    print(f"Found {len(users)} users")
                     if users:
                         user_data = users[0]
                         current_streak = user_data.get('current_streak', 0)
                         last_lesson_date = user_data.get('last_lesson_date')
+                        print(f"Current streak: {current_streak}, last_lesson_date: {last_lesson_date}")
                         
                         # Определяем, нужно ли увеличивать streak
                         today = datetime.now().date()
