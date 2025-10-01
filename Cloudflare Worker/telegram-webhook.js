@@ -652,20 +652,30 @@ if (update.message?.text === '/feedback') {
                   
                   // Generate final feedback via Lambda (AUDIO dialog)
                   try {
+                    console.log(`📊 [${chatId}] Generating final feedback for audio dialog`);
                     const feedbackResponse = await callLambdaFunction('audio_dialog', {
                       user_id: chatId,
                       action: 'generate_dialog_feedback',
                       user_lang: 'ru'  // TODO: get from user profile
                     }, env);
                     
+                    console.log(`📊 [${chatId}] Feedback response:`, feedbackResponse);
+                    
                     if (feedbackResponse?.success && feedbackResponse.feedback) {
+                      console.log(`📊 [${chatId}] Sending feedback to user:`, feedbackResponse.feedback);
                       await sendMessageViaTelegram(chatId, feedbackResponse.feedback, env);
+                      console.log(`✅ [${chatId}] Feedback sent successfully`);
+                    } else {
+                      console.error(`❌ [${chatId}] Invalid feedback response:`, feedbackResponse);
                     }
                   } catch (error) {
                     console.error(`❌ [${chatId}] Error generating final feedback:`, error);
                   }
                   
                   // Streak is now updated in handle_decrease_lessons_left function
+                  
+                  // Small delay before showing buttons
+                  await new Promise(resolve => setTimeout(resolve, 1000));
                   
                   // Show mode selection buttons
                   await sendMessageViaTelegram(chatId, 'Выберите режим ИИ:', env, {
