@@ -105,7 +105,17 @@ when to use, difference from related forms
 2. ||answer||  
 3. ||answer||
 
-IMPORTANT: Use single asterisks *word* for bold, not double **word** which may break Telegram parsing"""
+FORMATTING REQUIREMENTS:
+- Use single asterisks *word* for bold (NOT **word**)
+- ALWAYS wrap practice answers in double pipes: ||answer||
+- Example: "1. ||would go||" NOT "1. would go"
+- This creates spoilers in Telegram that users can tap to reveal
+
+Example of correct Answer key format:
+*Ответы на практику*
+1. ||would go||
+2. ||to like||
+3. ||would buy||"""
     
     # Получаем ответ от OpenAI
     result = get_openai_response(text, system_prompt)
