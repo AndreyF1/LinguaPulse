@@ -621,6 +621,10 @@ if (update.message?.text === '/feedback') {
                   await env.CHAT_KV.delete(audioCountKey);
                   await env.CHAT_KV.delete(`ai_mode:${chatId}`);
                   
+                  // Clear conversation history when dialog ends
+                  await env.CHAT_KV.delete(`conversation_history:${chatId}`);
+                  console.log(`🗑️ [${chatId}] Cleared conversation history`);
+                  
                   // Send farewell message
                   const farewellText = "That's all for today's audio lesson! You did great. Let's continue our practice tomorrow. Have a wonderful day!";
                   await safeSendTTS(chatId, farewellText, env);
@@ -680,9 +684,76 @@ if (update.message?.text === '/feedback') {
                   return new Response('OK');
                 }
                 
-                // 2. Get AI response via direct OpenAI API (like main-lesson.js - NO FEEDBACK)
-                const aiText = await generateSimpleConversationResponse(userText, chatId, env);
-                console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
+                // 2. Get AI response with context via Lambda
+                // Get conversation history
+                const conversationHistory = await env.CHAT_KV.get(`conversation_history:${chatId}`);
+                let previousMessages = [];
+                if (conversationHistory) {
+                  try {
+                    previousMessages = JSON.parse(conversationHistory);
+                  } catch (e) {
+                    console.log(`Error parsing conversation history: ${e}`);
+                    previousMessages = [];
+                  }
+                }
+                
+                // Add current user message to history
+                previousMessages.push(`User: ${userText}`);
+                
+                // Keep only last 10 messages to avoid token limits
+                if (previousMessages.length > 10) {
+                  previousMessages = previousMessages.slice(-10);
+                }
+                
+                // Save updated history (before calling Lambda)
+                await env.CHAT_KV.put(`conversation_history:${chatId}`, JSON.stringify(previousMessages), { expirationTtl: 3600 });
+                
+                // Get user level (TODO: get from user profile)
+                const userLevel = 'Intermediate';
+                
+                let aiText;
+                const responseResult = await callLambdaFunction('audio_dialog', {
+                  action: 'generate_response',
+                  user_id: chatId,
+                  user_text: userText,
+                  user_level: userLevel,
+                  previous_messages: previousMessages
+                }, env);
+                
+                if (!responseResult || !responseResult.success) {
+                  console.error(`❌ [${chatId}] Audio dialog response generation failed:`, responseResult);
+                  // Fallback to simple response
+                  aiText = await generateSimpleConversationResponse(userText, chatId, env);
+                  console.log(`🤖 [${chatId}] Fallback AI response: "${aiText}"`);
+                } else {
+                  aiText = responseResult.reply;
+                  console.log(`🤖 [${chatId}] AI response: "${aiText}"`);
+                  
+                  // Add bot response to conversation history
+                  const botResponse = `Bot: ${aiText.replace(/---END_DIALOG---/g, '').trim()}`;
+                  
+                  // Get current conversation history (again, to ensure it's fresh)
+                  const currentHistory = await env.CHAT_KV.get(`conversation_history:${chatId}`);
+                  let updatedMessages = [];
+                  if (currentHistory) {
+                    try {
+                      updatedMessages = JSON.parse(currentHistory);
+                    } catch (e) {
+                      console.log(`Error parsing conversation history: ${e}`);
+                      updatedMessages = [];
+                    }
+                  }
+                  
+                  updatedMessages.push(botResponse);
+                  
+                  // Keep only last 10 messages to avoid token limits
+                  if (updatedMessages.length > 10) {
+                    updatedMessages = updatedMessages.slice(-10);
+                  }
+                  
+                  // Save updated history (after bot response)
+                  await env.CHAT_KV.put(`conversation_history:${chatId}`, JSON.stringify(updatedMessages), { expirationTtl: 3600 });
+                }
                   
                 // 3. Convert AI response to voice and send
                 const success = await safeSendTTS(chatId, aiText, env);

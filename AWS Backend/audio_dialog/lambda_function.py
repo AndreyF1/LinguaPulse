@@ -32,6 +32,8 @@ def lambda_handler(event, context):
             return handle_decrease_lessons_left(body)
         elif action == 'check_audio_access':
             return handle_check_audio_access(body)
+        elif action == 'generate_response':
+            return handle_generate_response(body)
         else:
             return error_response(f'Unknown action: {action}')
             
@@ -347,3 +349,57 @@ def handle_check_audio_access(body):
     except Exception as e:
         print(f"Error checking audio access: {e}")
         return error_response(f'Error checking access: {str(e)}')
+
+
+def handle_generate_response(body):
+    """Генерация ответа в аудио диалоге с контекстом"""
+    validation_error = validate_required_fields(body, ['user_id', 'user_text'])
+    if validation_error:
+        return error_response(validation_error)
+    
+    user_id = body['user_id']
+    user_text = body['user_text']
+    user_level = body.get('user_level', 'Intermediate')
+    previous_messages = body.get('previous_messages', [])
+    
+    print(f"🎤 Generating audio response for user {user_id}, level: {user_level}")
+    
+    # Строим контекст из предыдущих сообщений
+    context = ""
+    if previous_messages and len(previous_messages) > 0:
+        context = "\n\nCONVERSATION CONTEXT (recent messages):\n"
+        for i, msg in enumerate(previous_messages[-4:], 1):
+            context += f"{i}. {msg}\n"
+        context += "\nIMPORTANT: Remember this context and build upon it naturally. Don't repeat what was already said."
+    
+    # Системный промпт для ответа с контекстом (БЕЗ фидбэка и перевода)
+    system_prompt = f"""You are a friendly English conversation partner for audio dialog practice.
+
+User's English level: {user_level}
+Current message count: {len(previous_messages) + 1}/20{context}
+
+CORE RULES:
+1. ALWAYS respond in English only
+2. NO feedback on grammar/vocabulary - this is for audio practice
+3. NO Russian translation in the message
+4. Maintain natural conversation flow - ask follow-up questions based on what was said before
+5. Keep conversation engaging and educational
+6. REMEMBER the conversation context and build upon it naturally
+7. Don't repeat topics or questions that were already discussed
+8. Keep responses concise (1-2 sentences) for audio format
+9. Be conversational and supportive
+
+RESPONSE STRUCTURE:
+Just your English response - nothing else."""
+    
+    # Получаем ответ от OpenAI
+    result = get_openai_response(user_text, system_prompt, max_tokens=200)
+    
+    if result['success']:
+        print(f"✅ Audio response generated successfully")
+        return success_response({
+            'reply': result['reply']
+        })
+    else:
+        print(f"❌ Audio response generation failed: {result['error']}")
+        return error_response(f"Response generation error: {result['error']}")
