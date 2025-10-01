@@ -111,20 +111,6 @@ if (update.message?.text === '/feedback') {
       if (update.message?.text === '/talk') {
         console.log(`🎯 [${chatId}] /talk command received`);
         
-        // Helper functions for /talk localization
-        async function getUserLanguageForTalk() {
-          try {
-            const userProfileResponse = await callLambdaFunction('shared', {
-              user_id: chatId,
-              action: 'get_profile'
-            }, env);
-            
-            return userProfileResponse?.user_data?.interface_language || 'en';
-          } catch (error) {
-            console.error('Error getting user language for /talk:', error);
-            return 'en';
-          }
-        }
         
         const talkTexts = {
           en: {
@@ -172,7 +158,17 @@ if (update.message?.text === '/feedback') {
             
             if (hasActiveSubscription) {
                       // If they have an active subscription but worker is unavailable
-              const userLang = await getUserLanguageForTalk();
+              // Get user language directly
+              let userLang = 'en';
+              try {
+                const userProfileResponse = await callLambdaFunction('shared', {
+                  user_id: chatId,
+                  action: 'get_profile'
+                }, env);
+                userLang = userProfileResponse?.user_data?.interface_language || 'en';
+              } catch (error) {
+                console.error('Error getting user language for /talk:', error);
+              }
               await sendMessageViaTelegram(chatId, 
                 getTalkText(userLang, 'serviceUnavailable'), env, { parse_mode: 'Markdown' });
             } else {
@@ -181,7 +177,17 @@ if (update.message?.text === '/feedback') {
             }
           } else {
                       // If they haven't completed the survey
-            const userLang = await getUserLanguageForTalk();
+            // Get user language directly
+            let userLang = 'en';
+            try {
+              const userProfileResponse = await callLambdaFunction('shared', {
+                user_id: chatId,
+                action: 'get_profile'
+              }, env);
+              userLang = userProfileResponse?.user_data?.interface_language || 'en';
+            } catch (error) {
+              console.error('Error getting user language for /talk:', error);
+            }
             await sendMessageViaTelegram(chatId, 
               getTalkText(userLang, 'needOnboarding'), env, { parse_mode: 'Markdown' });
           }
@@ -198,7 +204,17 @@ if (update.message?.text === '/feedback') {
           return forwardResult;
         } catch (forwardError) {
           console.error(`❌ [${chatId}] Error in forward function:`, forwardError);
-          const userLang = await getUserLanguageForTalk();
+          // Get user language directly
+          let userLang = 'en';
+          try {
+            const userProfileResponse = await callLambdaFunction('shared', {
+              user_id: chatId,
+              action: 'get_profile'
+            }, env);
+            userLang = userProfileResponse?.user_data?.interface_language || 'en';
+          } catch (error) {
+            console.error('Error getting user language for /talk:', error);
+          }
           await sendMessageViaTelegram(chatId, 
             getTalkText(userLang, 'errorStarting'), env, { parse_mode: 'Markdown' });
           return new Response('OK');
@@ -2692,20 +2708,6 @@ async function handleTestSubscription(request, env) {
 async function sendTributeChannelLink(chatId, env) {
   console.log(`[DEBUG] sendTributeChannelLink called for user ${chatId}`);
   
-  // Helper function for localization in sendTributeChannelLink
-  async function getUserLanguageForTribute() {
-    try {
-      const userProfileResponse = await callLambdaFunction('shared', {
-        user_id: chatId,
-        action: 'get_profile'
-      }, env);
-      
-      return userProfileResponse?.user_data?.interface_language || 'en';
-    } catch (error) {
-      console.error('Error getting user language for tribute:', error);
-      return 'en';
-    }
-  }
 
   const tributeTexts = {
     en: {
@@ -2753,7 +2755,19 @@ async function sendTributeChannelLink(chatId, env) {
     tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
   }
 
-  const userLang = await getUserLanguageForTribute();
+  // Get user language directly
+  let userLang = 'en';
+  try {
+    const userProfileResponse = await callLambdaFunction('shared', {
+      user_id: chatId,
+      action: 'get_profile'
+    }, env);
+    
+    userLang = userProfileResponse?.user_data?.interface_language || 'en';
+  } catch (error) {
+    console.error('Error getting user language for tribute:', error);
+  }
+  
   const message = `${getTributeText(userLang, 'title')}\n\n` +
                  `${getTributeText(userLang, 'step1')}\n` +
                  `${getTributeText(userLang, 'step2')}\n` +
@@ -3132,20 +3146,6 @@ async function handleLessonCommand(chatId, env) {
   try {
     console.log(`handleLessonCommand started for user ${chatId}`);
     
-    // Helper function for localization
-    async function getUserLanguageForLessons() {
-      try {
-        const userProfileResponse = await callLambdaFunction('shared', {
-          user_id: chatId,
-          action: 'get_profile'
-        }, env);
-        
-        return userProfileResponse?.user_data?.interface_language || 'en';
-      } catch (error) {
-        console.error('Error getting user language for lessons:', error);
-        return 'en';
-      }
-    }
     
     const lessonTexts = {
       en: {
@@ -3204,7 +3204,17 @@ async function handleLessonCommand(chatId, env) {
     
     if (!userProfileResponse || !userProfileResponse.success) {
       console.log(`User ${chatId} not found, sending onboarding message`);
-      const userLang = await getUserLanguageForLessons();
+      // Get user language directly
+      let userLang = 'en';
+      try {
+        const userProfileResponse = await callLambdaFunction('shared', {
+          user_id: chatId,
+          action: 'get_profile'
+        }, env);
+        userLang = userProfileResponse?.user_data?.interface_language || 'en';
+      } catch (error) {
+        console.error('Error getting user language for lessons:', error);
+      }
       await sendMessageViaTelegram(chatId, 
         getLessonText(userLang, 'welcomeMessage'), env);
       return;
@@ -3232,7 +3242,17 @@ async function handleLessonCommand(chatId, env) {
     const hasActiveSubscription = profile.subscription_expired_at && 
                                 (new Date(profile.subscription_expired_at) > now);
     
-    const userLang = await getUserLanguageForLessons();
+    // Get user language directly
+    let userLang = 'en';
+    try {
+      const userProfileResponse = await callLambdaFunction('shared', {
+        user_id: chatId,
+        action: 'get_profile'
+      }, env);
+      userLang = userProfileResponse?.user_data?.interface_language || 'en';
+    } catch (error) {
+      console.error('Error getting user language for lessons:', error);
+    }
     const subscriptionStatus = hasActiveSubscription ? 
       getLessonText(userLang, 'subscriptionActive') : 
       getLessonText(userLang, 'subscriptionInactive');
@@ -3303,7 +3323,17 @@ async function handleLessonCommand(chatId, env) {
     console.error(`Error in handleLessonCommand for user ${chatId}:`, error);
     // Try to send a fallback message
     try {
-      const userLang = await getUserLanguageForLessons();
+      // Get user language directly
+      let userLang = 'en';
+      try {
+        const userProfileResponse = await callLambdaFunction('shared', {
+          user_id: chatId,
+          action: 'get_profile'
+        }, env);
+        userLang = userProfileResponse?.user_data?.interface_language || 'en';
+      } catch (error) {
+        console.error('Error getting user language for lessons:', error);
+      }
       await sendMessageViaTelegram(chatId, 
         getLessonText(userLang, 'errorMessage'), 
         env);
