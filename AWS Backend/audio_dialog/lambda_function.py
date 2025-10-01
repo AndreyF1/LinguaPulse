@@ -161,7 +161,9 @@ def handle_decrease_lessons_left(body):
         return error_response(validation_error)
     
     user_id = body['user_id']
-    supabase_url, supabase_key = get_supabase_config()
+    supabase_config = get_supabase_config()
+    supabase_url = supabase_config['url']
+    supabase_key = supabase_config['key']
     
     try:
         print(f"Decreasing lessons_left for user {user_id}")
@@ -274,24 +276,33 @@ def handle_check_audio_access(body):
         return error_response(validation_error)
     
     user_id = body['user_id']
-    supabase_url, supabase_key = get_supabase_config()
+    supabase_config = get_supabase_config()
+    supabase_url = supabase_config['url']
+    supabase_key = supabase_config['key']
     
     try:
         print(f"Checking audio access for user {user_id}")
+        print(f"Supabase URL: {supabase_url}")
+        print(f"Supabase Key: {supabase_key[:10]}...")
         
         # Получаем данные пользователя из Supabase
         url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+        print(f"Request URL: {url}")
+        
         headers = {
             'Authorization': f'Bearer {supabase_key}',
-            'apikey': supabase_key
+            'apikey': supabase_key,
+            'Content-Type': 'application/json'
         }
         
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req) as response:
             response_text = response.read().decode('utf-8')
+            print(f"Supabase response: {response_text}")
             users = json.loads(response_text) if response_text else []
             
             if not users:
+                print(f"User {user_id} not found in database")
                 return error_response('User not found')
             
             user = users[0]
@@ -328,6 +339,11 @@ def handle_check_audio_access(body):
                 'interface_language': interface_language
             })
             
+    except urllib.error.HTTPError as e:
+        print(f"HTTP Error checking audio access: {e.code} - {e.reason}")
+        error_body = e.read().decode('utf-8') if e.fp else 'No error body'
+        print(f"Error body: {error_body}")
+        return error_response(f'Database error: {e.code} - {e.reason}')
     except Exception as e:
         print(f"Error checking audio access: {e}")
         return error_response(f'Error checking access: {str(e)}')
