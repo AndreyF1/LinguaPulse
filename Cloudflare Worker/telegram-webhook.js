@@ -3406,10 +3406,35 @@ async function hasActiveSubscription(chatId, env) {
 }
 */
 
-// ВРЕМЕННАЯ ЗАГЛУШКА
 async function hasActiveSubscription(chatId, env) {
-  console.log(`[DEBUG] hasActiveSubscription stub - returning false for user ${chatId}`);
-  return false;
+  try {
+    console.log(`[DEBUG] Checking subscription status for user ${chatId}`);
+    
+    const userProfileResponse = await callLambdaFunction('shared', {
+      user_id: chatId,
+      action: 'get_profile'
+    }, env);
+    
+    if (!userProfileResponse || !userProfileResponse.success) {
+      console.log(`[DEBUG] User ${chatId} not found, no subscription`);
+      return false;
+    }
+    
+    const profile = userProfileResponse.user_data;
+    const now = new Date();
+    const hasActiveSubscription = profile.subscription_expired_at && 
+                                (new Date(profile.subscription_expired_at) > now);
+    
+    console.log(`[DEBUG] User ${chatId} subscription status:`, {
+      subscription_expired_at: profile.subscription_expired_at,
+      hasActiveSubscription: hasActiveSubscription
+    });
+    
+    return hasActiveSubscription;
+  } catch (error) {
+    console.error(`[DEBUG] Error checking subscription for user ${chatId}:`, error);
+    return false;
+  }
 }
 // Test comment
 
