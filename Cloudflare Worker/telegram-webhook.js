@@ -645,16 +645,7 @@ if (update.message?.text === '/feedback') {
                     console.error(`❌ [${chatId}] Error generating final feedback:`, error);
                   }
                   
-                  // Update streak for audio lesson completion
-                  try {
-                    console.log(`📈 [${chatId}] Updating AUDIO lesson streak (not text)`);
-                    await callLambdaFunction('shared', {
-                      user_id: chatId,
-                      action: 'update_daily_streak'
-                    }, env);
-                  } catch (error) {
-                    console.error(`❌ [${chatId}] Error updating audio lesson streak:`, error);
-                  }
+                  // Streak is now updated in handle_decrease_lessons_left function
                   
                   // Show mode selection buttons
                   await sendMessageViaTelegram(chatId, 'Выберите режим ИИ:', env, {

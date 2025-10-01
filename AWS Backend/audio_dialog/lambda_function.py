@@ -154,6 +154,7 @@ def handle_decrease_lessons_left(body):
     from database import get_supabase_config
     import urllib.request
     import json
+    from datetime import datetime, timedelta
     
     validation_error = validate_required_fields(body, ['user_id'])
     if validation_error:
@@ -165,8 +166,8 @@ def handle_decrease_lessons_left(body):
     try:
         print(f"Decreasing lessons_left for user {user_id}")
         
-        # Получаем текущее количество уроков
-        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=lessons_left"
+        # Получаем текущие данные пользователя
+        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=lessons_left,total_lessons_completed,current_streak,last_lesson_date"
         headers = {
             'Authorization': f'Bearer {supabase_key}',
             'apikey': supabase_key
@@ -178,16 +179,59 @@ def handle_decrease_lessons_left(body):
             users = json.loads(response_text)
             
             if users:
-                current_lessons = users[0].get('lessons_left', 0)
+                user_data = users[0]
+                current_lessons = user_data.get('lessons_left', 0)
+                total_completed = user_data.get('total_lessons_completed', 0)
+                current_streak = user_data.get('current_streak', 0)
+                last_lesson_date = user_data.get('last_lesson_date')
+                
                 new_lessons = max(0, current_lessons - 1)  # Не может быть меньше 0
+                new_total = total_completed + 1  # Увеличиваем общее количество
                 
-                print(f"User {user_id}: lessons_left {current_lessons} -> {new_lessons}")
+                # Обновляем streak и last_lesson_date
+                today = datetime.now().date()
+                should_update_streak = True
                 
-                # Обновляем lessons_left
+                if last_lesson_date:
+                    try:
+                        last_date = datetime.fromisoformat(last_lesson_date).date()
+                        # Если уже занимались сегодня, не увеличиваем streak
+                        if last_date == today:
+                            should_update_streak = False
+                            print(f"User {user_id} already practiced today, not updating streak")
+                        # Если последний раз занимались вчера, увеличиваем streak
+                        elif last_date == today - timedelta(days=1):
+                            current_streak += 1
+                            print(f"User {user_id} practiced yesterday, increasing streak to {current_streak}")
+                        # Если пропустили дни, streak = 1
+                        elif last_date < today - timedelta(days=1):
+                            current_streak = 1
+                            print(f"User {user_id} missed days, resetting streak to 1")
+                    except Exception as e:
+                        print(f"Error parsing last_lesson_date: {e}")
+                        # Если ошибка парсинга, устанавливаем streak = 1
+                        current_streak = 1
+                else:
+                    # Первый раз занимается
+                    current_streak = 1
+                    print(f"User {user_id} first time practicing, setting streak to 1")
+                
+                print(f"User {user_id}: lessons_left {current_lessons} -> {new_lessons}, total_completed {total_completed} -> {new_total}")
+                
+                # Подготавливаем данные для обновления
+                update_data = {
+                    'lessons_left': new_lessons,
+                    'total_lessons_completed': new_total
+                }
+                
+                # Добавляем обновление streak только если нужно
+                if should_update_streak:
+                    update_data['current_streak'] = current_streak
+                    update_data['last_lesson_date'] = today.isoformat()
+                
+                # Обновляем данные в базе
                 update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
-                update_data = json.dumps({
-                    'lessons_left': new_lessons
-                }).encode('utf-8')
+                update_data_json = json.dumps(update_data).encode('utf-8')
                 
                 update_headers = {
                     'Authorization': f'Bearer {supabase_key}',
@@ -195,14 +239,19 @@ def handle_decrease_lessons_left(body):
                     'Content-Type': 'application/json'
                 }
                 
-                update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+                update_req = urllib.request.Request(update_url, data=update_data_json, headers=update_headers, method='PATCH')
                 urllib.request.urlopen(update_req)
                 
-                print(f"Successfully decreased lessons_left for user {user_id}: {current_lessons} -> {new_lessons}")
+                print(f"Successfully updated lessons for user {user_id}: lessons_left {current_lessons} -> {new_lessons}, total_completed {total_completed} -> {new_total}")
+                if should_update_streak:
+                    print(f"Also updated streak: {current_streak}, last_lesson_date: {today}")
                 
                 return success_response({
                     'lessons_left': new_lessons,
-                    'decreased_by': 1
+                    'total_lessons_completed': new_total,
+                    'decreased_by': 1,
+                    'streak_updated': should_update_streak,
+                    'new_streak': current_streak
                 })
         
         # Пользователь не найден
