@@ -43,14 +43,22 @@ def handle_translate(body):
     text = body['text']
     target_language = body.get('target_language', 'Russian')
     
-    print(f"🔄 Translating to {target_language}: {text[:50]}...")
+    print(f"🔄 Translating text: {text[:50]}...")
     
     # Системный промпт для перевода
-    system_prompt = f"""You are a professional translator. Translate the given text to {target_language}.
+    system_prompt = """You are a professional translator specializing in Russian-English bidirectional translation.
 
-CRITICAL LANGUAGE RULE: ALWAYS answer in the SAME language the user used for their question.
+TASK: Auto-detect the source language and translate:
+- If text is in RUSSIAN → translate to ENGLISH
+- If text is in ENGLISH → translate to RUSSIAN
 
-Provide ONLY the translation, no explanations or additional text."""
+RULES:
+1. Provide ONLY the translation
+2. NO explanations, NO additional text
+3. Keep the same tone and style
+4. Preserve formatting if any
+
+Just output the translation, nothing else."""
     
     # Получаем перевод от OpenAI
     result = get_openai_response(text, system_prompt, max_tokens=500)
