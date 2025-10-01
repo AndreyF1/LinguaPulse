@@ -655,7 +655,6 @@ if (update.message?.text === '/feedback') {
                     const feedbackResponse = await callLambdaFunction('audio_dialog', {
                       user_id: chatId,
                       action: 'generate_dialog_feedback',
-                      mode: 'audio_dialog',
                       user_lang: 'ru'  // TODO: get from user profile
                     }, env);
                     
@@ -3664,6 +3663,7 @@ async function safeSendTTS(chatId, text, env) {
       const translationPayload = {
         action: 'translate',
         text: t,
+        user_id: chatId,
         target_language: 'Russian'
       };
       
