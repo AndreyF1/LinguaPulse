@@ -114,11 +114,12 @@ if (update.message?.text === '/feedback') {
         // Helper functions for /talk localization
         async function getUserLanguageForTalk() {
           try {
-            const { results } = await env.USER_DB
-              .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-              .bind(parseInt(chatId, 10))
-              .all();
-            return results.length > 0 ? results[0].interface_language : 'en';
+            const userProfileResponse = await callLambdaFunction('shared', {
+              user_id: chatId,
+              action: 'get_profile'
+            }, env);
+            
+            return userProfileResponse?.user_data?.interface_language || 'en';
           } catch (error) {
             console.error('Error getting user language for /talk:', error);
             return 'en';
@@ -1477,12 +1478,13 @@ The first users who sign up for the list will get a series of audio lessons for 
                   
                   try {
                     // Получаем уровень пользователя из БД
-                    const { results: levelResults } = await env.USER_DB
-                      .prepare('SELECT current_level FROM users WHERE telegram_id = ?')
-                      .bind(parseInt(chatId, 10))
-                      .all();
+                    // Получаем уровень пользователя из Supabase через Lambda
+                    const userProfileResponse = await callLambdaFunction('shared', {
+                      user_id: chatId,
+                      action: 'get_profile'
+                    }, env);
                     
-                    const userLevel = levelResults.length > 0 ? levelResults[0].current_level : 'Intermediate';
+                    const userLevel = userProfileResponse?.user_data?.current_level || 'Intermediate';
                     console.log(`👤 [${chatId}] User level: ${userLevel}`);
                     
                     // Генерируем приветствие через Lambda
@@ -1807,12 +1809,13 @@ The first users who sign up for the list will get a series of audio lessons for 
                     console.log(`🤖 [${chatId}] Generating first audio greeting`);
                     
                     // Получаем уровень пользователя из БД
-                    const { results: levelResults } = await env.USER_DB
-                      .prepare('SELECT current_level FROM users WHERE telegram_id = ?')
-                      .bind(parseInt(chatId, 10))
-                      .all();
+                    // Получаем уровень пользователя из Supabase через Lambda
+                    const userProfileResponse = await callLambdaFunction('shared', {
+                      user_id: chatId,
+                      action: 'get_profile'
+                    }, env);
                     
-                    const userLevel = levelResults.length > 0 ? levelResults[0].current_level : 'Intermediate';
+                    const userLevel = userProfileResponse?.user_data?.current_level || 'Intermediate';
                     console.log(`👤 [${chatId}] User level: ${userLevel}`);
                     
                     // Генерируем приветствие через Lambda
