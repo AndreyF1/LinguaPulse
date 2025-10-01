@@ -85,7 +85,7 @@ if (update.message?.text === '/feedback') {
     }
     
     // Устанавливаем состояние ожидания фидбэка
-    await env.USER_MODES.put(`feedback_waiting:${chatId}`, 'true', { expirationTtl: 3600 }); // 1 час
+    await env.CHAT_KV.put(`feedback_waiting:${chatId}`, 'true', { expirationTtl: 3600 }); // 1 час
     
     const feedbackMessage = userLang === 'en' 
       ? "💬 **Leave your feedback in the next message. For your FIRST feedback, we give free lessons 🎁**\n\nShare your thoughts, suggestions, or experience with LinguaPulse:"
@@ -272,10 +272,13 @@ if (update.message?.text === '/feedback') {
           const currentStreak = userData.current_streak || 0;
           
           // Форматируем дату доступа
-          let accessDateText = texts.noAccess;
-          if (accessDate) {
-            // Lambda уже возвращает дату в правильном формате (DD.MM.YYYY)
-            accessDateText = accessDate;
+          let accessDateText;
+          if (hasAudioAccess || hasTextAccess) {
+            // Если есть доступ, показываем дату
+            accessDateText = accessDate || texts.noAccess;
+          } else {
+            // Если доступа нет, показываем "Доступ закончился"
+            accessDateText = userLang === 'en' ? 'Access expired' : 'Доступ закончился';
           }
         
         let message = `${texts.profileTitle}\n\n` +
@@ -471,15 +474,15 @@ if (update.message?.text === '/feedback') {
           const messageId = update.message.message_id;
           const processingKey = `processing_msg:${chatId}:${messageId}`;
           
-          if (env.USER_MODES) {
-            const alreadyProcessed = await env.USER_MODES.get(processingKey);
+          if (env.CHAT_KV) {
+            const alreadyProcessed = await env.CHAT_KV.get(processingKey);
             if (alreadyProcessed) {
               console.log(`❌ Message ${messageId} already processed, skipping duplicate`);
               return new Response('OK - duplicate message skipped');
             }
             
             // Mark message as being processed (expire in 5 minutes)
-            await env.USER_MODES.put(processingKey, Date.now().toString(), { expirationTtl: 300 });
+            await env.CHAT_KV.put(processingKey, Date.now().toString(), { expirationTtl: 300 });
             console.log(`✅ Message ${messageId} marked as processing`);
           }
           
@@ -687,10 +690,10 @@ if (update.message?.text === '/feedback') {
               }
           }
           
-          if (env.USER_MODES) {
+          if (env.CHAT_KV) {
             // Check lesson0 session (LEGACY)
-            const lesson0Session = await env.USER_MODES.get(`session:${chatId}`);
-            const lesson0History = await env.USER_MODES.get(`hist:${chatId}`);
+            const lesson0Session = await env.CHAT_KV.get(`session:${chatId}`);
+            const lesson0History = await env.CHAT_KV.get(`hist:${chatId}`);
             
             console.log(`Lesson0 session exists: ${!!lesson0Session}`);
             console.log(`Lesson0 history exists: ${!!lesson0History}`);
@@ -701,8 +704,8 @@ if (update.message?.text === '/feedback') {
             }
             
             // Check main_lesson session (LEGACY)
-            const mainLessonSession = await env.USER_MODES.get(`main_session:${chatId}`);
-            const mainLessonHistory = await env.USER_MODES.get(`main_hist:${chatId}`);
+            const mainLessonSession = await env.CHAT_KV.get(`main_session:${chatId}`);
+            const mainLessonHistory = await env.CHAT_KV.get(`main_hist:${chatId}`);
             
             console.log(`Main lesson session exists: ${!!mainLessonSession}`);
             console.log(`Main lesson history exists: ${!!mainLessonHistory}`);
@@ -800,12 +803,12 @@ if (update.message?.text === '/feedback') {
           }
           
           // Проверяем, ожидаем ли мы feedback от пользователя
-          const feedbackWaiting = await env.USER_MODES.get(`feedback_waiting:${chatId}`);
+          const feedbackWaiting = await env.CHAT_KV.get(`feedback_waiting:${chatId}`);
           if (feedbackWaiting === 'true') {
             console.log(`💬 [${chatId}] Processing feedback: "${update.message.text}"`);
             
             // Удаляем состояние ожидания
-            await env.USER_MODES.delete(`feedback_waiting:${chatId}`);
+            await env.CHAT_KV.delete(`feedback_waiting:${chatId}`);
             
             // Сохраняем feedback через Lambda
             try {
@@ -1972,7 +1975,7 @@ The first users who sign up for the list will get a series of audio lessons for 
           const lessonStartLockKey = `lesson_start_lock:${chatId}`;
           
           // Check if we have KV storage available for the lock
-          let kvStorage = env.USER_MODES || env.USER_PROFILE || env.TEST_KV;
+          let kvStorage = env.CHAT_KV || env.USER_PROFILE || env.TEST_KV;
           if (!kvStorage) {
             console.error(`❌ [${chatId}] No KV storage available for duplication protection`);
             // Continue without lock as fallback
