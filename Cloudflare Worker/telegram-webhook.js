@@ -1610,14 +1610,40 @@ The first users who sign up for the list will get a series of audio lessons for 
             });
             
           } else if (action === 'buy_audio' || action === 'buy_premium') {
-            // Открываем лендинг с покупкой
+            // Отвечаем на callback
+            await callTelegram('answerCallbackQuery', {
+              callback_query_id: update.callback_query.id
+            }, env);
+            
+            // Отправляем сообщение с кнопкой-ссылкой на landing
             const landingUrl = "https://linguapulse.ai/paywall";
             
-            // Просто отвечаем на callback без сообщения
-            await callTelegram('answerCallbackQuery', {
-              callback_query_id: update.callback_query.id,
-              url: landingUrl
-            }, env);
+            // Получаем язык пользователя
+            let userLang = 'ru';
+            try {
+              const profileResponse = await callLambdaFunction('shared', {
+                user_id: chatId,
+                action: 'get_profile'
+              }, env);
+              
+              if (profileResponse && profileResponse.success) {
+                userLang = profileResponse.user_data.interface_language || 'ru';
+              }
+            } catch (error) {
+              console.error(`⚠️ [${chatId}] Could not get user language:`, error);
+            }
+            
+            const message = userLang === 'en' 
+              ? "💎 To access all features, subscribe to our service:"
+              : "💎 Для доступа ко всем функциям оформите подписку:";
+            
+            const buttonText = userLang === 'en' ? "🛒 Subscribe" : "🛒 Оформить подписку";
+            
+            await sendMessageViaTelegram(chatId, message, env, {
+              reply_markup: {
+                inline_keyboard: [[{ text: buttonText, url: landingUrl }]]
+              }
+            });
           }
           
         } catch (error) {
