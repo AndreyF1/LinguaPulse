@@ -2997,6 +2997,13 @@ async function callLambdaFunction(functionName, payload, env) {
     
     if (!lambdaUrl) {
       console.error(`❌ [LAMBDA] ${envVarName} not found in environment`);
+      console.error(`❌ [LAMBDA] Available URLs:`, {
+        ONBOARDING_URL: env.ONBOARDING_URL ? 'EXISTS' : 'MISSING',
+        TRANSLATION_URL: env.TRANSLATION_URL ? 'EXISTS' : 'MISSING',
+        GRAMMAR_URL: env.GRAMMAR_URL ? 'EXISTS' : 'MISSING',
+        TEXT_DIALOG_URL: env.TEXT_DIALOG_URL ? 'EXISTS' : 'MISSING',
+        AUDIO_DIALOG_URL: env.AUDIO_DIALOG_URL ? 'EXISTS' : 'MISSING'
+      });
       throw new Error(`${envVarName} not configured`);
     }
     
