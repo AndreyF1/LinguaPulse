@@ -917,12 +917,36 @@ if (update.message?.text === '/feedback') {
             const dialogCount = parseInt(await env.CHAT_KV.get(`dialog_count:${chatId}`) || '1');
             const userLevel = 'Intermediate'; // TODO: get from user profile
             
+            // Get conversation history
+            const conversationHistory = await env.CHAT_KV.get(`conversation_history:${chatId}`);
+            let previousMessages = [];
+            if (conversationHistory) {
+              try {
+                previousMessages = JSON.parse(conversationHistory);
+              } catch (e) {
+                console.log(`Error parsing conversation history: ${e}`);
+                previousMessages = [];
+              }
+            }
+            
+            // Add current user message to history
+            previousMessages.push(`User: ${update.message.text}`);
+            
+            // Keep only last 10 messages to avoid token limits
+            if (previousMessages.length > 10) {
+              previousMessages = previousMessages.slice(-10);
+            }
+            
+            // Save updated history
+            await env.CHAT_KV.put(`conversation_history:${chatId}`, JSON.stringify(previousMessages), { expirationTtl: 3600 });
+            
             aiResponse = await callLambdaFunction('text_dialog', {
               action: 'process_dialog',
               text: update.message.text,
               user_id: chatId,
               dialog_count: dialogCount,
-              user_level: userLevel
+              user_level: userLevel,
+              previous_messages: previousMessages
             }, env);
           } else {
             // Fallback to shared Lambda for unhandled modes
@@ -975,6 +999,18 @@ if (update.message?.text === '/feedback') {
               // Убираем служебный маркер ---END_DIALOG--- из пользовательского интерфейса
               processedDialog = processedDialog.replace(/---END_DIALOG---/g, '').trim();
               
+              // Add bot response to conversation history
+              const botResponse = `Bot: ${dialogMessage.replace(/---END_DIALOG---/g, '').trim()}`;
+              previousMessages.push(botResponse);
+              
+              // Keep only last 10 messages to avoid token limits
+              if (previousMessages.length > 10) {
+                previousMessages = previousMessages.slice(-10);
+              }
+              
+              // Save updated history
+              await env.CHAT_KV.put(`conversation_history:${chatId}`, JSON.stringify(previousMessages), { expirationTtl: 3600 });
+              
               if (dialogMessage.includes('||')) {
                 processedDialog = processedDialog.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
                 processedDialog = processedDialog.replace(/\*([^*]+)\*/g, '<b>$1</b>');
@@ -993,6 +1029,10 @@ if (update.message?.text === '/feedback') {
                 
                 // Небольшая задержка перед финальным фидбэком
                 await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Clear conversation history when dialog ends
+                await env.CHAT_KV.delete(`conversation_history:${chatId}`);
+                console.log(`🗑️ [${chatId}] Cleared conversation history`);
                 
                 // Обновляем streak за завершение текстового диалога
                 try {

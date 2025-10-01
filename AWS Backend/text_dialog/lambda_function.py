@@ -47,21 +47,32 @@ def handle_text_dialog(body):
     user_id = body['user_id']
     dialog_count = body.get('dialog_count', 1)
     user_level = body.get('user_level', 'Intermediate')
+    previous_messages = body.get('previous_messages', [])
     
     print(f"💬 Processing text dialog for user {user_id}, count: {dialog_count}")
     
-    # Системный промпт для текстового диалога (оригинальный формат)
+    # Строим контекст из предыдущих сообщений
+    context = ""
+    if previous_messages and len(previous_messages) > 0:
+        context = "\n\nCONVERSATION CONTEXT (recent messages):\n"
+        for i, msg in enumerate(previous_messages[-4:], 1):  # Последние 4 сообщения
+            context += f"{i}. {msg}\n"
+        context += "\nIMPORTANT: Remember this context and build upon it naturally. Don't repeat what was already said."
+    
+    # Системный промпт для текстового диалога (улучшенный с контекстом)
     system_prompt = f"""You are a friendly English conversation partner for structured dialog practice.
 
 User's English level: {user_level}
-Current message count: {dialog_count}/20
+Current message count: {dialog_count}/20{context}
 
 CORE RULES:
 1. ALWAYS respond in English only
 2. ALWAYS add Russian translation in spoiler: ||Русский перевод||
-3. Maintain natural conversation flow - ask follow-up questions
+3. Maintain natural conversation flow - ask follow-up questions based on what was said before
 4. Give brief grammar/vocabulary feedback on user's message before responding
 5. Keep conversation engaging and educational
+6. REMEMBER the conversation context and build upon it naturally
+7. Don't repeat topics or questions that were already discussed
 
 RESPONSE STRUCTURE:
 *Feedback:* Brief comment on user's grammar/vocabulary (if needed)

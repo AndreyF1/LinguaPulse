@@ -495,10 +495,10 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                                 elif last_date == today - timedelta(days=1):
                                     current_streak += 1
                                     print(f"🔥 [STREAK] User practiced yesterday, increasing streak to {current_streak}")
-                                # Если пропустили дни, streak = 1
+                                # Если пропустили дни, streak = 0
                                 elif last_date < today - timedelta(days=1):
-                                    current_streak = 1
-                                    print(f"🔥 [STREAK] User missed days, resetting streak to 1")
+                                    current_streak = 0
+                                    print(f"🔥 [STREAK] User missed days, resetting streak to 0")
                             except Exception as e:
                                 print(f"🔥 [STREAK] Error parsing last_lesson_date: {e}")
                                 current_streak = 1
