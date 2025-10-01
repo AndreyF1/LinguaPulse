@@ -794,8 +794,21 @@ if (update.message?.text === '/feedback') {
         console.log(`💬 TEXT MESSAGE: "${update.message.text}" from user ${chatId}`);
         
         try {
-          // FIRST: Check for audio_dialog mode (NEW AUDIO SYSTEM)
-          let currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
+          // FIRST: Get AI mode from Supabase (single source of truth)
+          let currentMode = null;
+          try {
+            const modeResponse = await callLambdaFunction('shared', {
+              user_id: chatId,
+              action: 'get_ai_mode'
+            }, env);
+            
+            if (modeResponse && modeResponse.success && modeResponse.ai_mode) {
+              currentMode = modeResponse.ai_mode;
+            }
+          } catch (error) {
+            console.error(`⚠️ [${chatId}] Could not get AI mode from Supabase:`, error);
+          }
+          
           console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
           
           // ВАЖНО: Проверяем feedback СНАЧАЛА, до проверки режимов!
@@ -882,57 +895,11 @@ if (update.message?.text === '/feedback') {
             return new Response('OK');
           }
           
-          // Получаем сохраненный режим из KV storage
-          // Режим уже определен выше, не переопределяем
+          // Режим уже получен из Supabase выше
+          // Устанавливаем дефолтный режим если не удалось получить
           if (!currentMode) {
             currentMode = 'translation'; // по умолчанию
-          }
-          
-          try {
-            console.log(`📖 [${chatId}] Getting AI mode from Supabase...`);
-            
-            const modeResponse = await callLambdaFunction('shared', {
-              user_id: chatId,
-              action: 'get_ai_mode'
-            }, env);
-            
-            if (modeResponse && modeResponse.success && modeResponse.ai_mode) {
-              currentMode = modeResponse.ai_mode;
-              console.log(`📖 [${chatId}] Using saved AI mode from Supabase: ${currentMode}`);
-            } else {
-              console.log(`📖 [${chatId}] No saved mode in Supabase, analyzing message content...`);
-              // Fallback: определяем режим по содержимому сообщения
-              const message = update.message.text.toLowerCase();
-              if (message.includes('грамматик') || message.includes('grammar') || 
-                  message.includes('артикль') || message.includes('article') ||
-                  message.includes('время') || message.includes('tense') ||
-                  message.includes('правило') || message.includes('rule') ||
-                  message.includes('разница между') || message.includes('difference between') ||
-                  message.includes('объясни') || message.includes('explain') ||
-                  message.includes('условные') || message.includes('conditional')) {
-                currentMode = 'grammar';
-                console.log(`🎯 [${chatId}] Detected GRAMMAR mode from message content`);
-              } else {
-                currentMode = 'translation';
-                console.log(`🔄 [${chatId}] Using default TRANSLATION mode`);
-              }
-            }
-          } catch (error) {
-            console.error(`❌ [${chatId}] Error getting AI mode from Supabase:`, error);
-            // В случае ошибки анализируем сообщение
-            const message = update.message.text.toLowerCase();
-            if (message.includes('грамматик') || message.includes('grammar') || 
-                message.includes('артикль') || message.includes('article') ||
-                message.includes('время') || message.includes('tense') ||
-                message.includes('правило') || message.includes('rule') ||
-                message.includes('разница между') || message.includes('difference between') ||
-                message.includes('условные') || message.includes('conditional')) {
-              currentMode = 'grammar';
-              console.log(`🎯 [${chatId}] Error fallback: detected GRAMMAR mode from message content`);
-            } else {
-              currentMode = 'translation';
-              console.log(`🔄 [${chatId}] Error fallback: using default TRANSLATION mode`);
-            }
+            console.log(`📖 [${chatId}] Using default AI mode: ${currentMode}`);
           }
           
           // Отправляем сообщение в соответствующую Lambda функцию
