@@ -389,7 +389,7 @@ CLOUDFLARE_API_TOKEN      # Wrangler deployment token
 - **Supported languages**: Russian, English
 - **Lambda timeout**: 30 seconds
 - **Lambda memory**: 256 MB per function
-- **Landing page URL**: `https://linguapulse.ai/paywall` (for subscription purchases)
+- **Landing page URL**: `https://linguapulse.ai/paywall?p=${userId}` (personalized with user UUID)
 
 ---
 

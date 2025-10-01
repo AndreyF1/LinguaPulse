@@ -292,18 +292,22 @@ if (update.message?.text === '/feedback') {
           // Создаем кнопки в зависимости от доступа
           const buttons = [];
           
+          // Формируем персонализированную ссылку на paywall
+          const userId = userData.id; // UUID из Supabase
+          const paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+          
           // Кнопка 1: Аудио-урок или покупка аудио-уроков
           if (hasAudioAccess && lessonsLeft > 0) {
             buttons.push([{ text: texts.startAudioLesson, callback_data: "profile:start_audio" }]);
         } else {
-            buttons.push([{ text: texts.buyAudioLessons, url: "https://linguapulse.ai/paywall" }]);
+            buttons.push([{ text: texts.buyAudioLessons, url: paywallUrl }]);
           }
           
           // Кнопка 2: Текстовый диалог или покупка премиума
           if (hasTextAccess) {
             buttons.push([{ text: texts.startTextDialog, callback_data: "ai_mode:text_dialog" }]);
           } else {
-            buttons.push([{ text: texts.buyPremium, url: "https://linguapulse.ai/paywall" }]);
+            buttons.push([{ text: texts.buyPremium, url: paywallUrl }]);
           }
           
           // Кнопка 3: Выбор режима ИИ
@@ -1587,18 +1591,22 @@ The first users who sign up for the list will get a series of audio lessons for 
             // Формируем кнопки
             const buttons = [];
             
+            // Формируем персонализированную ссылку на paywall
+            const userId = userData.id; // UUID из Supabase
+            const paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+            
             // Кнопка аудио-урока
             if (hasAudioAccess) {
               buttons.push([{ text: texts.startAudio, callback_data: "profile:start_audio" }]);
             } else {
-              buttons.push([{ text: texts.buyAudio, url: "https://linguapulse.ai/paywall" }]);
+              buttons.push([{ text: texts.buyAudio, url: paywallUrl }]);
             }
             
             // Кнопка текстового диалога
             if (hasTextAccess) {
               buttons.push([{ text: texts.startText, callback_data: "ai_mode:text_dialog" }]);
             } else {
-              buttons.push([{ text: texts.buyPremium, url: "https://linguapulse.ai/paywall" }]);
+              buttons.push([{ text: texts.buyPremium, url: paywallUrl }]);
             }
             
             // Кнопка выбора режима ИИ
