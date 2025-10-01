@@ -794,15 +794,8 @@ if (update.message?.text === '/feedback') {
           let currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`);
           console.log(`Current AI mode for user ${chatId}: ${currentMode}`);
           
-          // АУДИО-ДИАЛОГ РАБОТАЕТ ТОЛЬКО С ГОЛОСОВЫМИ СООБЩЕНИЯМИ!
-          // Текстовые сообщения в аудио-диалоге игнорируются
-          if (currentMode === 'audio_dialog') {
-            console.log(`⏭️ [${chatId}] Ignoring text message in audio_dialog mode - audio dialog only accepts voice messages`);
-            await sendMessageViaTelegram(chatId, '🎤 В режиме аудио-диалога отправляйте голосовые сообщения. Для текстового общения переключитесь на другой режим.', env);
-            return new Response('OK');
-          }
-          
-          // Проверяем, ожидаем ли мы feedback от пользователя
+          // ВАЖНО: Проверяем feedback СНАЧАЛА, до проверки режимов!
+          // Feedback имеет приоритет над любым режимом
           const feedbackWaiting = await env.CHAT_KV.get(`feedback_waiting:${chatId}`);
           if (feedbackWaiting === 'true') {
             console.log(`💬 [${chatId}] Processing feedback: "${update.message.text}"`);
@@ -876,6 +869,15 @@ if (update.message?.text === '/feedback') {
             
             return new Response('OK');
           }
+          
+          // АУДИО-ДИАЛОГ РАБОТАЕТ ТОЛЬКО С ГОЛОСОВЫМИ СООБЩЕНИЯМИ!
+          // Текстовые сообщения в аудио-диалоге игнорируются
+          if (currentMode === 'audio_dialog') {
+            console.log(`⏭️ [${chatId}] Ignoring text message in audio_dialog mode - audio dialog only accepts voice messages`);
+            await sendMessageViaTelegram(chatId, '🎤 В режиме аудио-диалога отправляйте голосовые сообщения. Для текстового общения переключитесь на другой режим.', env);
+            return new Response('OK');
+          }
+          
           // Получаем сохраненный режим из KV storage
           // Режим уже определен выше, не переопределяем
           if (!currentMode) {
@@ -1605,24 +1607,14 @@ The first users who sign up for the list will get a series of audio lessons for 
             });
             
           } else if (action === 'buy_audio' || action === 'buy_premium') {
-            // Перенаправляем на покупку
-            const userLang = 'ru'; // Можно получить из профиля
-            const buttonText = userLang === 'ru' ? 'Купить подписку' : 'Buy Subscription';
+            // Открываем лендинг с покупкой
+            const landingUrl = "https://linguapulse.ai/paywall";
             
-            let tributeAppLink = env.TRIBUTE_APP_LINK || env.TRIBUTE_CHANNEL_LINK || "https://t.me/tribute/app?startapp=swvs";
-            if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
-              tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
-            }
-            
-            const message = userLang === 'ru' 
-              ? "💰 Для доступа к полному функционалу необходима подписка:"
-              : "💰 A subscription is required for full functionality:";
-            
-            await sendMessageViaTelegram(chatId, message, env, {
-              reply_markup: {
-                inline_keyboard: [[{ text: buttonText, url: tributeAppLink }]]
-              }
-            });
+            // Просто отвечаем на callback без сообщения
+            await callTelegram('answerCallbackQuery', {
+              callback_query_id: update.callback_query.id,
+              url: landingUrl
+            }, env);
           }
           
         } catch (error) {
