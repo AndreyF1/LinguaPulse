@@ -9,7 +9,7 @@ def get_supabase_config():
     import os
     return {
         'url': os.environ.get('SUPABASE_URL'),
-        'key': os.environ.get('SUPABASE_KEY')
+        'key': os.environ.get('SUPABASE_SERVICE_KEY')
     }
 
 
