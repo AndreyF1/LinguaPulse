@@ -530,11 +530,23 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                         }
             
             # Пользователь не найден
-            return error_response('User not found')
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'User not found'
+                })
+            }
             
         except Exception as e:
             print(f"Error updating text dialog streak: {e}")
-            return error_response(f'Error updating streak: {str(e)}')
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': False,
+                    'error': f'Error updating streak: {str(e)}'
+                })
+            }
     
     # 10. [MOVED] decrease_lessons_left - moved to audio_dialog Lambda
     # 11. [REMOVED] update_audio_lesson_streak - replaced with update_daily_streak

@@ -996,10 +996,14 @@ if (update.message?.text === '/feedback') {
                 // Обновляем streak за завершение текстового диалога
                 try {
                   console.log(`📈 [${chatId}] Updating text dialog streak`);
+                  console.log(`📈 [${chatId}] Calling shared Lambda with user_id: ${chatId}`);
+                  
                   const streakResponse = await callLambdaFunction('shared', {
                     user_id: chatId,
                     action: 'update_daily_streak'
                   }, env);
+                  
+                  console.log(`📈 [${chatId}] Streak response received:`, JSON.stringify(streakResponse));
                   
                   if (streakResponse && streakResponse.success) {
                     console.log(`✅ [${chatId}] Streak updated: ${streakResponse.new_streak} (updated: ${streakResponse.streak_updated})`);
