@@ -454,51 +454,13 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                 })
             }
         
-        # Простое принудительное обновление для тестирования
+        # Нормальная логика обновления streak
         try:
-            print(f"🔥 [STREAK] Force updating streak for user {user_id}")
-            from datetime import datetime
-            today = datetime.now().date()
-            
-            update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
-            update_data = json.dumps({
-                'current_streak': 1,
-                'last_lesson_date': today.isoformat()
-            }).encode('utf-8')
-            
-            update_headers = {
-                'Authorization': f'Bearer {supabase_key}',
-                'apikey': supabase_key,
-                'Content-Type': 'application/json'
-            }
-            
-            update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
-            with urllib.request.urlopen(update_req) as update_response:
-                update_result = update_response.read().decode('utf-8')
-                print(f"🔥 [STREAK] Force update result: {update_result}")
-            
-            return {
-                'success': True,
-                'streak_updated': True,
-                'new_streak': 1,
-                'force_update': True
-            }
-            
-        except Exception as e:
-            print(f"🔥 [STREAK] Force update error: {e}")
-            return {
-                'success': False,
-                'error': f'Force update error: {str(e)}'
-            }
-        
-        try:
-            print(f"Updating daily streak for user {user_id}")
-            print(f"Supabase URL: {supabase_url}")
-            print(f"Supabase Key: {supabase_key[:10]}..." if supabase_key else "None")
+            print(f"🔥 [STREAK] Updating streak for user {user_id}")
+            from datetime import datetime, timedelta
             
             # Получаем текущие данные пользователя
             url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=current_streak,last_lesson_date"
-            print(f"Request URL: {url}")
             headers = {
                 'Authorization': f'Bearer {supabase_key}',
                 'apikey': supabase_key
@@ -507,16 +469,16 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req) as response:
                 response_text = response.read().decode('utf-8')
-                print(f"Supabase response: {response_text}")
+                print(f"🔥 [STREAK] Supabase response: {response_text}")
                 
                 if response_text:
                     users = json.loads(response_text)
-                    print(f"Found {len(users)} users")
+                    print(f"🔥 [STREAK] Found {len(users)} users")
                     if users:
                         user_data = users[0]
                         current_streak = user_data.get('current_streak', 0)
                         last_lesson_date = user_data.get('last_lesson_date')
-                        print(f"Current streak: {current_streak}, last_lesson_date: {last_lesson_date}")
+                        print(f"🔥 [STREAK] Current streak: {current_streak}, last_lesson_date: {last_lesson_date}")
                         
                         # Определяем, нужно ли увеличивать streak
                         today = datetime.now().date()
@@ -528,23 +490,22 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                                 # Если уже занимались сегодня, не увеличиваем streak
                                 if last_date == today:
                                     should_update_streak = False
-                                    print(f"User {user_id} already practiced today, not updating streak")
+                                    print(f"🔥 [STREAK] User already practiced today, not updating streak")
                                 # Если последний раз занимались вчера, увеличиваем streak
                                 elif last_date == today - timedelta(days=1):
                                     current_streak += 1
-                                    print(f"User {user_id} practiced yesterday, increasing streak to {current_streak}")
+                                    print(f"🔥 [STREAK] User practiced yesterday, increasing streak to {current_streak}")
                                 # Если пропустили дни, streak = 1
                                 elif last_date < today - timedelta(days=1):
                                     current_streak = 1
-                                    print(f"User {user_id} missed days, resetting streak to 1")
+                                    print(f"🔥 [STREAK] User missed days, resetting streak to 1")
                             except Exception as e:
-                                print(f"Error parsing last_lesson_date: {e}")
-                                # Если ошибка парсинга, устанавливаем streak = 1
+                                print(f"🔥 [STREAK] Error parsing last_lesson_date: {e}")
                                 current_streak = 1
                         else:
                             # Первый раз занимается
                             current_streak = 1
-                            print(f"User {user_id} first time practicing, setting streak to 1")
+                            print(f"🔥 [STREAK] First time practicing, setting streak to 1")
                         
                         # Обновляем данные в базе только если нужно
                         if should_update_streak:
@@ -553,6 +514,7 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                                 'current_streak': current_streak,
                                 'last_lesson_date': today.isoformat()
                             }).encode('utf-8')
+                            
                             update_headers = {
                                 'Authorization': f'Bearer {supabase_key}',
                                 'apikey': supabase_key,
@@ -560,36 +522,35 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                             }
                             
                             update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
-                            urllib.request.urlopen(update_req)
+                            with urllib.request.urlopen(update_req) as update_response:
+                                update_result = update_response.read().decode('utf-8')
+                                print(f"🔥 [STREAK] Update result: {update_result}")
                             
-                            print(f"Successfully updated streak for user {user_id}: {current_streak}")
+                            print(f"🔥 [STREAK] Successfully updated streak for user {user_id}: {current_streak}")
                         
-                return {
-                    'statusCode': 200,
-                    'body': json.dumps({
-                                'success': True,
-                                'streak_updated': should_update_streak,
-                                'new_streak': current_streak
-                            })
+                        return {
+                            'success': True,
+                            'streak_updated': should_update_streak,
+                            'new_streak': current_streak
                         }
-            
-            # Пользователь не найден
-            return {
-                'statusCode': 200,
-                'body': json.dumps({
-                    'success': False,
-                    'error': 'User not found'
-                })
-            }
+                    else:
+                        print(f"🔥 [STREAK] User not found")
+                        return {
+                            'success': False,
+                            'error': 'User not found'
+                        }
+                else:
+                    print(f"🔥 [STREAK] Empty response from Supabase")
+                    return {
+                        'success': False,
+                        'error': 'Empty response from Supabase'
+                    }
             
         except Exception as e:
-            print(f"Error updating text dialog streak: {e}")
+            print(f"🔥 [STREAK] Error updating streak: {e}")
             return {
-                'statusCode': 200,
-                'body': json.dumps({
-                    'success': False,
-                    'error': f'Error updating streak: {str(e)}'
-                })
+                'success': False,
+                'error': f'Error updating streak: {str(e)}'
             }
     
     # 10. [MOVED] decrease_lessons_left - moved to audio_dialog Lambda
