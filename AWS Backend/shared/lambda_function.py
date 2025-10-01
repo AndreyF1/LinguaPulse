@@ -442,10 +442,59 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
     
     # 9. Обновление общего daily streak при использовании любого функционала
     if 'action' in body and body['action'] == 'update_daily_streak':
+        print(f"🔥 [STREAK] Starting update_daily_streak for user {body.get('user_id')}")
         user_id = body.get('user_id')
         
         if not user_id:
-            return error_response('user_id is required')
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'user_id is required'
+                })
+            }
+        
+        # Простое принудительное обновление для тестирования
+        try:
+            print(f"🔥 [STREAK] Force updating streak for user {user_id}")
+            today = datetime.now().date()
+            
+            update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+            update_data = json.dumps({
+                'current_streak': 1,
+                'last_lesson_date': today.isoformat()
+            }).encode('utf-8')
+            
+            update_headers = {
+                'Authorization': f'Bearer {supabase_key}',
+                'apikey': supabase_key,
+                'Content-Type': 'application/json'
+            }
+            
+            update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+            with urllib.request.urlopen(update_req) as update_response:
+                update_result = update_response.read().decode('utf-8')
+                print(f"🔥 [STREAK] Force update result: {update_result}")
+            
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': True,
+                    'streak_updated': True,
+                    'new_streak': 1,
+                    'force_update': True
+                })
+            }
+            
+        except Exception as e:
+            print(f"🔥 [STREAK] Force update error: {e}")
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'success': False,
+                    'error': f'Force update error: {str(e)}'
+                })
+            }
         
         try:
             print(f"Updating daily streak for user {user_id}")
