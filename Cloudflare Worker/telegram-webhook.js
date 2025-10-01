@@ -1387,11 +1387,14 @@ The first users who sign up for the list will get a series of audio lessons for 
         console.log(`🎯 PROFILE CALLBACK: "${update.callback_query.data}" from user ${chatId}`);
         
         try {
-          await callTelegram('answerCallbackQuery', {
-            callback_query_id: update.callback_query.id
-          }, env);
-          
           const action = update.callback_query.data.split(':')[1];
+          
+          // Для buy кнопок не отвечаем здесь - они отвечают с URL ниже
+          if (action !== 'buy_audio' && action !== 'buy_premium') {
+            await callTelegram('answerCallbackQuery', {
+              callback_query_id: update.callback_query.id
+            }, env);
+          }
           
           if (action === 'start_audio') {
             // Проверяем доступ к аудио-урокам (та же логика что и в ai_mode:audio_dialog)
