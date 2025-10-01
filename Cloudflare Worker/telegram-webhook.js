@@ -296,14 +296,14 @@ if (update.message?.text === '/feedback') {
           if (hasAudioAccess && lessonsLeft > 0) {
             buttons.push([{ text: texts.startAudioLesson, callback_data: "profile:start_audio" }]);
         } else {
-            buttons.push([{ text: texts.buyAudioLessons, callback_data: "profile:buy_audio" }]);
+            buttons.push([{ text: texts.buyAudioLessons, url: "https://linguapulse.ai/paywall" }]);
           }
           
           // Кнопка 2: Текстовый диалог или покупка премиума
           if (hasTextAccess) {
             buttons.push([{ text: texts.startTextDialog, callback_data: "ai_mode:text_dialog" }]);
           } else {
-            buttons.push([{ text: texts.buyPremium, callback_data: "profile:buy_premium" }]);
+            buttons.push([{ text: texts.buyPremium, url: "https://linguapulse.ai/paywall" }]);
           }
           
           // Кнопка 3: Выбор режима ИИ
@@ -1591,14 +1591,14 @@ The first users who sign up for the list will get a series of audio lessons for 
             if (hasAudioAccess) {
               buttons.push([{ text: texts.startAudio, callback_data: "profile:start_audio" }]);
             } else {
-              buttons.push([{ text: texts.buyAudio, callback_data: "profile:buy_audio" }]);
+              buttons.push([{ text: texts.buyAudio, url: "https://linguapulse.ai/paywall" }]);
             }
             
             // Кнопка текстового диалога
             if (hasTextAccess) {
               buttons.push([{ text: texts.startText, callback_data: "ai_mode:text_dialog" }]);
             } else {
-              buttons.push([{ text: texts.buyPremium, callback_data: "profile:buy_premium" }]);
+              buttons.push([{ text: texts.buyPremium, url: "https://linguapulse.ai/paywall" }]);
             }
             
             // Кнопка выбора режима ИИ
@@ -1610,40 +1610,12 @@ The first users who sign up for the list will get a series of audio lessons for 
             });
             
           } else if (action === 'buy_audio' || action === 'buy_premium') {
-            // Отвечаем на callback
+            // Эти кнопки теперь с url параметром, callback не должен вызываться
+            // Но на всякий случай отвечаем
             await callTelegram('answerCallbackQuery', {
-              callback_query_id: update.callback_query.id
+              callback_query_id: update.callback_query.id,
+              text: "Открываю страницу подписки..."
             }, env);
-            
-            // Отправляем сообщение с кнопкой-ссылкой на landing
-            const landingUrl = "https://linguapulse.ai/paywall";
-            
-            // Получаем язык пользователя
-            let userLang = 'ru';
-            try {
-              const profileResponse = await callLambdaFunction('shared', {
-                user_id: chatId,
-                action: 'get_profile'
-              }, env);
-              
-              if (profileResponse && profileResponse.success) {
-                userLang = profileResponse.user_data.interface_language || 'ru';
-              }
-            } catch (error) {
-              console.error(`⚠️ [${chatId}] Could not get user language:`, error);
-            }
-            
-            const message = userLang === 'en' 
-              ? "💎 To access all features, subscribe to our service:"
-              : "💎 Для доступа ко всем функциям оформите подписку:";
-            
-            const buttonText = userLang === 'en' ? "🛒 Subscribe" : "🛒 Оформить подписку";
-            
-            await sendMessageViaTelegram(chatId, message, env, {
-              reply_markup: {
-                inline_keyboard: [[{ text: buttonText, url: landingUrl }]]
-              }
-            });
           }
           
         } catch (error) {
