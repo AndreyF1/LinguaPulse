@@ -912,6 +912,7 @@ if (update.message?.text === '/feedback') {
             aiResponse = await callLambdaFunction('translation', {
               action: 'translate',
               text: update.message.text,
+              user_id: chatId,
               target_language: 'Russian' // TODO: detect language
             }, env);
           } else if (currentMode === 'grammar') {

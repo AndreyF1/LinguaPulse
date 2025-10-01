@@ -8,6 +8,7 @@ sys.path.insert(0, '/var/task/shared')
 sys.path.insert(0, '/var/task')
 
 from shared.openai_client import get_openai_response
+from shared.database import log_text_usage, get_supabase_config
 from shared.utils import success_response, error_response, parse_request_body, validate_required_fields
 
 
@@ -36,11 +37,12 @@ def lambda_handler(event, context):
 
 def handle_translate(body):
     """Обработка перевода текста"""
-    validation_error = validate_required_fields(body, ['text'])
+    validation_error = validate_required_fields(body, ['text', 'user_id'])
     if validation_error:
         return error_response(validation_error)
     
     text = body['text']
+    user_id = body['user_id']
     target_language = body.get('target_language', 'Russian')
     
     print(f"🔄 Translating text: {text[:50]}...")
@@ -61,6 +63,12 @@ Only return the translated text, nothing else."""
     
     if result['success']:
         print(f"✅ Translation successful")
+        
+        # Логируем использование
+        supabase_config = get_supabase_config()
+        if supabase_config['url'] and supabase_config['key']:
+            log_text_usage(user_id, supabase_config['url'], supabase_config['key'])
+        
         return success_response({
             'reply': result['reply']
         })
