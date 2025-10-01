@@ -2695,11 +2695,12 @@ async function sendTributeChannelLink(chatId, env) {
   // Helper function for localization in sendTributeChannelLink
   async function getUserLanguageForTribute() {
     try {
-      const { results } = await env.USER_DB
-        .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-        .bind(parseInt(chatId, 10))
-        .all();
-      return results.length > 0 ? results[0].interface_language : 'en';
+      const userProfileResponse = await callLambdaFunction('shared', {
+        user_id: chatId,
+        action: 'get_profile'
+      }, env);
+      
+      return userProfileResponse?.user_data?.interface_language || 'en';
     } catch (error) {
       console.error('Error getting user language for tribute:', error);
       return 'en';
@@ -2855,11 +2856,12 @@ async function sendMessageWithSubscriptionCheck(chatId, text, env, options = nul
     // Get user language for subscription button localization
     let userLang = 'en';
     try {
-      const { results } = await env.USER_DB
-        .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-        .bind(parseInt(chatId, 10))
-        .all();
-      userLang = results.length > 0 ? results[0].interface_language : 'en';
+      const userProfileResponse = await callLambdaFunction('shared', {
+        user_id: chatId,
+        action: 'get_profile'
+      }, env);
+      
+      userLang = userProfileResponse?.user_data?.interface_language || 'en';
     } catch (error) {
       console.error('Error getting user language for subscription button:', error);
     }
@@ -3133,11 +3135,12 @@ async function handleLessonCommand(chatId, env) {
     // Helper function for localization
     async function getUserLanguageForLessons() {
       try {
-        const { results } = await env.USER_DB
-          .prepare('SELECT interface_language FROM user_preferences WHERE telegram_id = ?')
-          .bind(parseInt(chatId, 10))
-          .all();
-        return results.length > 0 ? results[0].interface_language : 'en';
+        const userProfileResponse = await callLambdaFunction('shared', {
+          user_id: chatId,
+          action: 'get_profile'
+        }, env);
+        
+        return userProfileResponse?.user_data?.interface_language || 'en';
       } catch (error) {
         console.error('Error getting user language for lessons:', error);
         return 'en';
@@ -3192,16 +3195,14 @@ async function handleLessonCommand(chatId, env) {
       return text;
     }
     
-    // Get user profile with all necessary fields
-    console.log(`Querying database for user ${chatId}`);
-    const { results } = await env.USER_DB
-      .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
-      .bind(parseInt(chatId, 10))
-      .all();
+    // Get user profile from Supabase through Lambda
+    console.log(`Getting user profile for ${chatId} from Supabase`);
+    const userProfileResponse = await callLambdaFunction('shared', {
+      user_id: chatId,
+      action: 'get_profile'
+    }, env);
     
-    console.log(`Database query results for user ${chatId}:`, results.length ? "Found" : "Not found");
-    
-    if (!results.length) {
+    if (!userProfileResponse || !userProfileResponse.success) {
       console.log(`User ${chatId} not found, sending onboarding message`);
       const userLang = await getUserLanguageForLessons();
       await sendMessageViaTelegram(chatId, 
@@ -3209,25 +3210,19 @@ async function handleLessonCommand(chatId, env) {
       return;
     }
     
-    const profile = results[0];
+    const profile = userProfileResponse.user_data;
     console.log(`User ${chatId} profile:`, {
       pass_lesson0_at: !!profile.pass_lesson0_at,
       subscription_expired_at: profile.subscription_expired_at,
       next_lesson_access_at: profile.next_lesson_access_at
     });
     
-    // Get user's language level from users table
-    const { results: surveyResults } = await env.USER_DB
-      .prepare('SELECT current_level FROM users WHERE telegram_id = ?')
-      .bind(parseInt(chatId, 10))
-      .all();
-    
-    const userLevel = surveyResults.length > 0 ? surveyResults[0].current_level : 'Intermediate';
-    console.log(`User ${chatId} language level from users table: ${userLevel}`);
+    const userLevel = profile.current_level || 'Intermediate';
+    console.log(`User ${chatId} language level: ${userLevel}`);
     
     // Basic profile info (use quiz completion date instead of legacy tested_at)
-    const testedAt = surveyResults.length > 0 && surveyResults[0].quiz_completed_at
-      ? new Date(surveyResults[0].quiz_completed_at).toLocaleDateString()
+    const testedAt = profile.quiz_completed_at
+      ? new Date(profile.quiz_completed_at).toLocaleDateString()
       : 'N/A';
     const lessonsTotal = profile.number_of_lessons || 0;
     const lessonsStreak = profile.lessons_in_row || 0;
