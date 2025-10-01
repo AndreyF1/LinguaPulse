@@ -328,7 +328,7 @@ if (update.message?.text === '/feedback') {
           // Получаем язык интерфейса пользователя
           let userLang = 'ru';
           try {
-            const profileResponse = await callLambdaFunction('onboarding', {
+            const profileResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'get_profile'
             }, env);
@@ -821,7 +821,7 @@ if (update.message?.text === '/feedback') {
                 // Получаем язык интерфейса для ответа
                 let userLang = 'ru';
                 try {
-                  const profileResponse = await callLambdaFunction('onboarding', {
+                  const profileResponse = await callLambdaFunction('shared', {
                     user_id: chatId,
                     action: 'get_profile'
                   }, env);
@@ -957,8 +957,8 @@ if (update.message?.text === '/feedback') {
               user_level: userLevel
             }, env);
           } else {
-            // Fallback to old system
-            aiResponse = await callLambdaFunction('onboarding', {
+            // Fallback to shared Lambda for unhandled modes
+            aiResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'process_text_message',
               message: update.message.text,
@@ -1028,7 +1028,7 @@ if (update.message?.text === '/feedback') {
                 // Обновляем streak за завершение текстового диалога
                 try {
                   console.log(`📈 [${chatId}] Updating text dialog streak`);
-                  const streakResponse = await callLambdaFunction('onboarding', {
+                  const streakResponse = await callLambdaFunction('shared', {
                     user_id: chatId,
                     action: 'update_daily_streak'
                   }, env);
@@ -1347,12 +1347,12 @@ The first users who sign up for the list will get a series of audio lessons for 
 
 Первые пользователи, кто запишется в список, получат серию аудио-уроков бесплатно. Количество мест ограничено — будь среди первых.`;
 
-                const audioPracticeButtonText = interfaceLanguage === 'en' ? "Want audio practice" : "Хочу аудио-практику";
                 const askQuestionButtonText = interfaceLanguage === 'en' ? "Ask AI" : "Спросить ИИ";
+                const viewProfileButtonText = interfaceLanguage === 'en' ? "📊 My Profile" : "📊 Мой профиль";
                 
                 const buttons = [
-                  [{ text: audioPracticeButtonText, callback_data: "audio_practice:signup" }],
-                  [{ text: askQuestionButtonText, callback_data: "text_helper:start" }]
+                  [{ text: askQuestionButtonText, callback_data: "text_helper:start" }],
+                  [{ text: viewProfileButtonText, callback_data: "profile:show" }]
                 ];
                 
                 await sendMessageViaTelegram(chatId, successText, env, {
@@ -1449,11 +1449,9 @@ The first users who sign up for the list will get a series of audio lessons for 
                     console.log(`👤 [${chatId}] User level: ${userLevel}`);
                     
                     // Генерируем приветствие через Lambda
-                    const greetingResponse = await callLambdaFunction('onboarding', {
+                    const greetingResponse = await callLambdaFunction('audio_dialog', {
                       user_id: chatId,
-                      action: 'process_text_message',
-                      message: '---START_AUDIO_DIALOG---',
-                      mode: 'audio_dialog',
+                      action: 'generate_greeting',
                       user_level: userLevel
                     }, env);
                     
@@ -1525,7 +1523,7 @@ The first users who sign up for the list will get a series of audio lessons for 
             // Показать профиль - ТОЧНО ТА ЖЕ ЛОГИКА что и команда /profile
             console.log(`🔍 [${chatId}] Getting profile data from Lambda`);
             
-            const profileResponse = await callLambdaFunction('onboarding', {
+            const profileResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'get_profile'
             }, env);
@@ -1633,11 +1631,10 @@ The first users who sign up for the list will get a series of audio lessons for 
         return new Response('OK');
       }
 
-      // 1.7. Handle audio practice waitlist and text helper buttons
-      if (update.callback_query?.data === 'audio_practice:signup' || 
-          update.callback_query?.data === 'text_helper:start') {
+      // 1.7. Handle text helper button (legacy audio_practice:signup removed)
+      if (update.callback_query?.data === 'text_helper:start') {
         
-        console.log(`🎯 NEW FEATURE CALLBACK: "${update.callback_query.data}" from user ${chatId}`);
+        console.log(`🎯 TEXT HELPER CALLBACK from user ${chatId}`);
         
         try {
           // Acknowledge callback
@@ -1645,50 +1642,16 @@ The first users who sign up for the list will get a series of audio lessons for 
             callback_query_id: update.callback_query.id
           }, env);
           
-          if (update.callback_query.data === 'audio_practice:signup') {
-            // Записать пользователя в waitlist для аудио-практики
-            console.log(`🚀 [${chatId}] Adding to audio practice waitlist`);
-            
-            const waitlistResponse = await callLambdaFunction('onboarding', {
-              user_id: chatId,
-              action: 'add_to_waitlist'
-            }, env);
-            
-            if (waitlistResponse && waitlistResponse.success) {
-              console.log(`✅ [${chatId}] Added to waitlist successfully`);
-              
-              // Определяем язык интерфейса пользователя
-              const userLang = waitlistResponse.user_data?.interface_language || 'ru';
-              
-              const waitlistMessage = userLang === 'en' 
-                ? `You're on the list of first participants 🚀
-As soon as we open audio lessons — we'll send an invitation.`
-                : `Ты в списке первых участников 🚀
-Как только откроем аудио-уроки — пришлём приглашение.`;
-
-              const askAIButtonText = userLang === 'en' ? "Ask AI" : "Спросить ИИ";
-              const askAIButton = [{ text: askAIButtonText, callback_data: "text_helper:start" }];
-              
-              await sendMessageViaTelegram(chatId, waitlistMessage, env, {
-                reply_markup: { inline_keyboard: [askAIButton] }
-              });
-            } else {
-              console.error(`❌ [${chatId}] Failed to add to waitlist:`, waitlistResponse);
-              const errorText = "❌ Произошла ошибка. Попробуйте еще раз.";
-              await sendMessageViaTelegram(chatId, errorText, env);
-            }
-            
-          } else if (update.callback_query.data === 'text_helper:start') {
-            // Показать выбор режимов ИИ
-            console.log(`💬 [${chatId}] Showing AI mode selection`);
-            
-            // Получаем язык интерфейса пользователя
-            const userResponse = await callLambdaFunction('shared', {
-              user_id: chatId,
-              action: 'check_user'
-            }, env);
-            
-            const userLang = userResponse?.user_data?.interface_language || 'ru';
+          // Get user's interface language
+          const profileResponse = await callLambdaFunction('shared', {
+            user_id: chatId,
+            action: 'get_profile'
+          }, env);
+          
+          const userLang = profileResponse?.user_data?.interface_language || 'ru';
+          
+          // Показать выбор режимов ИИ
+          console.log(`💬 [${chatId}] Showing AI mode selection`);
             
             const modeMessage = userLang === 'en' 
               ? `🤖 Choose AI mode:`
@@ -1737,7 +1700,7 @@ As soon as we open audio lessons — we'll send an invitation.`
           console.log(`🎯 [${chatId}] Selected AI mode: ${mode}`);
           
           // Получаем язык интерфейса пользователя
-          const userResponse = await callLambdaFunction('onboarding', {
+          const userResponse = await callLambdaFunction('shared', {
             user_id: chatId,
             action: 'check_user'
           }, env);
@@ -1774,7 +1737,7 @@ As soon as we open audio lessons — we'll send an invitation.`
               console.log(`🎤 [${chatId}] Checking audio access for user`);
               
               try {
-                const accessResponse = await callLambdaFunction('onboarding', {
+                const accessResponse = await callLambdaFunction('audio_dialog', {
                   user_id: chatId,
                   action: 'check_audio_access'
                 }, env);
@@ -1796,7 +1759,7 @@ As soon as we open audio lessons — we'll send an invitation.`
                     
                     // Сохраняем в Supabase
                     console.log(`💾 [${chatId}] Saving AI mode 'audio_dialog' to Supabase...`);
-                    await callLambdaFunction('onboarding', {
+                    await callLambdaFunction('shared', {
                       user_id: chatId,
                       action: 'set_ai_mode',
                       mode: 'audio_dialog'
@@ -1825,11 +1788,9 @@ As soon as we open audio lessons — we'll send an invitation.`
                     console.log(`👤 [${chatId}] User level: ${userLevel}`);
                     
                     // Генерируем приветствие через Lambda
-                    const greetingResponse = await callLambdaFunction('onboarding', {
+                    const greetingResponse = await callLambdaFunction('audio_dialog', {
                       user_id: chatId,
-                      action: 'process_text_message',
-                      message: '---START_AUDIO_DIALOG---',
-                      mode: 'audio_dialog',
+                      action: 'generate_greeting',
                       user_level: userLevel
                     }, env);
                     
@@ -1944,7 +1905,7 @@ As soon as we open audio lessons — we'll send an invitation.`
           try {
             console.log(`💾 [${chatId}] Saving AI mode '${mode}' to Supabase...`);
             
-            const saveResponse = await callLambdaFunction('onboarding', {
+            const saveResponse = await callLambdaFunction('shared', {
               user_id: chatId,
               action: 'set_ai_mode',
               mode: mode
