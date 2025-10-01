@@ -457,6 +457,7 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
         # Простое принудительное обновление для тестирования
         try:
             print(f"🔥 [STREAK] Force updating streak for user {user_id}")
+            from datetime import datetime
             today = datetime.now().date()
             
             update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
