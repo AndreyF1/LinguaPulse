@@ -18,14 +18,32 @@
 
 ## 📋 Current Status (September 25, 2025)
 
+### 🎉 MAJOR ARCHITECTURAL REFACTORING COMPLETED
+
+**Date**: September 25, 2025  
+**Achievement**: Complete transition from monolithic to microservices architecture
+
+**What Changed**:
+- ❌ **Before**: Single `lambda_function.py` handling all AI modes
+- ✅ **After**: 5 isolated Lambda functions, each with specific responsibility
+- ✅ **Result**: Zero cross-contamination, independent scaling, easier maintenance
+
+**Migration Details**:
+- Created 4 new Lambda functions for each AI mode
+- Refactored shared Lambda for common operations
+- Updated Cloudflare Worker routing logic
+- Configured CI/CD for multi-Lambda deployment
+- Added Function URLs and environment variables
+
 ### ✅ Completed Features
 
-#### 1. AI Modes System
-- **Multiple AI modes** instead of single universal prompt
-- **Translation mode**: Auto-detects language and translates bidirectionally
-- **Grammar mode**: Structured grammar explanations with examples and practice
-- **Text dialog mode**: ✅ **FULLY IMPLEMENTED** - Interactive English conversation practice
-- **Audio dialog mode**: ✅ **ACCESS CONTROL IMPLEMENTED** - Audio lesson access validation, TTS integration in progress
+#### 1. AI Modes System (ISOLATED ARCHITECTURE)
+- **Multiple AI modes** with dedicated Lambda functions
+- **Translation mode**: ✅ Isolated in `linguapulse-translation`
+- **Grammar mode**: ✅ Isolated in `linguapulse-grammar`
+- **Text dialog mode**: ✅ Isolated in `linguapulse-text-dialog`
+- **Audio dialog mode**: ✅ Isolated in `linguapulse-audio-dialog`
+- **Shared functions**: ✅ Centralized in `linguapulse-onboarding`
 
 #### 2. User Interface
 - **Mode selection UI**: Buttons after "Ask AI" for mode selection
@@ -202,12 +220,29 @@ Dialog: English response ||Russian translation||
 ```
 LinguaPulse/
 ├── Cloudflare Worker/
-│   ├── telegram-webhook.js     # Main webhook handler
-│   └── wrangler.toml          # Cloudflare configuration
+│   ├── telegram-webhook.js     # Main webhook handler and router
+│   ├── wrangler.toml          # Cloudflare configuration
+│   └── legacy/                # Legacy files (archived)
+│       ├── lesson0-bot.js
+│       ├── main-lesson.js
+│       └── reminder.js
 ├── AWS Backend/
-│   └── lambda_function.py     # AI processing and prompts
+│   ├── shared/                # Shared Lambda (formerly onboarding)
+│   │   ├── lambda_function.py # Common functions (profile, survey, streak)
+│   │   ├── database.py        # Supabase operations
+│   │   ├── openai_client.py   # OpenAI API wrapper
+│   │   └── utils.py           # Helper functions
+│   ├── translation/           # Translation mode Lambda
+│   │   └── lambda_function.py # Translation logic
+│   ├── grammar/               # Grammar mode Lambda
+│   │   └── lambda_function.py # Grammar explanation logic
+│   ├── text_dialog/           # Text dialog mode Lambda
+│   │   └── lambda_function.py # Text conversation logic
+│   └── audio_dialog/          # Audio dialog mode Lambda
+│       └── lambda_function.py # Audio lesson logic
 ├── .github/workflows/
-│   └── deploy-cloudflare.yml  # CI/CD pipeline
+│   ├── deploy-cloudflare.yml  # Cloudflare Worker CI/CD
+│   └── deploy-aws.yml         # AWS Lambda CI/CD
 └── PROJECT_DOCUMENTATION.md   # This file
 ```
 
@@ -215,40 +250,134 @@ LinguaPulse/
 
 ## 🚀 Deployment Process
 
-### Automatic Deployment (Preferred)
-1. **Commit changes** to main branch
-2. **GitHub Actions** automatically deploys:
-   - Cloudflare Worker changes → Cloudflare
-   - AWS Lambda changes → AWS (if configured)
-3. **Verify deployment** in logs
+### Automatic Deployment (Preferred) ✅ FULLY CONFIGURED
+
+#### 1. Cloudflare Worker Deployment
+**Trigger**: Push to `main` branch with changes in `Cloudflare Worker/**`  
+**Workflow**: `.github/workflows/deploy-cloudflare.yml`
+
+```bash
+# Automatically deploys telegram-webhook.js
+npx wrangler deploy --env webhook
+```
+
+#### 2. AWS Lambda Deployment  
+**Trigger**: Push to `main` branch with changes in `AWS Backend/**`  
+**Workflow**: `.github/workflows/deploy-aws.yml`
+
+**Deployment Strategy**:
+```yaml
+# Creates zip packages for each Lambda
+- shared-lambda.zip (shared/*)
+- translation-lambda.zip (shared/* + translation/*)
+- grammar-lambda.zip (shared/* + grammar/*)
+- text-dialog-lambda.zip (shared/* + text_dialog/*)
+- audio-dialog-lambda.zip (shared/* + audio_dialog/*)
+
+# Creates functions if they don't exist
+create_lambda_if_not_exists() {
+  # Creates new Lambda with proper IAM role
+  # Sets environment variables (SUPABASE_URL, SUPABASE_KEY, OPENAI_KEY)
+  # Creates Function URL with CORS
+}
+
+# Updates existing functions
+aws lambda update-function-code --function-name <name> --zip-file fileb://<zip>
+```
+
+**Lambda Functions Deployed**:
+- `linguapulse-onboarding` (shared)
+- `linguapulse-translation`
+- `linguapulse-grammar`
+- `linguapulse-text-dialog`
+- `linguapulse-audio-dialog`
+
+**Environment Variables**:
+- Stored in GitHub Secrets
+- Automatically injected during deployment
+- Same credentials for all Lambda functions
 
 ### Manual Deployment (Emergency Only)
 ```bash
 # Cloudflare Worker
 cd "Cloudflare Worker"
-npx wrangler deploy
+npx wrangler deploy --env webhook
 
-# AWS Lambda  
-# Deploy through AWS Console or CLI
+# AWS Lambda (example for translation)
+cd "AWS Backend"
+zip -r translation-lambda.zip shared/* translation/*
+aws lambda update-function-code \
+  --function-name linguapulse-translation \
+  --zip-file fileb://translation-lambda.zip
 ```
 
-**Important**: Always use Git-based deployment to maintain version control
+**Important**: 
+- ✅ Always commit and push changes (CI/CD handles deployment)
+- ✅ CI/CD automatically creates missing Lambda functions
+- ✅ Function URLs are created automatically if missing
+- ⚠️ Manual deployment should only be for emergency hotfixes
 
 ---
 
 ## 🔧 Configuration
 
 ### Environment Variables
-- **Cloudflare KV**: `USER_MODES` for session storage and dialog counters
-- **AWS Lambda**: `AWS_LAMBDA_URL` for backend processing
-- **Telegram**: `TELEGRAM_BOT_TOKEN` for API access
-- **Supabase**: Database credentials for user data
+
+#### Cloudflare Worker Secrets
+```bash
+# Telegram API
+TELEGRAM_BOT_TOKEN          # Bot authentication token
+
+# Lambda Function URLs (5 functions)
+ONBOARDING_URL              # Shared Lambda (linguapulse-onboarding)
+TRANSLATION_URL             # Translation Lambda
+GRAMMAR_URL                 # Grammar Lambda
+TEXT_DIALOG_URL             # Text Dialog Lambda
+AUDIO_DIALOG_URL            # Audio Dialog Lambda
+
+# Optional
+AWS_LAMBDA_TOKEN            # Lambda authorization (if enabled)
+```
+
+#### Cloudflare KV Namespaces
+```javascript
+USER_MODES     // Session storage, dialog counters, mode persistence
+CHAT_KV        // Alternative KV namespace for audio sessions
+```
+
+#### AWS Lambda Environment Variables
+**Set for ALL Lambda functions via CI/CD**:
+```bash
+SUPABASE_URL               # Supabase project URL
+SUPABASE_KEY              # Supabase service role key (not anon key!)
+OPENAI_KEY                # OpenAI API key (formerly OPENAI_API_KEY)
+```
+
+#### GitHub Secrets (CI/CD)
+```bash
+# AWS Credentials
+AWS_ACCESS_KEY_ID         # AWS programmatic access
+AWS_SECRET_ACCESS_KEY     # AWS secret key
+
+# Supabase
+SUPABASE_URL              # Passed to Lambda
+SUPABASE_KEY              # Passed to Lambda
+
+# OpenAI
+OPENAI_KEY                # Passed to Lambda
+
+# Cloudflare
+CLOUDFLARE_API_TOKEN      # Wrangler deployment token
+```
 
 ### Key Settings
-- **Message limit**: 4000 characters (Telegram limit ~4096)
-- **Session timeout**: 5 minutes for duplicate prevention
+- **Message limit**: 4000 characters (safe margin under Telegram's 4096)
+- **Session timeout**: 5 minutes for duplicate message prevention
+- **Dialog timeout**: 1 hour for text dialog counters (KV TTL)
 - **Default AI mode**: Translation
 - **Supported languages**: Russian, English
+- **Lambda timeout**: 30 seconds
+- **Lambda memory**: 256 MB per function
 
 ---
 
@@ -340,10 +469,74 @@ npx wrangler deploy
 
 ---
 
-*Documentation updated: September 18, 2025*  
-*Status: ✅ ALL AI MODES OPERATIONAL, ACCESS CONTROL PERFECTED*
+*Documentation updated: September 25, 2025*  
+*Status: ✅ MICROSERVICES ARCHITECTURE IMPLEMENTED, ALL MODES ISOLATED*
 
-## 🎉 Latest Achievements (September 15, 2025)
+---
+
+## 🎉 Latest Achievements (September 25, 2025)
+
+### 🏗️ Microservices Refactoring - COMPLETED ✅
+
+**The Problem**:
+- Monolithic Lambda caused cross-mode interference
+- Audio dialog logic affected translation mode
+- Text fields updated during audio lessons
+- One change broke unrelated features
+- Testing was complex and error-prone
+
+**The Solution**:
+- **5 isolated Lambda functions** with clear boundaries
+- **Dedicated routing** in Cloudflare Worker
+- **Zero cross-contamination** between modes
+- **Independent deployment** and scaling
+- **Modular codebase** for easier maintenance
+
+**Technical Implementation**:
+```
+Old Architecture:
+Cloudflare Worker → Single Lambda → All logic mixed
+
+New Architecture:
+Cloudflare Worker (router)
+  ├─→ linguapulse-translation (only translation)
+  ├─→ linguapulse-grammar (only grammar)
+  ├─→ linguapulse-text-dialog (only text conversations)
+  ├─→ linguapulse-audio-dialog (only audio lessons)
+  └─→ linguapulse-onboarding (shared utilities)
+```
+
+**Benefits Achieved**:
+- ✅ **Zero regressions**: Changes to audio don't affect translation
+- ✅ **Clear ownership**: Each mode has its own codebase
+- ✅ **Faster debugging**: Smaller, focused functions
+- ✅ **Better testing**: Test modes independently
+- ✅ **Production-ready**: Safe to add users without fear of breaking changes
+
+### 🔄 CI/CD Pipeline Enhancement ✅
+
+**Multi-Lambda Deployment**:
+- Automatic Lambda creation if not exists
+- Proper IAM role assignment (user's AWS account)
+- Function URL creation with CORS
+- Environment variable injection from GitHub Secrets
+- Parallel deployment of all 5 functions
+
+**Deployment Flow**:
+```bash
+1. Developer commits code
+2. GitHub Actions triggers
+3. Creates 5 Lambda zip packages (shared + specific)
+4. Creates missing Lambda functions automatically
+5. Updates existing functions with new code
+6. Sets environment variables (SUPABASE, OPENAI)
+7. Creates Function URLs if missing
+8. ✅ Deployment complete in ~2 minutes
+```
+
+---
+
+## 🎉 Previous Achievements (September 15, 2025)
 
 ### Text Dialog Mode - FULLY FUNCTIONAL ✅
 - **Interactive conversations** with topic suggestions  
@@ -437,32 +630,275 @@ if (mode === 'audio_dialog') {
 
 ---
 
-## 🏗️ CURRENT SYSTEM ARCHITECTURE
+## 🏗️ CURRENT SYSTEM ARCHITECTURE (SEPTEMBER 25, 2025)
+
+### 🎯 Microservices Architecture - COMPLETE REFACTORING
+
+**Major Achievement**: Transitioned from monolithic Lambda to isolated microservices
 
 ### 📊 Component Overview
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Telegram      │───▶│  Cloudflare      │───▶│   AWS Lambda    │
-│   Bot API       │    │  Workers         │    │   (AI Engine)   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │                        │
-                                ▼                        ▼
-                       ┌──────────────────┐    ┌─────────────────┐
-                       │  Cloudflare KV   │    │   Supabase      │
-                       │  (Sessions)      │    │   (User Data)   │
-                       └──────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌──────────────────────┐
+│   Telegram      │───▶│  Cloudflare Worker   │
+│   Bot API       │    │  (Webhook Router)    │
+└─────────────────┘    └──────────────────────┘
+                                │
+                    ┌───────────┼───────────┐
+                    │           │           │
+                    ▼           ▼           ▼
+         ┌──────────────────────────────────────┐
+         │         AWS Lambda Functions         │
+         ├──────────────────────────────────────┤
+         │ • shared (onboarding, profile, etc)  │
+         │ • translation (translate mode)        │
+         │ • grammar (grammar explanations)      │
+         │ • text_dialog (text conversations)    │
+         │ • audio_dialog (audio lessons)        │
+         └──────────────────────────────────────┘
+                    │           │
+                    ▼           ▼
+         ┌──────────────┐  ┌─────────────┐
+         │ Cloudflare   │  │  Supabase   │
+         │ KV Storage   │  │  Database   │
+         │ (Sessions)   │  │ (User Data) │
+         └──────────────┘  └─────────────┘
 ```
 
-### 🔧 Cloudflare Worker (`telegram-webhook.js`)
-**Role**: Primary webhook handler and traffic router
+### 🎨 Architecture Benefits
 
-**Key Functions**:
-- Message deduplication and validation
-- AI mode selection and persistence  
-- Dialog state management (counters, termination)
-- Message formatting (HTML/Markdown conversion)
-- Waitlist signup handling
-- Error handling and fallback responses
+**Isolation**: Each AI mode runs in its own Lambda function
+- ✅ No cross-contamination between modes
+- ✅ Changes to one mode don't affect others  
+- ✅ Independent testing and deployment
+- ✅ Clear separation of concerns
+
+**Scalability**: Each function can scale independently
+- ✅ Translation mode scales separately from audio
+- ✅ Optimized memory/timeout per function
+- ✅ Cost-effective resource allocation
+
+**Maintainability**: Smaller, focused codebases
+- ✅ Easy to understand and debug
+- ✅ New developers can work on specific modes
+- ✅ Faster CI/CD pipeline per function
+
+---
+
+## 🔄 COMPONENT INTERACTION PRINCIPLES
+
+### Request Flow Diagram
+```
+1. User sends message to Telegram Bot
+         ↓
+2. Telegram forwards to Cloudflare Worker webhook
+         ↓
+3. Worker checks message type and ai_mode from KV/Supabase
+         ↓
+4. Worker routes to appropriate Lambda function:
+   • translation → linguapulse-translation
+   • grammar → linguapulse-grammar
+   • text_dialog → linguapulse-text-dialog
+   • audio_dialog → linguapulse-audio-dialog
+   • common actions → linguapulse-onboarding (shared)
+         ↓
+5. Lambda processes request:
+   • Fetches user data from Supabase
+   • Calls OpenAI API with mode-specific prompt
+   • Updates database if needed
+   • Returns formatted response
+         ↓
+6. Worker receives Lambda response
+         ↓
+7. Worker processes response:
+   • Splits long messages (>4000 chars)
+   • Converts formatting (Markdown/HTML)
+   • Adds UI buttons if needed
+         ↓
+8. Worker sends to Telegram API
+         ↓
+9. User receives formatted message in Telegram
+```
+
+### 🎯 Mode-Specific Routing Examples
+
+**Translation Mode**:
+```javascript
+// Cloudflare Worker
+currentMode = await env.CHAT_KV.get(`ai_mode:${chatId}`); // 'translation'
+
+// Routes to linguapulse-translation Lambda
+const response = await callLambdaFunction('translation', {
+  action: 'translate',
+  text: userMessage,
+  target_language: 'Russian'
+}, env);
+```
+
+**Text Dialog Mode**:
+```javascript
+// Cloudflare Worker  
+currentMode = 'text_dialog';
+dialogCount = await env.CHAT_KV.get(`dialog_count:${chatId}`); // Track progress
+
+// Routes to linguapulse-text-dialog Lambda
+const response = await callLambdaFunction('text_dialog', {
+  action: 'process_dialog',
+  text: userMessage,
+  user_id: chatId,
+  dialog_count: dialogCount,
+  user_level: 'Intermediate'
+}, env);
+
+// Handle special markers
+if (response.includes('---SPLIT---')) {
+  // Send feedback and dialog as separate messages
+}
+if (response.includes('---END_DIALOG---')) {
+  // Generate final feedback, clean up KV, return to mode selection
+}
+```
+
+**Audio Dialog Mode**:
+```javascript
+// Cloudflare Worker - Check access first
+const accessCheck = await callLambdaFunction('audio_dialog', {
+  action: 'check_audio_access',
+  user_id: chatId
+}, env);
+
+if (accessCheck.has_access) {
+  // Start audio lesson
+  await env.CHAT_KV.put(`ai_mode:${chatId}`, 'audio_dialog');
+  
+  // Generate greeting
+  const greeting = await callLambdaFunction('audio_dialog', {
+    action: 'generate_greeting',
+    user_id: chatId
+  }, env);
+  
+  // Process voice messages...
+}
+```
+
+### 🔑 Key Interaction Patterns
+
+#### Pattern 1: Session Management
+```javascript
+// Worker stores session data in KV
+await env.CHAT_KV.put(`ai_mode:${chatId}`, 'text_dialog');
+await env.CHAT_KV.put(`dialog_count:${chatId}`, '5', { expirationTtl: 3600 });
+
+// Lambda retrieves user profile from Supabase
+user = supabase.table('users').select('*').eq('telegram_id', user_id).single()
+```
+
+#### Pattern 2: Dual Storage Strategy
+- **KV Storage (Cloudflare)**: Temporary, fast access
+  - AI mode selection
+  - Dialog counters
+  - Anti-abuse flags
+  - Session state
+  
+- **Supabase Database**: Persistent, relational
+  - User profiles
+  - Subscription data
+  - Lesson history
+  - Feedback records
+
+#### Pattern 3: Error Handling Cascade
+```javascript
+// Worker tries Lambda
+try {
+  response = await callLambdaFunction('translation', payload, env);
+} catch (error) {
+  console.error('Lambda error:', error);
+  
+  // Fallback to shared Lambda
+  try {
+    response = await callLambdaFunction('shared', payload, env);
+  } catch (fallbackError) {
+    // Final fallback: user-friendly error message
+    response = {
+      success: false,
+      message: 'Sorry, temporary issue. Please try again.'
+    };
+  }
+}
+```
+
+#### Pattern 4: Access Control Flow
+```javascript
+// 1. Worker receives user action
+// 2. Worker calls Lambda to check access
+const accessCheck = await callLambdaFunction('audio_dialog', {
+  action: 'check_audio_access',
+  user_id: chatId
+}, env);
+
+// 3. Lambda queries Supabase
+SELECT lessons_left, package_expires_at 
+FROM users 
+WHERE telegram_id = ?
+
+// 4. Lambda validates
+has_access = (lessons_left > 0) AND (package_expires_at > NOW())
+
+// 5. Lambda returns decision
+return { has_access: true/false, lessons_left, expires_at }
+
+// 6. Worker acts on decision
+if (has_access) {
+  // Allow lesson start
+} else {
+  // Show upgrade options
+}
+```
+
+---
+
+### 🔧 Cloudflare Worker (`telegram-webhook.js`)
+**Role**: Primary webhook handler and intelligent router
+
+**Responsibilities**:
+- **Message Processing**: Deduplication, validation, formatting
+- **Mode Routing**: Routes requests to correct Lambda function based on `ai_mode`
+- **Session Management**: Dialog counters, termination logic, KV storage
+- **UI Generation**: Buttons, keyboards, mode selection menus
+- **Format Conversion**: Markdown ↔ HTML based on content
+- **Error Handling**: Graceful fallbacks, user-friendly messages
+
+**Lambda Routing Logic**:
+```javascript
+function getLambdaFunctionByMode(mode) {
+  const modeToLambda = {
+    'translation': 'linguapulse-translation',
+    'grammar': 'linguapulse-grammar', 
+    'text_dialog': 'linguapulse-text-dialog',
+    'audio_dialog': 'linguapulse-audio-dialog'
+  };
+  return modeToLambda[mode] || 'linguapulse-onboarding'; // Fallback to shared
+}
+
+// Usage example
+if (currentMode === 'translation') {
+  aiResponse = await callLambdaFunction('translation', {
+    action: 'translate',
+    text: userMessage,
+    target_language: 'Russian'
+  }, env);
+}
+```
+
+**Environment Variables Mapping**:
+```javascript
+const functionUrlMap = {
+  'shared': 'ONBOARDING_URL',        // Common functions
+  'translation': 'TRANSLATION_URL',   // Translation Lambda
+  'grammar': 'GRAMMAR_URL',           // Grammar Lambda
+  'text_dialog': 'TEXT_DIALOG_URL',   // Text dialog Lambda
+  'audio_dialog': 'AUDIO_DIALOG_URL', // Audio dialog Lambda
+};
+```
 
 **Critical Code Patterns**:
 ```javascript
@@ -494,15 +930,75 @@ if (reply.includes('---END_DIALOG---')) {
 }
 ```
 
-### 🧠 AWS Lambda (`lambda_function.py`)
-**Role**: AI processing and prompt management
+### 🧠 AWS Lambda Functions - Microservices Architecture
 
-**Key Functions**:
-- OpenAI API integration with mode-specific prompts
-- User access validation (dual-field checking)
-- Supabase database operations
-- Final feedback generation with language adaptation
-- Error handling and logging
+#### 1️⃣ **Shared Lambda** (`linguapulse-onboarding`)
+**File**: `AWS Backend/shared/lambda_function.py`  
+**Purpose**: Common functions used by all modes
+
+**Responsibilities**:
+- ✅ **User Management**: `check_user`, `get_profile`, `start_survey`, `complete_survey`
+- ✅ **Onboarding**: `get_survey_question`, quiz flow
+- ✅ **Streak Management**: `update_daily_streak` (unified for all modes)
+- ✅ **Feedback**: `save_feedback` (user feedback collection)
+- ✅ **Mode Management**: `get_ai_mode`, `set_ai_mode`
+
+**Shared Modules**:
+- `database.py`: Supabase operations wrapper
+- `openai_client.py`: OpenAI API client
+- `utils.py`: Helper functions
+
+#### 2️⃣ **Translation Lambda** (`linguapulse-translation`)
+**File**: `AWS Backend/translation/lambda_function.py`  
+**Purpose**: Bidirectional translation with context
+
+**Actions**:
+- `translate`: Auto-detects language and provides translation
+
+**Prompt Features**:
+- Language auto-detection (English ↔ Russian)
+- Cultural context and usage examples
+- Responds in user's language
+
+#### 3️⃣ **Grammar Lambda** (`linguapulse-grammar`)
+**File**: `AWS Backend/grammar/lambda_function.py`  
+**Purpose**: Structured grammar explanations
+
+**Actions**:
+- `check_grammar`: Provides detailed grammar explanations
+
+**Response Structure**:
+- *Rule*, *Form*, *Use & Contrast*, *Examples*
+- *Common mistakes*, *Mini-practice*, *Answer key* (spoilers)
+
+#### 4️⃣ **Text Dialog Lambda** (`linguapulse-text-dialog`)
+**File**: `AWS Backend/text_dialog/lambda_function.py`  
+**Purpose**: Interactive English conversations
+
+**Actions**:
+- `process_dialog`: Handles conversation flow with feedback
+- `generate_feedback`: Final comprehensive assessment
+
+**Features**:
+- Per-message feedback + dialog continuation
+- English with Russian translations in spoilers
+- 20-message limit with graceful termination
+- Multilingual final feedback (Russian/English)
+
+#### 5️⃣ **Audio Dialog Lambda** (`linguapulse-audio-dialog`)
+**File**: `AWS Backend/audio_dialog/lambda_function.py`  
+**Purpose**: Audio lesson management and feedback
+
+**Actions**:
+- `check_audio_access`: Validates lesson availability
+- `decrease_lessons_left`: Anti-abuse tracking
+- `generate_greeting`: Audio lesson introduction
+- `generate_feedback`: Speech-focused assessment
+
+**Features**:
+- Audio-specific feedback (speech, not writing)
+- TTS integration (planned)
+- Voice message processing (planned)
 
 **AI Mode Prompts**:
 ```python
