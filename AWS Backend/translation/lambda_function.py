@@ -3,11 +3,12 @@ import sys
 import os
 import json
 
-# Добавляем путь к shared модулям
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'shared'))
+# Добавляем shared в path (находится в корне Lambda)
+sys.path.insert(0, '/var/task/shared')
+sys.path.insert(0, '/var/task')
 
-from openai_client import get_openai_response
-from utils import success_response, error_response, parse_request_body, validate_required_fields
+from shared.openai_client import get_openai_response
+from shared.utils import success_response, error_response, parse_request_body, validate_required_fields
 
 
 def lambda_handler(event, context):
