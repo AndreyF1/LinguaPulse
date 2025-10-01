@@ -603,7 +603,7 @@ if (update.message?.text === '/feedback') {
                   try {
                     console.log(`📉 [${chatId}] ANTI-ABUSE: Decreasing lessons_left by 1 (5+ AUDIO messages used, dialog continues)`);
                     await callLambdaFunction('audio_dialog', {
-                user_id: chatId,
+                      user_id: chatId,
                       action: 'decrease_lessons_left'
                     }, env);
                   } catch (error) {
@@ -633,7 +633,7 @@ if (update.message?.text === '/feedback') {
                     try {
                       console.log(`📉 [${chatId}] Decreasing lessons_left by 1 (audio lesson completed, not yet used)`);
                       await callLambdaFunction('audio_dialog', {
-                user_id: chatId,
+                        user_id: chatId,
                         action: 'decrease_lessons_left'
                       }, env);
                     } catch (error) {
