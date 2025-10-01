@@ -478,23 +478,17 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                 print(f"🔥 [STREAK] Force update result: {update_result}")
             
             return {
-                'statusCode': 200,
-                'body': json.dumps({
-                    'success': True,
-                    'streak_updated': True,
-                    'new_streak': 1,
-                    'force_update': True
-                })
+                'success': True,
+                'streak_updated': True,
+                'new_streak': 1,
+                'force_update': True
             }
             
         except Exception as e:
             print(f"🔥 [STREAK] Force update error: {e}")
             return {
-                'statusCode': 200,
-                'body': json.dumps({
-                    'success': False,
-                    'error': f'Force update error: {str(e)}'
-                })
+                'success': False,
+                'error': f'Force update error: {str(e)}'
             }
         
         try:

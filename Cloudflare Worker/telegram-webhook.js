@@ -1000,11 +1000,16 @@ if (update.message?.text === '/feedback') {
                   console.log(`📈 [${chatId}] Calling shared Lambda with user_id: ${chatId}`);
                   
                   console.log(`🔥 [${chatId}] About to call shared Lambda...`);
+                  console.log(`🔥 [${chatId}] Environment check - ONBOARDING_URL exists:`, !!env.ONBOARDING_URL);
+                  
                   const streakResponse = await callLambdaFunction('shared', {
                     user_id: chatId,
                     action: 'update_daily_streak'
                   }, env);
+                  
                   console.log(`🔥 [${chatId}] Shared Lambda call completed`);
+                  console.log(`🔥 [${chatId}] Response type:`, typeof streakResponse);
+                  console.log(`🔥 [${chatId}] Response keys:`, streakResponse ? Object.keys(streakResponse) : 'null');
                   
                   console.log(`📈 [${chatId}] Streak response received:`, JSON.stringify(streakResponse));
                   
