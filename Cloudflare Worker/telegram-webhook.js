@@ -579,6 +579,8 @@ if (update.message?.text === '/feedback') {
                                        return regex.test(userTextLower);
                                      });
                 
+                console.log(`🔍 [${chatId}] User text: "${userTextLower}", wantsToEnd: ${userWantsToEnd}`);
+                
                 // Check AUDIO message count limit (15 AUDIO messages from bot max)
                 const audioCountKey = `audio_dialog_audio_count:${chatId}`;
                 let audioMessageCount = parseInt(await env.CHAT_KV.get(audioCountKey) || '0');
