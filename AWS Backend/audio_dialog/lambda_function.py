@@ -26,7 +26,7 @@ def lambda_handler(event, context):
         
         if action == 'generate_greeting':
             return handle_generate_greeting(body)
-        elif action == 'generate_feedback':
+        elif action == 'generate_dialog_feedback':
             return handle_generate_feedback(body)
         elif action == 'decrease_lessons_left':
             return handle_decrease_lessons_left(body)

@@ -27,7 +27,7 @@ def lambda_handler(event, context):
         
         if action == 'process_dialog':
             return handle_text_dialog(body)
-        elif action == 'generate_feedback':
+        elif action == 'generate_dialog_feedback':
             return handle_generate_feedback(body)
         else:
             return error_response(f'Unknown action: {action}')
