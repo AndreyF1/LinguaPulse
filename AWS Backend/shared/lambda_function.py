@@ -175,19 +175,14 @@ def lambda_handler(event, context):
             product_info = get_product_info(product_id, supabase_url, supabase_key)
             
             # Обновляем пользователя - завершаем опрос и начисляем уроки
-            # Рассчитываем дату окончания пробного периода текстового помощника (7 дней)
-            text_trial_end = (datetime.now() + timedelta(days=7)).isoformat()
-            
             update_data = {
                 'current_level': transformed_level,
                 'quiz_completed_at': 'now()',  # Только завершение, quiz_started_at уже установлен
                 'lessons_left': 3,  # Начисляем уроки за завершение опроса
-                'package_expires_at': product_info.get('expires_at') if product_info else None,
-                'text_trial_ends_at': text_trial_end  # 7 дней доступа к текстовому помощнику
+                'package_expires_at': product_info.get('expires_at') if product_info else None
             }
             
             print(f"Updating user {user_id} with language level: {transformed_level}")
-            print(f"Setting text_trial_ends_at to: {text_trial_end}")
             print(f"Full survey data: {survey_data}")
             
             url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
@@ -396,22 +391,11 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                             except Exception as e:
                                 print(f"Error parsing package_expires_at for audio access: {e}")
                         
-                        # Доступ к текстовым функциям
+                        # Доступ к текстовым функциям - проверяем только package_expires_at
                         has_text_access = False
-                        text_trial_ends_at = user_data.get('text_trial_ends_at')
-                        
-                        # Проверяем text_trial_ends_at
-                        if text_trial_ends_at:
-                            try:
-                                trial_end = datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00'))
-                                trial_now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.now()
-                                if trial_now < trial_end:
-                                    has_text_access = True
-                            except Exception as e:
-                                print(f"Error parsing text_trial_ends_at: {e}")
                         
                         # Проверяем package_expires_at для текстового доступа
-                        if not has_text_access and package_expires_at:
+                        if package_expires_at:
                             try:
                                 package_end = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
                                 package_now = datetime.now(package_end.tzinfo) if package_end.tzinfo else datetime.now()
@@ -420,15 +404,10 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                             except Exception as e:
                                 print(f"Error parsing package_expires_at for text access: {e}")
                         
-                        # Определяем дату доступа (берем более позднюю)
+                        # Определяем дату доступа
                         access_date = None
-                        if text_trial_ends_at or package_expires_at:
+                        if package_expires_at:
                             dates = []
-                            if text_trial_ends_at:
-                                try:
-                                    dates.append(datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00')))
-                                except:
-                                    pass
                             if package_expires_at:
                                 try:
                                     dates.append(datetime.fromisoformat(package_expires_at.replace('Z', '+00:00')))
@@ -959,7 +938,7 @@ def get_product_info(product_id, supabase_url, supabase_key):
 def check_text_trial_access(user_id, supabase_url, supabase_key):
     """Проверяет доступ к текстовому помощнику"""
     try:
-        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=text_trial_ends_at,package_expires_at,interface_language"
+        url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}&select=package_expires_at,interface_language"
         headers = {
             'Authorization': f'Bearer {supabase_key}',
             'apikey': supabase_key
@@ -973,25 +952,14 @@ def check_text_trial_access(user_id, supabase_url, supabase_key):
                 users = json.loads(response_text)
                 if users:
                     user = users[0]
-                    text_trial_ends_at = user.get('text_trial_ends_at')
                     package_expires_at = user.get('package_expires_at')
                     interface_language = user.get('interface_language', 'ru')
                     
                     now = datetime.now()
                     has_access = False
                     
-                    # Проверяем text_trial_ends_at
-                    if text_trial_ends_at:
-                        try:
-                            trial_end = datetime.fromisoformat(text_trial_ends_at.replace('Z', '+00:00'))
-                            trial_now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.now()
-                            if trial_now < trial_end:
-                                has_access = True
-                        except Exception as e:
-                            print(f"Error parsing text_trial_ends_at: {e}")
-                    
                     # Проверяем package_expires_at
-                    if not has_access and package_expires_at:
+                    if package_expires_at:
                         try:
                             package_end = datetime.fromisoformat(package_expires_at.replace('Z', '+00:00'))
                             package_now = datetime.now(package_end.tzinfo) if package_end.tzinfo else datetime.now()
