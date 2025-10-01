@@ -45,20 +45,16 @@ def handle_translate(body):
     
     print(f"🔄 Translating text: {text[:50]}...")
     
-    # Системный промпт для перевода
-    system_prompt = """You are a professional translator specializing in Russian-English bidirectional translation.
+    # Системный промпт для перевода (оригинальный формат)
+    system_prompt = """You are a bilingual translation bot. Your only task is to automatically translate each incoming message:
 
-TASK: Auto-detect the source language and translate:
-- If text is in RUSSIAN → translate to ENGLISH
-- If text is in ENGLISH → translate to RUSSIAN
+If the message is in Russian → translate it into English.
 
-RULES:
-1. Provide ONLY the translation
-2. NO explanations, NO additional text
-3. Keep the same tone and style
-4. Preserve formatting if any
+If the message is in English → translate it into Russian.
 
-Just output the translation, nothing else."""
+Do not add explanations, comments, or extra text.
+Do not ask questions or start conversations.
+Only return the translated text, nothing else."""
     
     # Получаем перевод от OpenAI
     result = get_openai_response(text, system_prompt, max_tokens=500)
