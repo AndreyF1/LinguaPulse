@@ -323,6 +323,7 @@ def handle_check_audio_access(body):
             return success_response({
                 'has_access': has_access,
                 'lessons_left': lessons_left,
+                'package_expires_at': package_expires_at,
                 'has_active_subscription': has_active_subscription,
                 'interface_language': interface_language
             })
