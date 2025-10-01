@@ -1675,16 +1675,15 @@ The first users who sign up for the list will get a series of audio lessons for 
             await sendMessageViaTelegram(chatId, modeMessage, env, {
               reply_markup: { inline_keyboard: modeButtons }
             });
-          }
           
         } catch (error) {
-          console.error(`❌ [${chatId}] Error handling new feature callback:`, error);
+          console.error(`❌ [${chatId}] Error handling text helper callback:`, error);
           await sendMessageViaTelegram(chatId, 
             "❌ Произошла ошибка. Попробуйте еще раз.", env);
         }
         
-          return new Response('OK');
-        }
+        return new Response('OK');
+      }
         
       // 1.7. Handle AI mode selection
       if (update.callback_query?.data?.startsWith('ai_mode:')) {
