@@ -349,9 +349,14 @@ CHAT_KV        // Alternative KV namespace for audio sessions
 **Set for ALL Lambda functions via CI/CD**:
 ```bash
 SUPABASE_URL               # Supabase project URL
-SUPABASE_KEY              # Supabase service role key (not anon key!)
-OPENAI_KEY                # OpenAI API key (formerly OPENAI_API_KEY)
+SUPABASE_SERVICE_KEY       # Supabase service role key (NOT anon/publishable key!)
+OPENAI_API_KEY             # OpenAI API key
 ```
+
+**⚠️ CRITICAL: DO NOT CHANGE THESE VARIABLE NAMES!**
+- These are the FINAL names used in production
+- Code expects exactly these names
+- Changing them will break all Lambda functions
 
 #### GitHub Secrets (CI/CD)
 ```bash
@@ -360,15 +365,21 @@ AWS_ACCESS_KEY_ID         # AWS programmatic access
 AWS_SECRET_ACCESS_KEY     # AWS secret key
 
 # Supabase
-SUPABASE_URL              # Passed to Lambda
-SUPABASE_KEY              # Passed to Lambda
+SUPABASE_URL              # https://qpqwyvzpwwwyolnvtglw.supabase.co
+SUPABASE_SERVICE_KEY      # sb_secret_lghNz... (service role, NOT anon!)
 
 # OpenAI
-OPENAI_KEY                # Passed to Lambda
+OPENAI_API_KEY            # sk-proj-... (OpenAI API key)
 
 # Cloudflare
 CLOUDFLARE_API_TOKEN      # Wrangler deployment token
 ```
+
+**⚠️ IMPORTANT NOTES:**
+- **SUPABASE_SERVICE_KEY**: Must be the "Secret keys" from Supabase Dashboard → Settings → API
+- **NOT the "Publishable key"** (sb_publishable_...)
+- These exact variable names are used in `.github/workflows/deploy-aws.yml`
+- Lambda functions expect these exact names in their code
 
 ### Key Settings
 - **Message limit**: 4000 characters (safe margin under Telegram's 4096)

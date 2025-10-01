@@ -23,7 +23,7 @@ def lambda_handler(event, context):
     
     # Получаем Supabase credentials
     supabase_url = os.environ.get('SUPABASE_URL')
-    supabase_key = os.environ.get('SUPABASE_KEY')
+    supabase_key = os.environ.get('SUPABASE_SERVICE_KEY')
     
     if not supabase_url or not supabase_key:
         print("Supabase credentials not found")
