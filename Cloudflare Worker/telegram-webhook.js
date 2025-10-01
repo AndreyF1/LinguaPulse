@@ -982,6 +982,7 @@ if (update.message?.text === '/feedback') {
               }
               
               // Проверяем, нужно ли завершить диалог
+              console.log(`🔍 [${chatId}] Checking for dialog end marker in reply:`, reply.substring(0, 200));
               if (reply.includes('---END_DIALOG---')) {
                 console.log(`🏁 [${chatId}] Dialog ending detected!`);
                 
@@ -998,10 +999,12 @@ if (update.message?.text === '/feedback') {
                   console.log(`📈 [${chatId}] Updating text dialog streak`);
                   console.log(`📈 [${chatId}] Calling shared Lambda with user_id: ${chatId}`);
                   
+                  console.log(`🔥 [${chatId}] About to call shared Lambda...`);
                   const streakResponse = await callLambdaFunction('shared', {
                     user_id: chatId,
                     action: 'update_daily_streak'
                   }, env);
+                  console.log(`🔥 [${chatId}] Shared Lambda call completed`);
                   
                   console.log(`📈 [${chatId}] Streak response received:`, JSON.stringify(streakResponse));
                   
@@ -1013,6 +1016,7 @@ if (update.message?.text === '/feedback') {
                 } catch (streakError) {
                   console.error(`❌ [${chatId}] Error updating streak:`, streakError);
                 }
+                
                 
                 // Получаем финальный фидбэк
                 const feedbackResponse = await callLambdaFunction('text_dialog', {
