@@ -559,11 +559,18 @@ PKG = {
     "3ec3f495-7257-466b-a0ba-bfac669a68c8": {"days": 3,  "lessons": 3},   # 3 дня
 }
 
-# Price validation (in kopecks)
+# Price validation (in kopecks) - Production prices
 PRICE = {
     "fe88e77a-7931-410d-8a74-5b0473798c6c": 109000,  # 30 дней - 1090₽
     "551f676f-22e7-4c8c-ae7a-c5a8de655438": 59000,   # 2 недели - 590₽
-    "3ec3f495-7257-466b-a0ba-bfac669a68c8": 200,     # 3 дня - 2₽ (testing price)
+    "3ec3f495-7257-466b-a0ba-bfac669a68c8": 14900,   # 3 дня - 149₽
+}
+
+# Short package names mapping (for shorter labels)
+PACKAGE_NAMES = {
+    "mini": "3ec3f495-7257-466b-a0ba-bfac669a68c8",      # 3 дня
+    "2weeks": "551f676f-22e7-4c8c-ae7a-c5a8de655438",    # 2 недели  
+    "month": "fe88e77a-7931-410d-8a74-5b0473798c6c",     # 30 дней
 }
 ```
 
@@ -612,11 +619,12 @@ YooMoney → API Gateway → Lambda Function
 #### 2. **Processing Steps**
 1. **Parse** form-urlencoded body from API Gateway
 2. **Verify** SHA1 signature using YooMoney secret
-3. **Decode** base64-encoded label: `{"u": user_id, "pkg": product_id, "o": order_id}`
-4. **Validate** payment amount against expected price
-5. **Record** payment in Supabase `payments` table (idempotent)
-6. **Grant** access by updating user's `package_expires_at` and `lessons_left`
-7. **Notify** user via Telegram about successful payment
+3. **Decode** base64-encoded label: `{"u": telegram_id, "pkg": "mini"}` (short format)
+4. **Map** package name to UUID using `PACKAGE_NAMES` dictionary
+5. **Validate** payment amount against expected price (with 90-110% range for commission)
+6. **Record** payment in Supabase `payments` table using `provider_operation_id` for idempotency
+7. **Grant** access by updating user's `package_expires_at` and `lessons_left`
+8. **Notify** user via Telegram about successful payment
 
 #### 3. **Access Granting Logic**
 ```python
@@ -689,6 +697,100 @@ notify_telegram(user_id, notification_text)
 - Failed payments recorded with reason (`amount_mismatch`, `unknown_product`)
 - Database errors don't break webhook (YooMoney will retry)
 - Graceful degradation for notification failures
+
+### 🏷️ Label Optimization Solution
+
+#### **Problem Solved**: YooMoney Label Truncation
+**Issue**: YooMoney was truncating long payment labels, causing JSON parsing errors.
+
+**Original Label Format** (80+ characters):
+```json
+{"u":"b2d41704-4a91-4164-bd02-347d2875af04","pkg":"3ec3f495-7257-466b-a0ba-bfac669a68c8","o":"2b871bab-5ac8-..."}
+```
+
+**Optimized Label Format** (25 characters):
+```json
+{"u":59156205,"pkg":"mini"}
+```
+
+#### **Optimization Strategy**:
+1. **Use `telegram_id` instead of UUID** for user identification
+2. **Use short package names** (`"mini"`, `"2weeks"`, `"month"`) instead of UUIDs
+3. **Remove `order_id`** from label (use `provider_operation_id` from YooMoney)
+4. **Map short names to UUIDs** in Lambda function
+
+#### **Implementation Details**:
+
+**Frontend Changes**:
+```javascript
+// OLD: Long UUID-based label
+const labelData = {
+  u: userUUID,                    // 36 chars
+  pkg: packageUUID,               // 36 chars  
+  o: orderUUID                    // 36 chars
+}; // Total: 108+ chars
+
+// NEW: Short optimized label
+const labelData = {
+  u: telegram_id,                 // 8 chars
+  pkg: "mini"                     // 4 chars
+}; // Total: 25 chars
+```
+
+**Backend Changes**:
+```python
+# Package name mapping
+PACKAGE_NAMES = {
+    "mini": "3ec3f495-7257-466b-a0ba-bfac669a68c8",
+    "2weeks": "551f676f-22e7-4c8c-ae7a-c5a8de655438", 
+    "month": "fe88e77a-7931-410d-8a74-5b0473798c6c",
+}
+
+# Label processing with mapping
+pkg_name = info["pkg"]
+if pkg_name in PACKAGE_NAMES:
+    product_id = PACKAGE_NAMES[pkg_name]
+```
+
+#### **Results**:
+- ✅ **Label length reduced by 75%** (108+ chars → 25 chars)
+- ✅ **No more truncation errors** from YooMoney
+- ✅ **Successful payment processing** confirmed
+- ✅ **Maintained security** with proper validation
+- ✅ **Backward compatibility** with existing logic
+
+### 💰 YooMoney Commission Handling
+
+#### **Commission Structure**:
+YooMoney deducts commission from payments, so received amount is less than user paid.
+
+**Example**:
+- User pays: **2₽**
+- YooMoney receives: **1.94₽** (3% commission)
+- Commission: **0.06₽**
+
+#### **Validation Strategy**:
+```python
+# Accept flexible range to account for commission
+amount_kopecks = int(round(float(amount) * 100))  # Convert rubles to kopecks
+min_amount = int(exp_amount * 0.90)  # 90% of expected (up to 10% commission)
+max_amount = int(exp_amount * 1.10)  # 110% of expected (if user overpaid)
+
+if not (min_amount <= amount_kopecks <= max_amount):
+    # Record as failed payment
+    return _response(400, "Amount mismatch")
+```
+
+#### **Commission Ranges by Package**:
+- **3-дневный пакет (149₽)**: Accept 13410-16390 kopecks (90-110%)
+- **2-недельный пакет (590₽)**: Accept 53100-64900 kopecks (90-110%)
+- **Месячный пакет (1090₽)**: Accept 98100-119900 kopecks (90-110%)
+
+#### **Benefits**:
+- ✅ **Handles variable commission rates** (typically 2-5%)
+- ✅ **Prevents false rejections** due to commission
+- ✅ **Maintains security** with reasonable bounds
+- ✅ **Logs commission percentage** for monitoring
 
 ### ⚠️ LEGACY CODE CLEANUP COMPLETED ✅
 
