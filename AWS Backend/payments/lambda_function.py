@@ -168,12 +168,12 @@ def supabase_upsert_payment(order_id, user_id, product_id, amount, provider_oper
         else:
             raise e
 
-def supabase_get_user(user_id):
-    """Получаем данные пользователя"""
+def supabase_get_user(telegram_id):
+    """Получаем данные пользователя по telegram_id"""
     url = f"{SUPABASE_URL}/rest/v1/users"
     params = {
-        "id": f"eq.{user_id}",
-        "select": "id,package_expires_at,lessons_left"
+        "telegram_id": f"eq.{telegram_id}",
+        "select": "id,telegram_id,package_expires_at,lessons_left"
     }
     r = requests.get(url, headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}, params=params, timeout=5)
     r.raise_for_status()
@@ -272,19 +272,32 @@ def lambda_handler(event, context):
         min_amount = int(exp_amount * 0.90)  # Минимум 90% от ожидаемой суммы (до 10% комиссии)
         max_amount = int(exp_amount * 1.10)  # Максимум 110% от ожидаемой суммы (если пользователь переплатил)
         
+        # Получить данные пользователя для записи неуспешного платежа
+        try:
+            urow = supabase_get_user(user_id)  # user_id теперь это telegram_id
+            user_db_id = urow["id"] if urow else None
+        except Exception:
+            user_db_id = None
+        
         if not (min_amount <= amount_kopecks <= max_amount):
             print(f"❌ Amount mismatch: expected {min_amount}-{max_amount} kopecks, got {amount_kopecks} kopecks ({amount} rubles)")
             print(f"❌ Expected package price: {exp_amount} kopecks")
-            supabase_upsert_payment(order_id, user_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "amount_mismatch", "expected_range": f"{min_amount}-{max_amount}", "received": amount_kopecks, "raw": params}, "failed")
+            supabase_upsert_payment(order_id, user_db_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "amount_mismatch", "expected_range": f"{min_amount}-{max_amount}", "received": amount_kopecks, "raw": params}, "failed")
             return _response(400, "Amount mismatch")
+        
+        # Проверить что пользователь найден
+        if not urow:
+            print(f"❌ User not found: {user_id}")
+            supabase_upsert_payment(order_id, None, product_id, amount, params.get("operation_id", ""), lbl, {"m": "user_not_found", "telegram_id": user_id, "raw": params}, "failed")
+            return _response(400, "User not found")
         
         print(f"✅ Amount validation passed: {amount_kopecks} kopecks ({amount} rubles) within range {min_amount}-{max_amount}")
         print(f"💰 Commission: {exp_amount - amount_kopecks} kopecks ({((exp_amount - amount_kopecks) / exp_amount * 100):.1f}%)")
         
-        # 5) Записать платёж в payments (идемпотентно)
+        # 6) Записать платёж в payments (идемпотентно)
         provider_operation_id = params.get("operation_id", "")
         try:
-            result = supabase_upsert_payment(order_id, user_id, product_id, amount, provider_operation_id, lbl, params)
+            result = supabase_upsert_payment(order_id, urow["id"], product_id, amount, provider_operation_id, lbl, params)
             if result == "duplicate":
                 print(f"✅ Duplicate operation_id, returning OK")
                 return _response(200, "Duplicate op_id")
@@ -293,12 +306,11 @@ def lambda_handler(event, context):
             # Не валим вебхук - YooMoney будет ретраить
             return _response(200, "OK")
         
-        # 6) Начислить доступ
+        # 7) Начислить доступ
         conf = PKG.get(product_id)
         if conf:
             print(f"📦 Package found: {conf}")
             try:
-                urow = supabase_get_user(user_id)
                 base_dt = datetime.now(timezone.utc)
                 
                 if urow and urow.get("package_expires_at"):
@@ -314,13 +326,13 @@ def lambda_handler(event, context):
                 new_lessons = (urow.get("lessons_left") if urow else 0) or 0
                 new_lessons += conf["lessons"]
                 
-                supabase_update_user(user_id, new_expiry.isoformat(), new_lessons)
+                supabase_update_user(urow["id"], new_expiry.isoformat(), new_lessons)  # Используем UUID из БД
                 print(f"🎉 Access granted: +{conf['days']} days, +{conf['lessons']} lessons")
                 
                 # 7) Уведомление в Telegram
                 try:
                     notification_text = f"💳 *Оплата получена!* ✅\n\n+{conf['lessons']} уроков до {new_expiry.date()}\n\nПриятной практики! 🎯"
-                    notify_telegram(user_id, notification_text)
+                    notify_telegram(urow["telegram_id"], notification_text)  # Уведомление по telegram_id
                 except Exception as e:
                     print(f"⚠️ Telegram notification error: {e}")
                 

@@ -309,8 +309,8 @@ if (update.message?.text === '/feedback') {
           const buttons = [];
           
           // Формируем персонализированную ссылку на paywall
-          const userId = userData.id; // UUID из Supabase
-          const paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+          const telegramId = userData.telegram_id; // Telegram ID для короткого label
+          const paywallUrl = `https://linguapulse.ai/paywall?p=${telegramId}`;
           
           // Кнопка 1: Аудио-урок или покупка аудио-уроков
           if (hasAudioAccess && lessonsLeft > 0) {
@@ -1631,9 +1631,9 @@ The first users who sign up for the list will get a series of audio lessons for 
                       action: 'get_profile'
                     }, env);
                     
-                    const userId = userProfileResponse?.user_data?.id;
-                    if (userId) {
-                      paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+                    const telegramId = userProfileResponse?.user_data?.telegram_id;
+                    if (telegramId) {
+                      paywallUrl = `https://linguapulse.ai/paywall?p=${telegramId}`;
                     }
                   } catch (error) {
                     console.error('Error getting user ID for paywall link:', error);
@@ -1739,8 +1739,8 @@ The first users who sign up for the list will get a series of audio lessons for 
             const buttons = [];
             
             // Формируем персонализированную ссылку на paywall
-            const userId = userData.id; // UUID из Supabase
-            const paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+            const telegramId = userData.telegram_id; // Telegram ID для короткого label
+            const paywallUrl = `https://linguapulse.ai/paywall?p=${telegramId}`;
             
             // Кнопка аудио-урока
             if (hasAudioAccess) {
@@ -1979,9 +1979,9 @@ The first users who sign up for the list will get a series of audio lessons for 
                     
                     // Используем уже полученный userProfileResponse для персонализированной ссылки
                     let paywallUrl = "https://linguapulse.ai/paywall";
-                    const userId = userProfileResponse?.user_data?.id;
-                    if (userId) {
-                      paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+                    const telegramId = userProfileResponse?.user_data?.telegram_id;
+                    if (telegramId) {
+                      paywallUrl = `https://linguapulse.ai/paywall?p=${telegramId}`;
                     }
                     
                     instructionMessage = interface_language === 'en' 
