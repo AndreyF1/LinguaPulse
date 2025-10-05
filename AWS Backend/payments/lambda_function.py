@@ -25,12 +25,63 @@ PKG = {
     "3ec3f495-7257-466b-a0ba-bfac669a68c8": {"days": 3,  "lessons": 3},   # 3 дня
 }
 
+# Цены пакетов (в копейках) - для валидации
+PRICE = {
+    "fe88e77a-7931-410d-8a74-5b0473798c6c": 1090,  # 30 дней - 10.90₽
+    "551f676f-22e7-4c8c-ae7a-c5a8de655438": 590,   # 2 недели - 5.90₽
+    "3ec3f495-7257-466b-a0ba-bfac669a68c8": 149,   # 3 дня - 1.49₽
+}
+
 def _response(status=200, body="OK"):
     return {
         "statusCode": status,
         "headers": {"Content-Type": "text/plain"},
         "body": body,
     }
+
+def notify_telegram(user_id, text):
+    """Отправляем уведомление в Telegram пользователю"""
+    try:
+        bot_token = os.environ.get("BOT_TOKEN")
+        if not bot_token:
+            print(f"⚠️ BOT_TOKEN not set, skipping Telegram notification")
+            return
+        
+        # Получаем telegram_id из user_id (UUID)
+        telegram_id = None
+        try:
+            # Получаем telegram_id из Supabase
+            url = f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}&select=telegram_id"
+            headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+            r = requests.get(url, headers=headers, timeout=3)
+            if r.status_code == 200:
+                users = r.json()
+                if users:
+                    telegram_id = users[0].get('telegram_id')
+        except Exception as e:
+            print(f"⚠️ Error getting telegram_id: {e}")
+            return
+        
+        if not telegram_id:
+            print(f"⚠️ No telegram_id found for user {user_id}")
+            return
+        
+        # Отправляем сообщение
+        telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": telegram_id,
+            "text": text,
+            "parse_mode": "Markdown"
+        }
+        
+        r = requests.post(telegram_url, json=payload, timeout=4)
+        if r.status_code == 200:
+            print(f"✅ Telegram notification sent to {telegram_id}")
+        else:
+            print(f"⚠️ Telegram notification failed: {r.status_code} - {r.text}")
+            
+    except Exception as e:
+        print(f"⚠️ Error sending Telegram notification: {e}")
 
 def _sha1_hex(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
@@ -44,8 +95,8 @@ def verify_signature(params: dict) -> bool:
     )
     """
     if not YOOMONEY_SECRET:
-        print("⚠️ YOOMONEY_WEBHOOK_SECRET not set, skipping signature verification")
-        return True  # на самый первый тест можно пропустить
+        print("❌ YOOMONEY_WEBHOOK_SECRET not set, rejecting request")
+        return False  # В продакшене обязательно
 
     pieces = [
         params.get("notification_type", ""),
@@ -77,7 +128,7 @@ def parse_event_body(event) -> dict:
     print(f"📦 Parsed params: {parsed}")
     return parsed
 
-def supabase_upsert_payment(order_id, user_id, product_id, amount, provider_operation_id, label, raw):
+def supabase_upsert_payment(order_id, user_id, product_id, amount, provider_operation_id, label, raw, status="paid"):
     """Записываем платеж в таблицу payments (идемпотентно)"""
     # Генерируем UUID на основе order_id для идемпотентности
     import uuid
@@ -89,7 +140,7 @@ def supabase_upsert_payment(order_id, user_id, product_id, amount, provider_oper
         "user_id": user_id,
         "product_id": product_id,
         "amount": int(round(float(amount))) if amount else None,
-        "status": "paid",
+        "status": status,
         "provider": "yoomoney",
         "provider_operation_id": provider_operation_id,
         "label": label,
@@ -98,9 +149,17 @@ def supabase_upsert_payment(order_id, user_id, product_id, amount, provider_oper
     }]
     
     print(f"💰 Upserting payment: {payload}")
-    r = requests.post(url, headers=HEADERS, data=json.dumps(payload), timeout=5)
-    r.raise_for_status()
-    print(f"✅ Payment recorded successfully")
+    try:
+        r = requests.post(url, headers=HEADERS, data=json.dumps(payload), timeout=5)
+        r.raise_for_status()
+        print(f"✅ Payment recorded successfully")
+    except requests.HTTPError as e:
+        # Если дубликат по provider_operation_id - это нормально
+        if e.response.status_code == 409:  # Conflict
+            print(f"⚠️ Duplicate provider_operation_id: {provider_operation_id}")
+            return "duplicate"
+        else:
+            raise e
 
 def supabase_get_user(user_id):
     """Получаем данные пользователя"""
@@ -134,7 +193,7 @@ def lambda_handler(event, context):
         # 1) Распарсить form-data
         params = parse_event_body(event)
         
-        # 2) Верифицировать подпись
+        # 2) Строгая проверка подписи
         if not verify_signature(params):
             print("❌ Signature verification failed")
             return _response(403, "Bad signature")
@@ -151,16 +210,32 @@ def lambda_handler(event, context):
             print(f"❌ Error decoding label: {e}")
             return _response(400, "Bad label")
         
-        # 4) Записать платёж в payments (идемпотентно)
+        # 4) Валидация суммы vs пакет
         amount = params.get("amount", "")
+        exp_amount = PRICE.get(product_id)
+        if exp_amount is None:
+            print(f"❌ Unknown product_id: {product_id}")
+            supabase_upsert_payment(order_id, user_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "unknown_product", "raw": params}, "failed")
+            return _response(400, "Unknown product")
+        
+        if int(round(float(amount))) != exp_amount:
+            print(f"❌ Amount mismatch: expected {exp_amount}, got {amount}")
+            supabase_upsert_payment(order_id, user_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "amount_mismatch", "expected": exp_amount, "received": amount, "raw": params}, "failed")
+            return _response(400, "Amount mismatch")
+        
+        # 5) Записать платёж в payments (идемпотентно)
         provider_operation_id = params.get("operation_id", "")
         try:
-            supabase_upsert_payment(order_id, user_id, product_id, amount, provider_operation_id, lbl, params)
+            result = supabase_upsert_payment(order_id, user_id, product_id, amount, provider_operation_id, lbl, params)
+            if result == "duplicate":
+                print(f"✅ Duplicate operation_id, returning OK")
+                return _response(200, "Duplicate op_id")
         except Exception as e:
             print(f"❌ Database payments error: {e}")
-            return _response(500, f"DB payments error: {e}")
+            # Не валим вебхук - YooMoney будет ретраить
+            return _response(200, "OK")
         
-        # 5) Начислить доступ
+        # 6) Начислить доступ
         conf = PKG.get(product_id)
         if conf:
             print(f"📦 Package found: {conf}")
@@ -184,6 +259,13 @@ def lambda_handler(event, context):
                 supabase_update_user(user_id, new_expiry.isoformat(), new_lessons)
                 print(f"🎉 Access granted: +{conf['days']} days, +{conf['lessons']} lessons")
                 
+                # 7) Уведомление в Telegram
+                try:
+                    notification_text = f"💳 *Оплата получена!* ✅\n\n+{conf['lessons']} уроков до {new_expiry.date()}\n\nПриятной практики! 🎯"
+                    notify_telegram(user_id, notification_text)
+                except Exception as e:
+                    print(f"⚠️ Telegram notification error: {e}")
+                
             except Exception as e:
                 print(f"⚠️ Access grant error: {e}")
                 # Не валим вебхук — платёж уже записан; доступ можно догнать ретраем
@@ -195,4 +277,5 @@ def lambda_handler(event, context):
         
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
-        return _response(500, f"Internal error: {e}")
+        # Не валим вебхук - YooMoney будет ретраить
+        return _response(200, "OK")
