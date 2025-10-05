@@ -1653,7 +1653,13 @@ The first users who sign up for the list will get a series of audio lessons for 
               console.error(`❌ [${chatId}] Error checking audio access:`, error);
               const message = `🎤 **Аудио-урок**\n\n❌ Техническая ошибка. Попробуйте позже.`;
               
-              await sendMessageViaTelegram(chatId, message, env);
+              await sendMessageViaTelegram(chatId, message, env, {
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: "🔄 Сменить Режим ИИ", callback_data: "text_helper:start" }
+                  ]]
+                }
+              });
             }
             
           } else if (action === 'show') {
@@ -1977,9 +1983,7 @@ The first users who sign up for the list will get a series of audio lessons for 
                 }
               } catch (error) {
                 console.error(`❌ [${chatId}] Error checking audio access:`, error);
-                instructionMessage = userLang === 'en' 
-                  ? `🎤 **Audio Dialog Mode**\n\n❌ Technical error. Please try again later.`
-                  : `🎤 **Режим аудио-диалога**\n\n❌ Техническая ошибка. Попробуйте позже.`;
+                instructionMessage = `🎤 **Режим аудио-диалога**\n\n❌ Техническая ошибка. Попробуйте позже.`;
               }
               break;
             default:
