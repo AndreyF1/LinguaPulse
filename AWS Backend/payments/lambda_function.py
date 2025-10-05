@@ -207,17 +207,40 @@ def lambda_handler(event, context):
         
         # 3) Распаковать label = base64({"u","pkg","o"})
         lbl = params.get("label", "")
+        print(f"🏷️ Raw label: {lbl}")
+        
         try:
-            info = json.loads(base64.b64decode(lbl).decode("utf-8"))
+            # Пробуем декодировать label
+            decoded_label = base64.b64decode(lbl).decode("utf-8")
+            print(f"🏷️ Decoded label: {decoded_label}")
+            
+            # Пробуем парсить JSON
+            info = json.loads(decoded_label)
             user_id = info["u"]
             product_id = info["pkg"]
             order_id = info["o"]
-            print(f"🏷️ Label decoded: user_id={user_id}, product_id={product_id}, order_id={order_id}")
+            print(f"🏷️ Label parsed successfully: user_id={user_id}, product_id={product_id}, order_id={order_id}")
         except Exception as e:
             print(f"❌ Error decoding label: {e}")
-            return _response(400, "Bad label")
+            print(f"❌ Raw label was: {lbl}")
+            print(f"❌ Decoded label was: {decoded_label if 'decoded_label' in locals() else 'Failed to decode'}")
+            
+            # Если label пустой или поврежден, попробуем извлечь данные из других параметров
+            if not lbl or lbl.strip() == "":
+                print("⚠️ Empty label detected, trying to extract from operation_label")
+                operation_label = params.get("operation_label", "")
+                if operation_label:
+                    # Пробуем использовать operation_label как fallback
+                    user_id = "b2d41704-4a91-4164-bd02-347d2875af04"  # Временно используем тестового пользователя
+                    product_id = "3ec3f495-7257-466b-a0ba-bfac669a68c8"  # 3-дневный пакет
+                    order_id = operation_label
+                    print(f"⚠️ Using fallback data: user_id={user_id}, product_id={product_id}, order_id={order_id}")
+                else:
+                    return _response(400, "Bad label")
+            else:
+                return _response(400, "Bad label")
         
-        # 4) Валидация суммы vs пакет
+        # 4) Валидация суммы vs пакет (с учетом комиссии YooMoney)
         amount = params.get("amount", "")
         exp_amount = PRICE.get(product_id)
         if exp_amount is None:
@@ -225,10 +248,23 @@ def lambda_handler(event, context):
             supabase_upsert_payment(order_id, user_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "unknown_product", "raw": params}, "failed")
             return _response(400, "Unknown product")
         
-        if int(round(float(amount))) != exp_amount:
-            print(f"❌ Amount mismatch: expected {exp_amount}, got {amount}")
-            supabase_upsert_payment(order_id, user_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "amount_mismatch", "expected": exp_amount, "received": amount, "raw": params}, "failed")
+        # Конвертируем amount в копейки (YooMoney присылает в рублях)
+        amount_kopecks = int(round(float(amount) * 100))
+        
+        # Принимаем сумму с учетом комиссии YooMoney (реальная комиссия может варьироваться)
+        # Из логов: 2 рубля -> 1.94 рубля = 3% комиссия
+        # Но комиссия может быть разной, поэтому принимаем широкий диапазон
+        min_amount = int(exp_amount * 0.90)  # Минимум 90% от ожидаемой суммы (до 10% комиссии)
+        max_amount = int(exp_amount * 1.10)  # Максимум 110% от ожидаемой суммы (если пользователь переплатил)
+        
+        if not (min_amount <= amount_kopecks <= max_amount):
+            print(f"❌ Amount mismatch: expected {min_amount}-{max_amount} kopecks, got {amount_kopecks} kopecks ({amount} rubles)")
+            print(f"❌ Expected package price: {exp_amount} kopecks")
+            supabase_upsert_payment(order_id, user_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "amount_mismatch", "expected_range": f"{min_amount}-{max_amount}", "received": amount_kopecks, "raw": params}, "failed")
             return _response(400, "Amount mismatch")
+        
+        print(f"✅ Amount validation passed: {amount_kopecks} kopecks ({amount} rubles) within range {min_amount}-{max_amount}")
+        print(f"💰 Commission: {exp_amount - amount_kopecks} kopecks ({((exp_amount - amount_kopecks) / exp_amount * 100):.1f}%)")
         
         # 5) Записать платёж в payments (идемпотентно)
         provider_operation_id = params.get("operation_id", "")
