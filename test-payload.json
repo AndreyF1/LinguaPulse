@@ -1,0 +1,4 @@
+{
+  "body": "notification_type=p2p-incoming&operation_id=test123&amount=100&currency=643&datetime=2025-10-05T19:30:00Z&sender=test&codepro=false&sha1_hash=test&label=eyJ1IjoidGVzdC11c2VyLWlkIiwicGtnIjoiM2VjM2Y0OTUtNzI1Ny00NjZiLWEwYmEtYmZhYzY2OWE2OGM4IiwibyI6InRlc3Qtb3JkZXItMTIzIn0=",
+  "isBase64Encoded": false
+}

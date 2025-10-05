@@ -182,7 +182,9 @@ jobs:
           
           # Deploy payments Lambda
           echo "📦 Creating payments Lambda zip archive..."
-          zip -r payments-lambda.zip payments/lambda_function.py
+          cd payments
+          zip -r ../payments-lambda.zip lambda_function.py
+          cd ..
           echo "✅ Payments zip created"
           
           # Create payments Lambda if needed
