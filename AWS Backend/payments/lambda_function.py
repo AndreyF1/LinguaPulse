@@ -331,7 +331,7 @@ def lambda_handler(event, context):
                 # 7) Уведомление в Telegram
                 try:
                     notification_text = f"💳 *Оплата получена!* ✅\n\n+{conf['lessons']} уроков до {new_expiry.date()}\n\nПриятной практики! 🎯"
-                    notify_telegram(urow["telegram_id"], notification_text)  # Уведомление по telegram_id
+                    notify_telegram(urow["id"], notification_text)  # Передаем UUID пользователя
                 except Exception as e:
                     print(f"⚠️ Telegram notification error: {e}")
                 
