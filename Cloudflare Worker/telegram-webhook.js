@@ -1623,6 +1623,22 @@ The first users who sign up for the list will get a series of audio lessons for 
                   // Нет доступа - показываем детальную информацию
                   const expireDate = package_expires_at ? new Date(package_expires_at).toLocaleDateString('ru-RU') : 'не активна';
                   
+                  // Получаем userId для персонализированной ссылки
+                  let paywallUrl = "https://linguapulse.ai/paywall";
+                  try {
+                    const userProfileResponse = await callLambdaFunction('shared', {
+                      user_id: chatId,
+                      action: 'get_profile'
+                    }, env);
+                    
+                    const userId = userProfileResponse?.user_data?.id;
+                    if (userId) {
+                      paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+                    }
+                  } catch (error) {
+                    console.error('Error getting user ID for paywall link:', error);
+                  }
+                  
                   const message = interface_language === 'en' 
                     ? `🎤 **Audio Lesson**\n\n❌ **No audio lessons available**\n\n📊 **Current status:**\n• Audio lessons left: ${lessons_left}\n• Subscription expires: ${expireDate}\n\nTo access audio lessons, you need both active lessons and an active subscription.`
                     : `🎤 **Аудио-урок**\n\n❌ **Нет доступных аудио-уроков**\n\n📊 **Текущее состояние:**\n• Осталось аудио-уроков: ${lessons_left}\n• Подписка истекает: ${expireDate}\n\nДля доступа к аудио-урокам нужны и активные уроки, и активная подписка.`;
@@ -1633,7 +1649,7 @@ The first users who sign up for the list will get a series of audio lessons for 
                       inline_keyboard: [
                         [{ 
                           text: interface_language === 'en' ? "🛒 Add Lessons" : "🛒 Добавить уроки", 
-                          url: "https://linguapulse.ai/paywall" 
+                          url: paywallUrl 
                         }],
                         [{ text: interface_language === 'en' ? "🔄 Back to Profile" : "🔄 Назад к профилю", callback_data: "profile:show" }]
                       ]
@@ -1961,6 +1977,13 @@ The first users who sign up for the list will get a series of audio lessons for 
                     // Нет доступа - показываем детальную информацию
                     const expireDate = package_expires_at ? new Date(package_expires_at).toLocaleDateString('ru-RU') : 'не активна';
                     
+                    // Используем уже полученный userProfileResponse для персонализированной ссылки
+                    let paywallUrl = "https://linguapulse.ai/paywall";
+                    const userId = userProfileResponse?.user_data?.id;
+                    if (userId) {
+                      paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+                    }
+                    
                     instructionMessage = interface_language === 'en' 
                       ? `🎤 **Audio Dialog Mode**\n\n❌ **No audio lessons available**\n\n📊 **Current status:**\n• Audio lessons left: ${lessons_left}\n• Subscription expires: ${expireDate}\n\nTo access audio lessons, you need both active lessons and an active subscription.`
                       : `🎤 **Режим аудио-диалога**\n\n❌ **Нет доступных аудио-уроков**\n\n📊 **Текущее состояние:**\n• Осталось аудио-уроков: ${lessons_left}\n• Подписка истекает: ${expireDate}\n\nДля доступа к аудио-урокам нужны и активные уроки, и активная подписка.`;
@@ -1969,7 +1992,7 @@ The first users who sign up for the list will get a series of audio lessons for 
                     modeButtons = [
                       [{ 
                         text: interface_language === 'en' ? "🛒 Add Lessons" : "🛒 Добавить уроки", 
-                        url: "https://linguapulse.ai/paywall" 
+                        url: paywallUrl 
                       }],
                       [{ text: changeModeButtonText, callback_data: "text_helper:start" }]
                     ];
