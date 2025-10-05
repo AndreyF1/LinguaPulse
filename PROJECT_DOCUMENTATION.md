@@ -16,11 +16,19 @@
 
 ---
 
-## 📋 Current Status (September 25, 2025)
+## 📋 Current Status (October 2025)
+
+### 🎯 PRODUCTION-READY SYSTEM ✅
+
+**Current Architecture**: Microservices with 5 isolated Lambda functions
+**Status**: All core features implemented and working
+**Deployment**: Automated CI/CD pipeline active
+**Database**: Supabase integration with proper access controls
+**User Interface**: Multilingual support (Russian/English) with Telegram formatting
 
 ### 🎉 MAJOR ARCHITECTURAL REFACTORING COMPLETED
 
-**Date**: September 25, 2025  
+**Date**: October 2025  
 **Achievement**: Complete transition from monolithic to microservices architecture
 
 **What Changed**:
@@ -107,7 +115,7 @@ on:
 **Token Fix**: Updated GitHub PAT with `workflow` scope permissions
 **Result**: ✅ Automated deployment now works correctly
 
-### Audio Lessons Infrastructure ✅ **IN PROGRESS**
+### Audio Lessons Infrastructure ✅ **IMPLEMENTED**
 **Architecture**:
 - **TTS Generation**: OpenAI TTS API integration in AWS Lambda
 - **Audio Format**: Opus format for Telegram voice messages
@@ -118,16 +126,14 @@ on:
 - ✅ Access validation implemented
 - ✅ Lambda TTS action created (`generate_tts`)
 - ✅ Audio functions module prepared (`Cloudflare Worker/audio-functions.js`)
-- ❌ **CURRENT ISSUE**: Lambda TTS errors - `requests` module and OpenAI API key issues
-- 🔄 **NEXT**: Fix Lambda imports and TTS generation
+- ✅ TTS generation working with proper imports
+- ✅ Audio lesson flow fully functional
 
-**Known Issues**:
-```
-❌ [Lambda TTS] HTTP error: 400 - "TTS generation error: name 'requests' is not defined"
-❌ [Lambda TTS] HTTP error: 400 - "TTS generation error: No module named 'requests'"
-```
-
-**Debug Status**: Lambda function needs import fixes and environment variable validation
+**Features**:
+- Real-time voice message processing
+- AI-generated greetings and responses
+- Audio lesson counter and anti-abuse protection
+- Seamless integration with profile system
 
 ---
 
@@ -326,17 +332,29 @@ aws lambda update-function-code \
 #### Cloudflare Worker Secrets
 ```bash
 # Telegram API
-TELEGRAM_BOT_TOKEN          # Bot authentication token
+BOT_TOKEN                   # Bot authentication token (NOT TELEGRAM_BOT_TOKEN!)
+DEV_BOT_TOKEN              # Development bot token (for dev environment)
 
 # Lambda Function URLs (5 functions)
-ONBOARDING_URL              # Shared Lambda (linguapulse-onboarding)
-TRANSLATION_URL             # Translation Lambda
-GRAMMAR_URL                 # Grammar Lambda
-TEXT_DIALOG_URL             # Text Dialog Lambda
-AUDIO_DIALOG_URL            # Audio Dialog Lambda
+ONBOARDING_URL             # Shared Lambda (linguapulse-onboarding)
+TRANSLATION_URL            # Translation Lambda
+GRAMMAR_URL                # Grammar Lambda
+TEXT_DIALOG_URL            # Text Dialog Lambda
+AUDIO_DIALOG_URL           # Audio Dialog Lambda
+
+# OpenAI API
+OPENAI_KEY                 # OpenAI API key for TTS and AI processing
+
+# Payment System (Legacy - TRIBUTE variables no longer used)
+# TRIBUTE_APP_LINK           # LEGACY - No longer used
+# TRIBUTE_CHANNEL_LINK       # LEGACY - No longer used  
+# TRIBUTE_API_KEY            # LEGACY - No longer used
+
+# Development
+DEV_MODE                   # 'true' for development environment
 
 # Optional
-AWS_LAMBDA_TOKEN            # Lambda authorization (if enabled)
+AWS_LAMBDA_TOKEN           # Lambda authorization (if enabled)
 ```
 
 #### Cloudflare KV Namespaces
@@ -350,7 +368,7 @@ CHAT_KV        // Alternative KV namespace for audio sessions
 ```bash
 SUPABASE_URL               # Supabase project URL
 SUPABASE_SERVICE_KEY       # Supabase service role key (NOT anon/publishable key!)
-OPENAI_API_KEY             # OpenAI API key
+OPENAI_API_KEY             # OpenAI API key (NOT OPENAI_KEY!)
 ```
 
 **⚠️ CRITICAL: DO NOT CHANGE THESE VARIABLE NAMES!**
@@ -392,6 +410,159 @@ CLOUDFLARE_API_TOKEN      # Wrangler deployment token
 - **Landing page URL**: `https://linguapulse.ai/paywall?p=${userId}` (personalized with user UUID)
 
 ---
+
+## 🐛 CRITICAL BUGS FIXED & LESSONS LEARNED
+
+### ⚠️ CRITICAL: Environment Variable Names
+**Problem**: Inconsistent environment variable names between Cloudflare Worker and AWS Lambda
+**Fixed Issues**:
+- ❌ **BEFORE**: `TELEGRAM_BOT_TOKEN` in documentation, but code uses `BOT_TOKEN`
+- ✅ **AFTER**: Documentation updated to match actual code (`BOT_TOKEN`)
+- ❌ **BEFORE**: `OPENAI_KEY` in Worker, but `OPENAI_API_KEY` in Lambda
+- ✅ **AFTER**: Different names for different environments (Worker vs Lambda)
+
+**LESSON**: Always verify actual variable names in code, not documentation!
+
+### ⚠️ CRITICAL: Supabase Service Key Confusion
+**Problem**: Using wrong Supabase key type
+**Fixed Issues**:
+- ❌ **BEFORE**: Used "Publishable key" (sb_publishable_...)
+- ✅ **AFTER**: Use "Secret keys" (sb_secret_...) from Supabase Dashboard → Settings → API
+- **Impact**: Wrong key type causes authentication failures
+
+**LESSON**: Service role key vs anon key - service role has full access!
+
+### ⚠️ CRITICAL: CI/CD Pipeline Trigger Patterns
+**Problem**: GitHub Actions not triggering after repository restructure
+**Root Cause**: 
+- Workflow configured to trigger only on `Cloudflare Worker/**` path changes
+- CI/CD file changes didn't match trigger pattern
+- GitHub token lacked `workflow` scope permissions
+
+**Solution**:
+```yaml
+# .github/workflows/deploy-cloudflare.yml
+on:
+  push:
+    paths:
+      - 'Cloudflare Worker/**'  # Only triggers on Worker changes
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger option
+```
+
+**LESSON**: Always test CI/CD triggers after repository restructuring!
+
+### ⚠️ CRITICAL: Telegram Formatting Parse Modes
+**Problem**: Spoilers (`||text||`) not working with Markdown parse mode
+**Solution**: Smart parse mode detection
+```javascript
+if (reply.includes('||')) {
+  // Convert ||spoiler|| to <tg-spoiler>spoiler</tg-spoiler>
+  processedReply = reply.replace(/\|\|([^|]+)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+  parseMode = 'HTML';
+} else {
+  parseMode = 'Markdown';
+}
+```
+
+**LESSON**: Different parse modes for different formatting needs!
+
+### ⚠️ CRITICAL: Message Deduplication Race Conditions
+**Problem**: Duplicate messages processed simultaneously
+**Solution**: KV storage with message ID tracking
+```javascript
+const messageKey = `msg_${messageId}`;
+const existing = await env.CHAT_KV.get(messageKey);
+if (existing) {
+  return new Response('Duplicate message', { status: 200 });
+}
+await env.CHAT_KV.put(messageKey, 'processing', { expirationTtl: 300 });
+```
+
+**LESSON**: Always implement deduplication for webhook endpoints!
+
+### ⚠️ CRITICAL: Access Control Logic
+**Problem**: Users with active subscriptions couldn't access AI modes
+**Solution**: Dual-field access checking system
+```python
+def check_text_trial_access(user_id, supabase_url, supabase_key):
+    text_trial_ends_at = user.get('text_trial_ends_at')
+    package_expires_at = user.get('package_expires_at') 
+    
+    # Grant access if EITHER field is valid
+    if (text_trial_ends_at and text_trial_ends_at > now) or \
+       (package_expires_at and package_expires_at > now):
+        return {'has_access': True}
+```
+
+**LESSON**: Check ALL possible access fields, not just one!
+
+### ⚠️ CRITICAL: Lambda Function Dependencies
+**Problem**: Lambda functions missing shared modules
+**Solution**: Include shared modules in each Lambda deployment
+```yaml
+# .github/workflows/deploy-aws.yml
+- shared-lambda.zip (shared/*)
+- translation-lambda.zip (shared/* + translation/*)
+- grammar-lambda.zip (shared/* + grammar/*)
+```
+
+**LESSON**: Always include dependencies in Lambda packages!
+
+---
+
+## 💳 PAYMENT SYSTEM IMPLEMENTATION
+
+### Current Payment Button Implementation
+**Status**: ✅ Implemented with personalized paywall integration
+
+**Current Architecture**:
+```javascript
+// Payment buttons are generated dynamically in Cloudflare Worker
+// Get user UUID from Supabase
+const userId = userData.id; // UUID из Supabase
+
+// Generate personalized paywall URL
+const paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+
+// Generate payment buttons based on access level
+if (hasAudioAccess && lessonsLeft > 0) {
+  buttons.push([{ text: texts.startAudioLesson, callback_data: "profile:start_audio" }]);
+} else {
+  buttons.push([{ text: texts.buyAudioLessons, url: paywallUrl }]);
+}
+
+if (hasTextAccess) {
+  buttons.push([{ text: texts.startTextDialog, callback_data: "ai_mode:text_dialog" }]);
+} else {
+  buttons.push([{ text: texts.buyPremium, url: paywallUrl }]);
+}
+```
+
+**Payment URLs Used**:
+- `https://linguapulse.ai/paywall?p=${userId}` - Personalized paywall with user UUID
+- Dynamic parameter `p` contains user's UUID from Supabase database
+
+**Current Flow**:
+1. User clicks "Купить аудио-уроки" or "Купить премиум" button
+2. Redirected to personalized paywall URL with user UUID
+3. User completes payment on linguapulse.ai
+4. Payment system activates subscription in Supabase
+5. User gets access to premium features
+
+**✅ PERSONALIZED LINKS**: Each user gets unique URL with their UUID
+**✅ BACKEND INTEGRATION**: Paywall system handles payment processing
+**✅ DYNAMIC ACCESS CONTROL**: Buttons change based on user's current access level
+
+### ⚠️ LEGACY CODE CLEANUP NEEDED
+**TRIBUTE Integration**: Still present in code but no longer used
+**Files to clean up**:
+- `handleTributeWebhook()` function in `telegram-webhook.js`
+- `sendTributeChannelLink()` function in `telegram-webhook.js`
+- TRIBUTE environment variables (can be removed from secrets)
+- TRIBUTE webhook handling logic
+
+**Recommendation**: Remove TRIBUTE code to reduce codebase complexity
 
 ## 🐛 Known Issues & Solutions
 

@@ -23,10 +23,8 @@ export default {
     try {
       const { pathname } = new URL(request.url);
 
-      // Handle Tribute webhook
-      if (pathname === '/tribute-webhook') {
-        return await handleTributeWebhook(request, env);
-      }
+      // Handle webhook endpoints
+      // TRIBUTE webhook removed - no longer used
       
       // Handle test subscription webhook for dev environment only
       if (pathname === '/test-subscription' && env.DEV_MODE === 'true') {
@@ -173,7 +171,8 @@ if (update.message?.text === '/feedback') {
                 getTalkText(userLang, 'serviceUnavailable'), env, { parse_mode: 'Markdown' });
             } else {
                         // If they don't have an active subscription, show subscription option
-              await sendTributeChannelLink(chatId, env);
+              // Subscription handled by profile system with personalized paywall links
+              await sendMessageViaTelegram(chatId, "Please use /profile to manage your subscription", env);
             }
           } else {
                       // If they haven't completed the survey
@@ -841,7 +840,8 @@ if (update.message?.text === '/feedback') {
                 } else {
                   // Если нет активной подписки, предложить подписку
                   console.log(`Sending subscription offer`);
-                  await sendTributeChannelLink(chatId, env);
+                  // Subscription handled by profile system with personalized paywall links
+                  await sendMessageViaTelegram(chatId, "Please use /profile to manage your subscription", env);
                 }
               } else {
                 console.log(`User hasn't taken free lesson yet, suggesting free lesson`);
@@ -2188,14 +2188,14 @@ The first users who sign up for the list will get a series of audio lessons for 
         
         if (!subExpiredAt || subExpiredAt.getTime() < now.getTime()) {
           // If we get here, user doesn't have an active subscription or it has expired
-          // UPDATED: Redirect to Tribute channel subscription
-          await sendTributeChannelLink(chatId, env);
+          // Redirect to profile system with personalized paywall links
+          await sendMessageViaTelegram(chatId, "Please use /profile to manage your subscription", env);
           return new Response('OK');
         }
-        
+
         // If we get here, user has an active subscription
-        // UPDATED: Redirect to Tribute channel subscription
-        await sendTributeChannelLink(chatId, env);
+        // Redirect to profile system with personalized paywall links
+        await sendMessageViaTelegram(chatId, "Please use /profile to manage your subscription", env);
         return new Response('OK');
       }
 
@@ -2358,256 +2358,7 @@ async function ensureUserProfileExists(db, chatId) {
   }
 }
 
-// UPDATED: Handle Tribute webhook for subscription notifications
-async function handleTributeWebhook(request, env) {
-  try {
-    console.log('==== TRIBUTE WEBHOOK RECEIVED ====');
-    
-    // Ensure this is a POST request
-    if (request.method !== 'POST') {
-      console.log('Method not allowed, expected POST, got:', request.method);
-      return new Response('Method not allowed', { status: 405 });
-    }
-    
-    // Log headers for debugging
-    console.log('Request headers:');
-    const headersObj = {};
-    for (const [key, value] of request.headers.entries()) {
-      headersObj[key] = value;
-      console.log(`${key}: ${value}`);
-    }
-    
-    // Get the signature if available (for verification)
-    const signature = request.headers.get('trbt-signature') || request.headers.get('X-Tribute-Signature');
-    if (signature) {
-      console.log('Provided signature:', signature);
-    }
-    
-    // Check if this is a dev mode test webhook
-    const isDevModeTest = env.DEV_MODE === 'true' && signature === 'test_signature_dev_mode';
-    if (isDevModeTest) {
-      console.log('🧪 Processing as DEV MODE test webhook');
-    }
-    
-    // Get the raw payload
-    const payload = await request.text();
-    console.log('Tribute webhook payload:', payload);
-    
-    // Try to parse the payload
-    let event;
-    try {
-      event = JSON.parse(payload);
-      console.log('Parsed event:', JSON.stringify(event));
-    } catch (parseError) {
-      console.error('Failed to parse payload as JSON:', parseError);
-      return new Response('Invalid JSON payload', { status: 400 });
-    }
-    
-    // CRITICAL: Extract telegram_user_id from the correct location in the structure
-    let userId = null;
-    
-    // Look for telegram_user_id in the payload object (actual Tribute structure)
-    if (event.payload && event.payload.telegram_user_id) {
-      userId = event.payload.telegram_user_id;
-      console.log(`Found telegram_user_id in event.payload: ${userId}`);
-    }
-    // Fallback: Check for user_id directly in the event
-    else if (event.telegram_user_id) {
-      userId = event.telegram_user_id;
-      console.log(`Found telegram_user_id directly in event: ${userId}`);
-    }
-    // Fallback: Check for user_id in various other locations
-    else if (event.user_id) {
-      userId = event.user_id;
-      console.log(`Found user_id directly in event: ${userId}`);
-    }
-    else if (event.payload && event.payload.user_id) {
-      userId = event.payload.user_id;
-      console.log(`Found user_id in event.payload: ${userId}`);
-    }
-    else {
-      console.error('Could not find telegram_user_id or user_id in webhook payload');
-      console.log('Full event structure:', JSON.stringify(event));
-      return new Response('Missing user ID in webhook payload', { status: 400 });
-    }
-    
-    console.log(`Using user_id: ${userId}`);
-    
-    // Extract subscription information
-    let isNewSubscription = false;
-    let expiryDate = null;
-    
-    // Check if this is a new subscription by looking at the name field (Tribute specific)
-    // OR if this is a dev mode test with status "completed"
-    if (event.name === 'new_subscription' || (isDevModeTest && event.status === 'completed')) {
-      isNewSubscription = true;
-      console.log('Identified as new subscription');
-    }
-    
-    // Extract expiry date from the correct location (Tribute specific)
-    if (event.payload && event.payload.expires_at) {
-      expiryDate = new Date(event.payload.expires_at);
-      console.log(`Found expires_at in event.payload: ${event.payload.expires_at}`);
-    }
-    else if (event.expires_at) {
-      expiryDate = new Date(event.expires_at);
-      console.log(`Found expires_at directly in event: ${event.expires_at}`);
-    }
-    // For dev mode test, calculate expiry based on subscription_duration_days
-    else if (isDevModeTest && event.subscription_duration_days) {
-      expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + event.subscription_duration_days);
-      console.log(`Dev mode: calculated expiry date from duration (${event.subscription_duration_days} days)`);
-    }
-    
-    // Validate expiry date
-    if (expiryDate && isNaN(expiryDate.getTime())) {
-      console.warn('Invalid expiry date format detected');
-      expiryDate = null;
-    }
-    
-    // If no valid date found, use default (7 days)
-    if (!expiryDate) {
-      console.log('Using default expiry date (7 days from now)');
-      expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7);
-    }
-    
-    console.log('Expiry date:', expiryDate.toISOString());
-    
-    // Process subscription if it's new or we're forcing an update
-    if (isNewSubscription) {
-      // Calculate dates for subscription
-      const now = new Date();
-      const subscribed_at = now.toISOString();
-      const subscription_expired_at = expiryDate.toISOString();
-      
-      // For new subscriptions, make next lesson immediately available
-      const nextLessonDate = new Date(now);
-      nextLessonDate.setTime(now.getTime() - 60000); // 1 minute ago to ensure availability
-      const next_lesson_access_at = nextLessonDate.toISOString();
-      
-      // Update user profile with subscription info
-      try {
-        // Check if user exists in our database
-        console.log(`Checking if user ${userId} exists in database...`);
-        const { results, success, error } = await env.USER_DB
-          .prepare('SELECT * FROM user_profiles WHERE telegram_id = ?')
-          .bind(parseInt(userId, 10))
-          .all();
-        
-        if (!success) {
-          console.error('Database query error:', error);
-          throw new Error('Database query failed: ' + (error || 'Unknown error'));
-        }
-        
-        if (results.length === 0) {
-          console.error(`User ${userId} not found in database`);
-          return new Response(`User ${userId} not found in database. Please complete the onboarding first.`, { 
-            status: 404, 
-            headers: { 'Content-Type': 'text/plain' } 
-          });
-        }
-        
-        console.log(`User ${userId} found, updating subscription...`);
-        
-        // Update subscription info
-        const updateResult = await env.USER_DB
-          .prepare(`
-            UPDATE user_profiles
-            SET subscribed_at = ?,
-                subscription_expired_at = ?,
-                next_lesson_access_at = ?
-            WHERE telegram_id = ?
-          `)
-          .bind(
-            subscribed_at,
-            subscription_expired_at,
-            next_lesson_access_at,
-            parseInt(userId, 10)
-          )
-          .run();
-        
-        console.log('Database update result:', updateResult);
-        
-        if (!updateResult.success) {
-          console.error('Database update error:', updateResult.error);
-          throw new Error('Failed to update subscription: ' + (updateResult.error || 'Unknown error'));
-        }
-        
-        // Double-check that the update was successful
-        const { results: verifyResults } = await env.USER_DB
-          .prepare('SELECT subscribed_at, subscription_expired_at FROM user_profiles WHERE telegram_id = ?')
-          .bind(parseInt(userId, 10))
-          .all();
-        
-        if (verifyResults.length > 0) {
-          console.log('Subscription successfully updated:', {
-            user_id: userId,
-            subscribed_at: verifyResults[0].subscribed_at,
-            subscription_expired_at: verifyResults[0].subscription_expired_at
-          });
-        }
-        
-        // Notify user about successful subscription
-        try {
-          console.log(`Sending notification to user ${userId}`);
-          await sendMessageViaTelegram(userId,
-            "🎉 *Your subscription has been activated!* You now have access to daily personalized English lessons.",
-            env,
-            { 
-              parse_mode: 'Markdown',
-              reply_markup: { inline_keyboard: [[{ text: "Start Lesson Now", callback_data: "lesson:start" }]] } 
-            }
-          );
-          console.log(`Notification sent to user ${userId}`);
-        } catch (msgError) {
-          console.error('Error sending subscription notification:', msgError);
-          // Continue even if notification fails
-        }
-        
-        console.log('==== TRIBUTE WEBHOOK PROCESSING COMPLETED SUCCESSFULLY ====');
-        
-        return new Response(JSON.stringify({ 
-          status: 'success',
-          message: 'Subscription activated successfully',
-          user_id: userId,
-          expiry_date: subscription_expired_at
-        }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-      } catch (error) {
-        console.error('Error processing subscription:', error);
-        return new Response(JSON.stringify({ 
-          status: 'error', 
-          message: 'Database error: ' + error.message 
-        }), { 
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-    } else {
-      console.log('Not identified as a new subscription event, skipping processing');
-      return new Response(JSON.stringify({
-        status: 'success',
-        message: 'Event received but not processed (not identified as a new subscription)'
-      }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    
-  } catch (error) {
-    console.error('Unhandled error in handleTributeWebhook:', error);
-    return new Response(JSON.stringify({ 
-      status: 'error', 
-      message: 'Internal server error: ' + error.message 
-    }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-}
+// TRIBUTE webhook handler removed - no longer used
 
 // Verify Tribute webhook signature
 async function verifyTributeSignature(payload, signature, apiKey) {
@@ -2786,101 +2537,7 @@ async function handleTestSubscription(request, env) {
   }
 }
 
-// Function to send Tribute channel link for subscription
-async function sendTributeChannelLink(chatId, env) {
-  console.log(`[DEBUG] sendTributeChannelLink called for user ${chatId}`);
-  
-
-  const tributeTexts = {
-    en: {
-      title: "🔑 *To unlock premium lessons, please subscribe:*",
-      step1: "1️⃣ Click the button below to open the subscription page",
-      step2: "2️⃣ Complete the payment process",
-      step3: "3️⃣ After payment, you'll receive a confirmation message from the bot",
-      benefit: "🎯 *Your subscription will give you access to daily personalized English lessons!*",
-      subscribeButton: "Subscribe for 600₽/month",
-      testButton: "🧪 TEST PAYMENT (Dev Only)"
-    },
-    ru: {
-      title: "🔑 *Для доступа к премиум урокам, пожалуйста, подпишитесь:*",
-      step1: "1️⃣ Нажмите кнопку ниже, чтобы открыть страницу подписки",
-      step2: "2️⃣ Завершите процесс оплаты",
-      step3: "3️⃣ После оплаты вы получите подтверждающее сообщение от бота",
-      benefit: "🎯 *Ваша подписка даст вам доступ к ежедневным персонализированным урокам английского!*",
-      subscribeButton: "Подписаться за 600₽/месяц",
-      testButton: "🧪 ТЕСТОВАЯ ОПЛАТА (Только разработка)"
-    }
-  };
-
-  function getTributeText(lang, key) {
-    return tributeTexts[lang]?.[key] || tributeTexts.en[key] || key;
-  }
-
-  // Сначала проверяем специальную ссылку на приложение Tribute
-  let tributeAppLink = env.TRIBUTE_APP_LINK;
-  
-  // Если нет специальной ссылки, проверяем обычную ссылку на канал
-  if (!tributeAppLink || tributeAppLink.trim() === '') {
-    console.log(`[DEBUG] TRIBUTE_APP_LINK not found, checking TRIBUTE_CHANNEL_LINK`);
-    tributeAppLink = env.TRIBUTE_CHANNEL_LINK;
-  }
-  
-  // Если обе переменные отсутствуют, используем запасную ссылку
-  if (!tributeAppLink || tributeAppLink.trim() === '') {
-    console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
-          tributeAppLink = "https://t.me/tribute/app?startapp=swvs"; // Запасная ссылка на Tribute
-  }
-  
-  // Проверяем, что ссылка имеет корректный формат
-  if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
-    console.warn(`[DEBUG] Tribute link doesn't start with http:// or https://, fixing: ${tributeAppLink}`);
-    tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
-  }
-
-  // Get user language directly
-  let userLang = 'en';
-  try {
-    const userProfileResponse = await callLambdaFunction('shared', {
-      user_id: chatId,
-      action: 'get_profile'
-    }, env);
-    
-    userLang = userProfileResponse?.user_data?.interface_language || 'en';
-  } catch (error) {
-    console.error('Error getting user language for tribute:', error);
-  }
-  
-  const message = `${getTributeText(userLang, 'title')}\n\n` +
-                 `${getTributeText(userLang, 'step1')}\n` +
-                 `${getTributeText(userLang, 'step2')}\n` +
-                 `${getTributeText(userLang, 'step3')}\n\n` +
-                 `${getTributeText(userLang, 'benefit')}`;
-  
-  // Prepare buttons array
-  const buttons = [];
-  
-  // Always add the real subscription button if link is available
-  if (tributeAppLink) {
-    buttons.push([{ text: getTributeText(userLang, 'subscribeButton'), url: tributeAppLink }]);
-  }
-  
-  // Add test payment button ONLY in dev mode
-  if (env.DEV_MODE === 'true') {
-    buttons.push([{ text: getTributeText(userLang, 'testButton'), callback_data: "test:payment" }]);
-  }
-  
-  // Send message with appropriate buttons
-  if (buttons.length > 0) {
-    await sendMessageViaTelegram(chatId, message, env, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: buttons
-      }
-    });
-  } else {
-    await sendMessageViaTelegram(chatId, message, env, { parse_mode: 'Markdown' });
-  }
-}
+// TRIBUTE channel link function removed - no longer used
 
 // KV prefix for transient test state
 const STATE_PREFIX = 'state:';
@@ -2940,132 +2597,11 @@ async function sendMessageViaTelegram(chatId, text, env, options = null) {
   }
 }
 
-/* ──── helper: add subscription button to message if user has no active subscription ──── */
+/* ──── helper: send message (subscription handled by profile system) ──── */
 async function sendMessageWithSubscriptionCheck(chatId, text, env, options = null) {
-  try {
-    console.log(`[DEBUG] sendMessageWithSubscriptionCheck for user ${chatId}, text: ${text.substring(0, 30)}...`);
-    
-    // Всегда проверяем активную подписку
-    const isSubscribed = await hasActiveSubscription(chatId, env);
-    console.log(`[DEBUG] User ${chatId} is subscribed: ${isSubscribed}`);
-    
-    // Get user language for subscription button localization
-    let userLang = 'en';
-    try {
-      const userProfileResponse = await callLambdaFunction('shared', {
-        user_id: chatId,
-        action: 'get_profile'
-      }, env);
-      
-      userLang = userProfileResponse?.user_data?.interface_language || 'en';
-    } catch (error) {
-      console.error('Error getting user language for subscription button:', error);
-    }
-    
-    const subscribeButtonText = userLang === 'ru' ? 'Подписаться за 600₽/месяц' : 'Subscribe for 600₽/month';
-    
-    // Сначала проверяем специальную ссылку на приложение Tribute
-    let tributeAppLink = env.TRIBUTE_APP_LINK;
-    
-    // Если нет специальной ссылки, проверяем обычную ссылку на канал
-    if (!tributeAppLink || tributeAppLink.trim() === '') {
-      console.log(`[DEBUG] TRIBUTE_APP_LINK not found, checking TRIBUTE_CHANNEL_LINK`);
-      tributeAppLink = env.TRIBUTE_CHANNEL_LINK;
-    }
-    
-    // Если обе переменные отсутствуют, используем запасную ссылку
-    if (!tributeAppLink || tributeAppLink.trim() === '') {
-      console.warn(`[DEBUG] No Tribute links found in environment, using fallback link`);
-      tributeAppLink = "https://t.me/tribute/app?startapp=swvs"; // Запасная ссылка на Tribute
-    }
-    
-    // Проверяем, что ссылка имеет корректный формат и начинается с https:// или http://
-    if (tributeAppLink && !tributeAppLink.match(/^https?:\/\//)) {
-      console.warn(`[DEBUG] Tribute link doesn't start with http:// or https://, fixing: ${tributeAppLink}`);
-      tributeAppLink = "https://" + tributeAppLink.replace(/^[\/\\]+/, '');
-    }
-    
-    console.log(`[DEBUG] Using tribute link: ${tributeAppLink}`);
-    
-    // Если нет активной подписки и есть ссылка - добавляем кнопку
-    if (!isSubscribed && tributeAppLink) {
-      // Создаем безопасную копию опций или инициализируем, если их нет
-      let messageOptions;
-      
-      try {
-        if (options) {
-          messageOptions = JSON.parse(JSON.stringify(options));
-        } else {
-          messageOptions = {};
-        }
-      } catch (error) {
-        console.error(`[DEBUG] Error cloning options, creating new object:`, error);
-        messageOptions = {};
-        
-        // Переносим базовые свойства вручную, если клонирование не удалось
-        if (options) {
-          if (options.parse_mode) messageOptions.parse_mode = options.parse_mode;
-          
-          // Безопасно скопировать reply_markup, если он есть
-          if (options.reply_markup) {
-            messageOptions.reply_markup = { inline_keyboard: [] };
-            
-            // Копируем существующую клавиатуру, если она есть
-            if (options.reply_markup.inline_keyboard && Array.isArray(options.reply_markup.inline_keyboard)) {
-              options.reply_markup.inline_keyboard.forEach(row => {
-                if (Array.isArray(row)) {
-                  const newRow = [];
-                  row.forEach(button => {
-                    newRow.push({...button});
-                  });
-                  messageOptions.reply_markup.inline_keyboard.push(newRow);
-                }
-              });
-            }
-          }
-        }
-      }
-      
-      console.log(`[DEBUG] Original message options:`, JSON.stringify(messageOptions));
-      
-      // Добавляем или объединяем reply_markup с кнопкой подписки
-      if (!messageOptions.reply_markup) {
-        // Нет кнопок - создаем новую клавиатуру
-        messageOptions.reply_markup = {
-          inline_keyboard: [[{ text: subscribeButtonText, url: tributeAppLink }]]
-        };
-      } else {
-        // Уже есть кнопки
-        if (!messageOptions.reply_markup.inline_keyboard) {
-          // Нет именно inline_keyboard, создаем ее
-          messageOptions.reply_markup.inline_keyboard = [[{ text: subscribeButtonText, url: tributeAppLink }]];
-        } else {
-          // Есть inline_keyboard, добавляем новую строку с кнопкой
-          messageOptions.reply_markup.inline_keyboard.push([{ text: subscribeButtonText, url: tributeAppLink }]);
-        }
-      }
-      
-      // Add test payment button ONLY in dev mode
-      if (env.DEV_MODE === 'true') {
-        if (!messageOptions.reply_markup.inline_keyboard) {
-          messageOptions.reply_markup.inline_keyboard = [];
-        }
-        messageOptions.reply_markup.inline_keyboard.push([{ text: "🧪 TEST PAYMENT (Dev Only)", callback_data: "test:payment" }]);
-        console.log(`[DEBUG] Added test payment button for dev mode`);
-      }
-      
-      console.log(`[DEBUG] Final message options with subscription button:`, JSON.stringify(messageOptions));
-      return await sendMessageViaTelegram(chatId, text, env, messageOptions);
-    }
-    
-    // Пользователь подписан или нет ссылки на канал - отправляем обычное сообщение
-    console.log(`[DEBUG] Sending regular message without subscription button`);
-    return await sendMessageViaTelegram(chatId, text, env, options);
-  } catch (error) {
-    console.error(`Error in sendMessageWithSubscriptionCheck for user ${chatId}:`, error);
-    // Обработка ошибок и возврат к обычной отправке сообщения
-    return await sendMessageViaTelegram(chatId, text, env, options);
-  }
+  // TRIBUTE subscription system removed - subscription now handled by profile system
+  // This function now just sends the message without subscription buttons
+  return await sendMessageViaTelegram(chatId, text, env, options);
 }
 
 /* ──── helper: call any Telegram API method ──── */
@@ -3366,9 +2902,9 @@ async function handleLessonCommand(chatId, env) {
     
     if (!subExpiredAt || subExpiredAt.getTime() < now.getTime()) {
       console.log(`User ${chatId} subscription expired or not present, showing subscribe button`);
-      // No active subscription or it's expired - show subscribe button to Tribute channel
+      // No active subscription or it's expired - redirect to profile
       message += getLessonText(userLang, 'subscriptionExpired');
-      await sendTributeChannelLink(chatId, env);
+      await sendMessageViaTelegram(chatId, "Please use /profile to manage your subscription", env);
       return;
     }
     
