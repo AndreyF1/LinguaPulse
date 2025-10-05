@@ -187,7 +187,13 @@ def supabase_update_user(user_id, new_expiry_iso, new_lessons):
     print(f"✅ User access updated successfully")
 
 def lambda_handler(event, context):
-    print(f"🚀 YooMoney webhook received: {json.dumps(event, default=str)}")
+    # Принудительное логирование для диагностики
+    print("=" * 50)
+    print("🚀 YOOMONEY WEBHOOK CALLED")
+    print("=" * 50)
+    print(f"Event: {json.dumps(event, default=str)}")
+    print(f"Context: {json.dumps(vars(context), default=str)}")
+    print("=" * 50)
     
     try:
         # 1) Распарсить form-data
