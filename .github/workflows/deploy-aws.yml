@@ -67,7 +67,7 @@ jobs:
               echo "✅ Setting environment variables..."
               aws lambda update-function-configuration \
                 --function-name $function_name \
-                --environment Variables='{"SUPABASE_URL":"${{ secrets.SUPABASE_URL }}","SUPABASE_SERVICE_KEY":"${{ secrets.SUPABASE_KEY }}","OPENAI_API_KEY":"${{ secrets.OPENAI_KEY }}","YOOMONEY_WEBHOOK_SECRET":"${{ secrets.YOOMONEY_WEBHOOK_SECRET }}"}' \
+                --environment Variables='{SUPABASE_URL="${{ secrets.SUPABASE_URL }}",SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_KEY }}",OPENAI_API_KEY="${{ secrets.OPENAI_KEY }}",YOOMONEY_WEBHOOK_SECRET="${{ secrets.YOOMONEY_WEBHOOK_SECRET }}"}' \
                 --no-cli-pager
               echo "✅ Lambda function $function_name created"
             fi
@@ -202,7 +202,7 @@ jobs:
           echo "⚙️  Setting environment variables for payments Lambda..."
           if aws lambda update-function-configuration \
             --function-name linguapulse-payments \
-            --environment Variables='{"SUPABASE_URL":"${{ secrets.SUPABASE_URL }}","SUPABASE_SERVICE_KEY":"${{ secrets.SUPABASE_KEY }}","YOOMONEY_WEBHOOK_SECRET":"${{ secrets.YOOMONEY_WEBHOOK_SECRET }}"}' \
+            --environment Variables='{SUPABASE_URL="${{ secrets.SUPABASE_URL }}",SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_KEY }}",YOOMONEY_WEBHOOK_SECRET="${{ secrets.YOOMONEY_WEBHOOK_SECRET }}"}' \
             --no-cli-pager; then
             echo "✅ Payments Lambda environment variables updated"
           else
