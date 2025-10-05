@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'AWS Backend/**'
+      - '.github/workflows/deploy-aws.yml'
     branches: [ main ]
   workflow_dispatch:
 
