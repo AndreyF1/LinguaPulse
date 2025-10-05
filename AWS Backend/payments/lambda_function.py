@@ -32,6 +32,13 @@ PRICE = {
     "3ec3f495-7257-466b-a0ba-bfac669a68c8": 200,     # 3 дня - 2₽ (для тестирования, вместо 14900)
 }
 
+# Маппинг имен пакетов на UUID
+PACKAGE_NAMES = {
+    "mini": "3ec3f495-7257-466b-a0ba-bfac669a68c8",      # 3 дня
+    "2weeks": "551f676f-22e7-4c8c-ae7a-c5a8de655438",    # 2 недели  
+    "month": "fe88e77a-7931-410d-8a74-5b0473798c6c",     # 30 дней
+}
+
 def _response(status=200, body="OK"):
     return {
         "statusCode": status,
@@ -217,7 +224,15 @@ def lambda_handler(event, context):
             # Пробуем парсить JSON
             info = json.loads(decoded_label)
             user_id = info["u"]
-            product_id = info["pkg"]
+            
+            # Конвертируем имя пакета в UUID (если нужно)
+            pkg_name = info["pkg"]
+            if pkg_name in PACKAGE_NAMES:
+                product_id = PACKAGE_NAMES[pkg_name]
+                print(f"🏷️ Package name '{pkg_name}' mapped to UUID: {product_id}")
+            else:
+                product_id = pkg_name  # Уже UUID
+            
             order_id = info["o"]
             print(f"🏷️ Label parsed successfully: user_id={user_id}, product_id={product_id}, order_id={order_id}")
         except Exception as e:
