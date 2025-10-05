@@ -1895,6 +1895,12 @@ The first users who sign up for the list will get a series of audio lessons for 
                 if (accessResponse && accessResponse.success) {
                   const { has_access, lessons_left, package_expires_at, interface_language } = accessResponse;
                   
+                  // Получаем профиль пользователя для обеих веток (доступ есть/нет)
+                  const userProfileResponse = await callLambdaFunction('shared', {
+                    user_id: chatId,
+                    action: 'get_profile'
+                  }, env);
+                  
                   if (has_access) {
                     // 0. KILL PREVIOUS SESSION - Clear all old audio dialog data
                     console.log(`🧹 [${chatId}] Cleaning up any previous audio dialog session`);
@@ -1928,13 +1934,7 @@ The first users who sign up for the list will get a series of audio lessons for 
                     // Генерируем первое аудио-приветствие
                     console.log(`🤖 [${chatId}] Generating first audio greeting`);
                     
-                    // Получаем уровень пользователя из БД
-                    // Получаем уровень пользователя из Supabase через Lambda
-                    const userProfileResponse = await callLambdaFunction('shared', {
-                      user_id: chatId,
-                      action: 'get_profile'
-                    }, env);
-                    
+                    // Получаем уровень пользователя из уже полученного профиля
                     const userLevel = userProfileResponse?.user_data?.current_level || 'Intermediate';
                     console.log(`👤 [${chatId}] User level: ${userLevel}`);
                     
