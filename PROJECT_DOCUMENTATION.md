@@ -73,6 +73,14 @@
 #### 5. User Profile System ✅ **NEW**
 - **`/profile` command**: Comprehensive user dashboard with lessons, subscription, streak
 - **Dynamic buttons**: Audio/Text lesson access based on subscription status
+
+#### 6. Payment System ✅ **PRODUCTION-READY**
+- **YooMoney Integration**: Complete webhook processing with signature verification
+- **Price Validation**: Strict amount validation against expected package prices
+- **Idempotent Processing**: Duplicate payment protection and graceful error handling
+- **Automatic Access Granting**: Instant subscription activation after payment
+- **Telegram Notifications**: Real-time user feedback on successful payments
+- **Security Features**: SHA1 signature verification, amount validation, fraud protection
 - **Date formatting**: User-friendly date display (DD.MM.YYYY format)
 - **Access validation**: Real-time lesson and subscription checks
 - **Streak tracking**: Daily practice streak with automatic updates
@@ -297,6 +305,7 @@ aws lambda update-function-code --function-name <name> --zip-file fileb://<zip>
 - `linguapulse-grammar`
 - `linguapulse-text-dialog`
 - `linguapulse-audio-dialog`
+- `linguapulse-payments` (YooMoney webhook)
 
 **Environment Variables**:
 - Stored in GitHub Secrets
@@ -335,7 +344,7 @@ aws lambda update-function-code \
 BOT_TOKEN                   # Bot authentication token (NOT TELEGRAM_BOT_TOKEN!)
 DEV_BOT_TOKEN              # Development bot token (for dev environment)
 
-# Lambda Function URLs (5 functions)
+# Lambda Function URLs (6 functions)
 ONBOARDING_URL             # Shared Lambda (linguapulse-onboarding)
 TRANSLATION_URL            # Translation Lambda
 GRAMMAR_URL                # Grammar Lambda
@@ -345,7 +354,8 @@ AUDIO_DIALOG_URL           # Audio Dialog Lambda
 # OpenAI API
 OPENAI_KEY                 # OpenAI API key for TTS and AI processing
 
-# Payment System (Legacy - TRIBUTE variables no longer used)
+# Payment System (YooMoney Integration)
+YOOMONEY_WEBHOOK_SECRET    # Secret for YooMoney signature verification
 # TRIBUTE_APP_LINK           # LEGACY - No longer used
 # TRIBUTE_CHANNEL_LINK       # LEGACY - No longer used  
 # TRIBUTE_API_KEY            # LEGACY - No longer used
@@ -513,56 +523,184 @@ def check_text_trial_access(user_id, supabase_url, supabase_key):
 
 ## 💳 PAYMENT SYSTEM IMPLEMENTATION
 
-### Current Payment Button Implementation
-**Status**: ✅ Implemented with personalized paywall integration
+### 🎯 PRODUCTION-READY YOOMONEY INTEGRATION ✅
 
-**Current Architecture**:
-```javascript
-// Payment buttons are generated dynamically in Cloudflare Worker
-// Get user UUID from Supabase
-const userId = userData.id; // UUID из Supabase
+**Status**: ✅ Fully implemented and tested
+**Date**: October 2025
+**Architecture**: Dedicated AWS Lambda function with API Gateway integration
 
-// Generate personalized paywall URL
-const paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+### 🔧 Technical Implementation
 
-// Generate payment buttons based on access level
-if (hasAudioAccess && lessonsLeft > 0) {
-  buttons.push([{ text: texts.startAudioLesson, callback_data: "profile:start_audio" }]);
-} else {
-  buttons.push([{ text: texts.buyAudioLessons, url: paywallUrl }]);
+#### 1. **AWS Lambda Function**: `linguapulse-payments`
+**Location**: `AWS Backend/payments/lambda_function.py`
+**Runtime**: Python 3.9
+**Handler**: `lambda_function.lambda_handler`
+
+**Core Features**:
+- ✅ **YooMoney webhook processing** (form-urlencoded)
+- ✅ **SHA1 signature verification** (strict security)
+- ✅ **Price validation** against expected package prices
+- ✅ **Idempotent payment processing** (duplicate protection)
+- ✅ **Automatic access granting** (Supabase integration)
+- ✅ **Telegram notifications** (user feedback)
+- ✅ **Error handling** with graceful fallbacks
+
+#### 2. **API Gateway Integration**
+**Endpoint**: `POST /yoomoney-webhook`
+**URL**: `https://llcr9578ee.execute-api.us-east-1.amazonaws.com/prod/yoomoney-webhook`
+**Integration**: Direct Lambda proxy integration
+
+#### 3. **Package Configuration**
+```python
+# Package mapping (days + lessons)
+PKG = {
+    "fe88e77a-7931-410d-8a74-5b0473798c6c": {"days": 30, "lessons": 30},  # 30 дней
+    "551f676f-22e7-4c8c-ae7a-c5a8de655438": {"days": 14, "lessons": 10},  # 2 недели
+    "3ec3f495-7257-466b-a0ba-bfac669a68c8": {"days": 3,  "lessons": 3},   # 3 дня
 }
 
-if (hasTextAccess) {
-  buttons.push([{ text: texts.startTextDialog, callback_data: "ai_mode:text_dialog" }]);
-} else {
-  buttons.push([{ text: texts.buyPremium, url: paywallUrl }]);
+# Price validation (in kopecks)
+PRICE = {
+    "fe88e77a-7931-410d-8a74-5b0473798c6c": 109000,  # 30 дней - 1090₽
+    "551f676f-22e7-4c8c-ae7a-c5a8de655438": 59000,   # 2 недели - 590₽
+    "3ec3f495-7257-466b-a0ba-bfac669a68c8": 200,     # 3 дня - 2₽ (testing price)
 }
 ```
 
-**Payment URLs Used**:
-- `https://linguapulse.ai/paywall?p=${userId}` - Personalized paywall with user UUID
-- Dynamic parameter `p` contains user's UUID from Supabase database
+### 🔒 Security Features
 
-**Current Flow**:
-1. User clicks "Купить аудио-уроки" or "Купить премиум" button
-2. Redirected to personalized paywall URL with user UUID
-3. User completes payment on linguapulse.ai
-4. Payment system activates subscription in Supabase
-5. User gets access to premium features
+#### 1. **Signature Verification**
+```python
+def verify_signature(params: dict) -> bool:
+    # YooMoney SHA1 signature validation
+    # Formula: sha1_hex(notification_type&operation_id&amount&currency&datetime&sender&codepro&secret&label)
+    pieces = [params.get("notification_type", ""), params.get("operation_id", ""), ...]
+    calc = _sha1_hex("&".join(pieces))
+    return calc == params.get("sha1_hash", "")
+```
 
-**✅ PERSONALIZED LINKS**: Each user gets unique URL with their UUID
-**✅ BACKEND INTEGRATION**: Paywall system handles payment processing
-**✅ DYNAMIC ACCESS CONTROL**: Buttons change based on user's current access level
+#### 2. **Price Validation**
+```python
+# Strict amount validation against expected prices
+exp_amount = PRICE.get(product_id)
+if exp_amount is None or int(round(float(amount))) != exp_amount:
+    # Record as failed payment and reject
+    supabase_upsert_payment(..., status="failed")
+    return _response(400, "Amount mismatch")
+```
 
-### ⚠️ LEGACY CODE CLEANUP NEEDED
-**TRIBUTE Integration**: Still present in code but no longer used
-**Files to clean up**:
-- `handleTributeWebhook()` function in `telegram-webhook.js`
-- `sendTributeChannelLink()` function in `telegram-webhook.js`
-- TRIBUTE environment variables (can be removed from secrets)
-- TRIBUTE webhook handling logic
+#### 3. **Idempotent Processing**
+```python
+# UUID-based payment ID for idempotency
+payment_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"yoomoney-{order_id}"))
 
-**Recommendation**: Remove TRIBUTE code to reduce codebase complexity
+# Handle duplicate operation_id gracefully
+try:
+    supabase_upsert_payment(...)
+except requests.HTTPError as e:
+    if e.response.status_code == 409:  # Conflict
+        return _response(200, "Duplicate op_id")
+```
+
+### 💰 Payment Processing Flow
+
+#### 1. **Webhook Reception**
+```
+YooMoney → API Gateway → Lambda Function
+```
+
+#### 2. **Processing Steps**
+1. **Parse** form-urlencoded body from API Gateway
+2. **Verify** SHA1 signature using YooMoney secret
+3. **Decode** base64-encoded label: `{"u": user_id, "pkg": product_id, "o": order_id}`
+4. **Validate** payment amount against expected price
+5. **Record** payment in Supabase `payments` table (idempotent)
+6. **Grant** access by updating user's `package_expires_at` and `lessons_left`
+7. **Notify** user via Telegram about successful payment
+
+#### 3. **Access Granting Logic**
+```python
+# Extend existing subscription or create new
+base_dt = datetime.now(timezone.utc)
+if user_expires_at and user_expires_at > base_dt:
+    base_dt = user_expires_at  # Extend existing
+
+new_expiry = base_dt + timedelta(days=conf["days"])
+new_lessons = current_lessons + conf["lessons"]
+```
+
+### 📱 User Experience
+
+#### 1. **Payment Button Integration**
+```javascript
+// Cloudflare Worker generates personalized paywall URLs
+const paywallUrl = `https://linguapulse.ai/paywall?p=${userId}`;
+
+// Dynamic buttons based on access level
+if (!hasAudioAccess) {
+    buttons.push([{ text: texts.buyAudioLessons, url: paywallUrl }]);
+}
+```
+
+#### 2. **Telegram Notifications**
+```python
+# Automatic user notification after successful payment
+notification_text = f"💳 *Оплата получена!* ✅\n\n+{conf['lessons']} уроков до {new_expiry.date()}\n\nПриятной практики! 🎯"
+notify_telegram(user_id, notification_text)
+```
+
+### 🔧 Environment Variables
+
+#### **Lambda Environment**:
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_SERVICE_KEY` - Service role key for database access
+- `YOOMONEY_WEBHOOK_SECRET` - Secret for signature verification
+- `BOT_TOKEN` - Telegram bot token for notifications
+
+#### **CI/CD Integration**:
+- Automated deployment via GitHub Actions
+- Environment variables set during deployment
+- Zero-downtime updates
+
+### 🧪 Testing & Validation
+
+#### **Tested Scenarios**:
+- ✅ **Correct payment amounts** → Access granted
+- ✅ **Incorrect payment amounts** → Rejected with `400 Amount mismatch`
+- ✅ **Invalid signatures** → Rejected with `403 Bad signature`
+- ✅ **Duplicate operations** → Handled gracefully with `200 Duplicate op_id`
+- ✅ **Database errors** → Graceful fallback, doesn't break webhook
+
+#### **Real Payment Testing**:
+- ✅ **YooMoney test requests** successfully processed
+- ✅ **User access granted** immediately after payment
+- ✅ **Telegram notifications** sent to users
+- ✅ **Payment records** stored in Supabase
+
+### 📊 Monitoring & Logging
+
+#### **CloudWatch Integration**:
+- All Lambda invocations logged
+- Error tracking and debugging
+- Performance metrics monitoring
+- Signature verification logs
+
+#### **Error Handling**:
+- Failed payments recorded with reason (`amount_mismatch`, `unknown_product`)
+- Database errors don't break webhook (YooMoney will retry)
+- Graceful degradation for notification failures
+
+### ⚠️ LEGACY CODE CLEANUP COMPLETED ✅
+
+**TRIBUTE Integration**: ✅ **REMOVED** from codebase
+**Cleaned up**:
+- ✅ `handleTributeWebhook()` function removed
+- ✅ `sendTributeChannelLink()` function removed  
+- ✅ TRIBUTE environment variables removed
+- ✅ TRIBUTE webhook handling logic removed
+- ✅ All references to TRIBUTE system eliminated
+
+**Result**: Clean, maintainable codebase focused on YooMoney integration
 
 ## 🐛 Known Issues & Solutions
 
@@ -686,7 +824,8 @@ Cloudflare Worker (router)
   ├─→ linguapulse-grammar (only grammar)
   ├─→ linguapulse-text-dialog (only text conversations)
   ├─→ linguapulse-audio-dialog (only audio lessons)
-  └─→ linguapulse-onboarding (shared utilities)
+  ├─→ linguapulse-onboarding (shared utilities)
+  └─→ linguapulse-payments (YooMoney webhook processing)
 ```
 
 **Benefits Achieved**:
@@ -1182,6 +1321,37 @@ if (reply.includes('---END_DIALOG---')) {
 - Audio-specific feedback (speech, not writing)
 - TTS integration (planned)
 - Voice message processing (planned)
+
+#### 6️⃣ **Payments Lambda** (`linguapulse-payments`)
+**File**: `AWS Backend/payments/lambda_function.py`  
+**Purpose**: YooMoney webhook processing and payment validation
+
+**Actions**:
+- `lambda_handler`: Main webhook entry point
+- `verify_signature`: SHA1 signature validation
+- `supabase_upsert_payment`: Idempotent payment recording
+- `supabase_get_user`: User data retrieval
+- `supabase_update_user`: Access granting
+- `notify_telegram`: User notification
+
+**Features**:
+- ✅ **YooMoney webhook processing** (form-urlencoded)
+- ✅ **SHA1 signature verification** (strict security)
+- ✅ **Price validation** against expected package prices
+- ✅ **Idempotent payment processing** (duplicate protection)
+- ✅ **Automatic access granting** (Supabase integration)
+- ✅ **Telegram notifications** (user feedback)
+- ✅ **Error handling** with graceful fallbacks
+
+**Environment Variables**:
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_SERVICE_KEY` - Service role key
+- `YOOMONEY_WEBHOOK_SECRET` - Signature verification secret
+- `BOT_TOKEN` - Telegram bot token for notifications
+
+**API Gateway Integration**:
+- Endpoint: `POST /yoomoney-webhook`
+- URL: `https://llcr9578ee.execute-api.us-east-1.amazonaws.com/prod/yoomoney-webhook`
 
 ---
 
