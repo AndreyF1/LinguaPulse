@@ -135,11 +135,11 @@ def parse_event_body(event) -> dict:
     print(f"📦 Parsed params: {parsed}")
     return parsed
 
-def supabase_upsert_payment(order_id, user_id, product_id, amount, provider_operation_id, label, raw, status="paid"):
+def supabase_upsert_payment(provider_operation_id, user_id, product_id, amount, label, raw, status="paid"):
     """Записываем платеж в таблицу payments (идемпотентно)"""
-    # Генерируем UUID на основе order_id для идемпотентности
+    # Генерируем UUID на основе provider_operation_id для идемпотентности
     import uuid
-    payment_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"yoomoney-{order_id}"))
+    payment_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"yoomoney-{provider_operation_id}"))
     
     url = f"{SUPABASE_URL}/rest/v1/payments?on_conflict=id"
     payload = [{
@@ -233,8 +233,8 @@ def lambda_handler(event, context):
             else:
                 product_id = pkg_name  # Уже UUID
             
-            order_id = info["o"]
-            print(f"🏷️ Label parsed successfully: user_id={user_id}, product_id={product_id}, order_id={order_id}")
+            # order_id больше не нужен - используем provider_operation_id
+            print(f"🏷️ Label parsed successfully: user_id={user_id}, product_id={product_id}")
         except Exception as e:
             print(f"❌ Error decoding label: {e}")
             print(f"❌ Raw label was: {lbl}")
@@ -248,8 +248,7 @@ def lambda_handler(event, context):
                     # Пробуем использовать operation_label как fallback
                     user_id = "b2d41704-4a91-4164-bd02-347d2875af04"  # Временно используем тестового пользователя
                     product_id = "3ec3f495-7257-466b-a0ba-bfac669a68c8"  # 3-дневный пакет
-                    order_id = operation_label
-                    print(f"⚠️ Using fallback data: user_id={user_id}, product_id={product_id}, order_id={order_id}")
+                    print(f"⚠️ Using fallback data: user_id={user_id}, product_id={product_id}")
                 else:
                     return _response(400, "Bad label")
             else:
@@ -260,7 +259,7 @@ def lambda_handler(event, context):
         exp_amount = PRICE.get(product_id)
         if exp_amount is None:
             print(f"❌ Unknown product_id: {product_id}")
-            supabase_upsert_payment(order_id, user_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "unknown_product", "raw": params}, "failed")
+            supabase_upsert_payment(params.get("operation_id", ""), user_id, product_id, amount, lbl, {"m": "unknown_product", "raw": params}, "failed")
             return _response(400, "Unknown product")
         
         # Конвертируем amount в копейки (YooMoney присылает в рублях)
@@ -282,13 +281,13 @@ def lambda_handler(event, context):
         if not (min_amount <= amount_kopecks <= max_amount):
             print(f"❌ Amount mismatch: expected {min_amount}-{max_amount} kopecks, got {amount_kopecks} kopecks ({amount} rubles)")
             print(f"❌ Expected package price: {exp_amount} kopecks")
-            supabase_upsert_payment(order_id, user_db_id, product_id, amount, params.get("operation_id", ""), lbl, {"m": "amount_mismatch", "expected_range": f"{min_amount}-{max_amount}", "received": amount_kopecks, "raw": params}, "failed")
+            supabase_upsert_payment(params.get("operation_id", ""), user_db_id, product_id, amount, lbl, {"m": "amount_mismatch", "expected_range": f"{min_amount}-{max_amount}", "received": amount_kopecks, "raw": params}, "failed")
             return _response(400, "Amount mismatch")
         
         # Проверить что пользователь найден
         if not urow:
             print(f"❌ User not found: {user_id}")
-            supabase_upsert_payment(order_id, None, product_id, amount, params.get("operation_id", ""), lbl, {"m": "user_not_found", "telegram_id": user_id, "raw": params}, "failed")
+            supabase_upsert_payment(params.get("operation_id", ""), None, product_id, amount, lbl, {"m": "user_not_found", "telegram_id": user_id, "raw": params}, "failed")
             return _response(400, "User not found")
         
         print(f"✅ Amount validation passed: {amount_kopecks} kopecks ({amount} rubles) within range {min_amount}-{max_amount}")
@@ -297,7 +296,7 @@ def lambda_handler(event, context):
         # 6) Записать платёж в payments (идемпотентно)
         provider_operation_id = params.get("operation_id", "")
         try:
-            result = supabase_upsert_payment(order_id, urow["id"], product_id, amount, provider_operation_id, lbl, params)
+            result = supabase_upsert_payment(provider_operation_id, urow["id"], product_id, amount, lbl, params)
             if result == "duplicate":
                 print(f"✅ Duplicate operation_id, returning OK")
                 return _response(200, "Duplicate op_id")
