@@ -207,10 +207,10 @@ def handle_decrease_lessons_left(body):
                         elif last_date == today - timedelta(days=1):
                             current_streak += 1
                             print(f"User {user_id} practiced yesterday, increasing streak to {current_streak}")
-                        # Если пропустили дни, streak = 1
+                        # Если пропустили дни, streak = 0
                         elif last_date < today - timedelta(days=1):
-                            current_streak = 1
-                            print(f"User {user_id} missed days, resetting streak to 1")
+                            current_streak = 0
+                            print(f"User {user_id} missed days, resetting streak to 0")
                     except Exception as e:
                         print(f"Error parsing last_lesson_date: {e}")
                         # Если ошибка парсинга, устанавливаем streak = 1
