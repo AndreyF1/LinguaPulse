@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
-SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE"]
+SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 YOOMONEY_SECRET = os.environ.get("YOOMONEY_WEBHOOK_SECRET", "")
 
 HEADERS = {
@@ -79,9 +79,13 @@ def parse_event_body(event) -> dict:
 
 def supabase_upsert_payment(order_id, user_id, product_id, amount, provider_operation_id, label, raw):
     """Записываем платеж в таблицу payments (идемпотентно)"""
+    # Генерируем UUID на основе order_id для идемпотентности
+    import uuid
+    payment_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"yoomoney-{order_id}"))
+    
     url = f"{SUPABASE_URL}/rest/v1/payments?on_conflict=id"
     payload = [{
-        "id": order_id,                  # идемпотентность по нашему order_id (o)
+        "id": payment_id,                # UUID для идемпотентности
         "user_id": user_id,
         "product_id": product_id,
         "amount": int(round(float(amount))) if amount else None,

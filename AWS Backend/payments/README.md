@@ -4,9 +4,9 @@
 Lambda функция для обработки платежей от YooMoney. Принимает POST запросы с form-data, проверяет подпись, записывает платеж в Supabase и начисляет доступ пользователю.
 
 ## Environment Variables
-- `SUPABASE_URL` - URL проекта Supabase
-- `SUPABASE_SERVICE_ROLE` - service-role ключ Supabase  
-- `YOOMONEY_WEBHOOK_SECRET` - секретное слово из настроек YooMoney
+- `SUPABASE_URL` - URL проекта Supabase (уже настроен в других Lambda)
+- `SUPABASE_SERVICE_KEY` - service-role ключ Supabase (уже настроен в других Lambda)
+- `YOOMONEY_WEBHOOK_SECRET` - секретное слово из настроек YooMoney (новое)
 
 ## Зависимости
 - `requests` - для работы с Supabase API

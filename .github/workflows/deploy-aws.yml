@@ -67,7 +67,7 @@ jobs:
               echo "✅ Setting environment variables..."
               aws lambda update-function-configuration \
                 --function-name $function_name \
-                --environment Variables='{"SUPABASE_URL":"${{ secrets.SUPABASE_URL }}","SUPABASE_KEY":"${{ secrets.SUPABASE_KEY }}","OPENAI_API_KEY":"${{ secrets.OPENAI_KEY }}"}' \
+                --environment Variables='{"SUPABASE_URL":"${{ secrets.SUPABASE_URL }}","SUPABASE_SERVICE_KEY":"${{ secrets.SUPABASE_KEY }}","OPENAI_API_KEY":"${{ secrets.OPENAI_KEY }}","YOOMONEY_WEBHOOK_SECRET":"${{ secrets.YOOMONEY_WEBHOOK_SECRET }}"}' \
                 --no-cli-pager
               echo "✅ Lambda function $function_name created"
             fi
@@ -177,6 +177,36 @@ jobs:
             aws lambda wait function-updated --function-name linguapulse-audio-dialog
           else
             echo "⚠️  Audio dialog Lambda update failed (function may not exist yet)"
+          fi
+          
+          # Deploy payments Lambda
+          echo "📦 Creating payments Lambda zip archive..."
+          zip -r payments-lambda.zip payments/lambda_function.py
+          echo "✅ Payments zip created"
+          
+          # Create payments Lambda if needed
+          create_lambda_if_not_exists "linguapulse-payments" "lambda_function.lambda_handler" "payments-lambda.zip"
+          
+          echo "🚀 Updating payments Lambda function code..."
+          if aws lambda update-function-code \
+            --function-name linguapulse-payments \
+            --zip-file fileb://payments-lambda.zip \
+            --no-cli-pager 2>&1; then
+            echo "✅ Payments Lambda updated"
+            aws lambda wait function-updated --function-name linguapulse-payments
+          else
+            echo "⚠️  Payments Lambda update failed (function may not exist yet)"
+          fi
+          
+          # Set environment variables for payments Lambda specifically
+          echo "⚙️  Setting environment variables for payments Lambda..."
+          if aws lambda update-function-configuration \
+            --function-name linguapulse-payments \
+            --environment Variables='{"SUPABASE_URL":"${{ secrets.SUPABASE_URL }}","SUPABASE_SERVICE_KEY":"${{ secrets.SUPABASE_KEY }}","YOOMONEY_WEBHOOK_SECRET":"${{ secrets.YOOMONEY_WEBHOOK_SECRET }}"}' \
+            --no-cli-pager; then
+            echo "✅ Payments Lambda environment variables updated"
+          else
+            echo "⚠️  Failed to update payments Lambda environment variables"
           fi
           
           echo "✅ All Lambda deployments completed!"
