@@ -416,6 +416,61 @@ Generate ONLY the greeting text with topic suggestions, nothing else."""
                             if dates:
                                 access_date = max(dates)
                 
+                # АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СТРИКА ПРИ ПОЛУЧЕНИИ ПРОФИЛЯ
+                try:
+                    current_streak = user_data.get('current_streak', 0)
+                    last_lesson_date = user_data.get('last_lesson_date')
+                    today = datetime.now().date()
+                    should_update_streak = False
+                    new_streak = current_streak
+                    
+                    if last_lesson_date:
+                        try:
+                            last_date = datetime.fromisoformat(last_lesson_date).date()
+                            # Если уже занимались сегодня, не обновляем
+                            if last_date == today:
+                                print(f"🔥 [PROFILE] User {user_id} already practiced today, keeping streak {current_streak}")
+                            # Если последний раз занимались вчера, увеличиваем streak
+                            elif last_date == today - timedelta(days=1):
+                                new_streak = current_streak + 1
+                                should_update_streak = True
+                                print(f"🔥 [PROFILE] User {user_id} practiced yesterday, increasing streak to {new_streak}")
+                            # Если пропустили дни, сбрасываем в 0
+                            elif last_date < today - timedelta(days=1):
+                                new_streak = 0
+                                should_update_streak = True
+                                print(f"🔥 [PROFILE] User {user_id} missed days, resetting streak to 0")
+                        except Exception as e:
+                            print(f"🔥 [PROFILE] Error parsing last_lesson_date: {e}")
+                    else:
+                        # Первый раз - стрик остается 0
+                        print(f"🔥 [PROFILE] User {user_id} never practiced, keeping streak 0")
+                    
+                    # Обновляем в базе если нужно
+                    if should_update_streak:
+                        update_url = f"{supabase_url}/rest/v1/users?telegram_id=eq.{user_id}"
+                        update_data = json.dumps({
+                            'current_streak': new_streak,
+                            'last_lesson_date': today.isoformat()
+                        }).encode('utf-8')
+                        
+                        update_headers = {
+                            'Authorization': f'Bearer {supabase_key}',
+                            'apikey': supabase_key,
+                            'Content-Type': 'application/json'
+                        }
+                        
+                        update_req = urllib.request.Request(update_url, data=update_data, headers=update_headers, method='PATCH')
+                        urllib.request.urlopen(update_req)
+                        
+                        # Обновляем локальные данные
+                        user_data['current_streak'] = new_streak
+                        user_data['last_lesson_date'] = today.isoformat()
+                        print(f"🔥 [PROFILE] Updated streak for user {user_id}: {current_streak} -> {new_streak}")
+                        
+                except Exception as e:
+                    print(f"🔥 [PROFILE] Error updating streak: {e}")
+                
                 return {
                     'statusCode': 200,
                     'body': json.dumps({
