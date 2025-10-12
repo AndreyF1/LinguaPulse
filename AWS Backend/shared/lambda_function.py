@@ -170,7 +170,7 @@ def lambda_handler(event, context):
             # Трансформируем уровень языка в формат Supabase
             transformed_level = transform_language_level(language_level)
             
-            # Получаем информацию о продукте
+            # Получаем информацию о продукте (Starter Pack)
             product_id = "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5"
             product_info = get_product_info(product_id, supabase_url, supabase_key)
             
@@ -178,7 +178,7 @@ def lambda_handler(event, context):
             update_data = {
                 'current_level': transformed_level,
                 'quiz_completed_at': 'now()',  # Только завершение, quiz_started_at уже установлен
-                'lessons_left': 3,  # Начисляем уроки за завершение опроса
+                'lessons_left': product_info.get('lessons_granted', 1),  # Берем из Starter Pack в базе
                 'package_expires_at': product_info.get('expires_at') if product_info else None
             }
             
