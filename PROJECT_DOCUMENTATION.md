@@ -91,7 +91,14 @@
 - **Database integration**: Feedback stored in Supabase with user tracking
 - **Reward system**: Lessons and subscription extension for feedback
 
-#### 7. Infrastructure
+#### 7. Lesson Rewards System ✅ **DATABASE-DRIVEN**
+- **Survey completion**: Users receive lessons from "Starter Pack" product in database
+- **First feedback**: Additional lessons granted from same "Starter Pack" product
+- **Centralized control**: Single `lessons_granted` field controls both rewards
+- **Flexible management**: Change rewards by updating database, no code changes needed
+- **Product ID**: `7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5` (Starter Pack)
+
+#### 8. Infrastructure
 - **Cloudflare Workers**: Main webhook handler with audio functions
 - **AWS Lambda**: AI processing backend with TTS generation
 - **GitHub Actions CI/CD**: ✅ **FIXED** - Automated deployment with proper token permissions
@@ -803,6 +810,139 @@ if not (min_amount <= amount_kopecks <= max_amount):
 - ✅ All references to TRIBUTE system eliminated
 
 **Result**: Clean, maintainable codebase focused on YooMoney integration
+
+---
+
+## 🎁 LESSON REWARDS SYSTEM
+
+### 🎯 DATABASE-DRIVEN REWARDS ARCHITECTURE ✅
+
+**Status**: ✅ Fully implemented  
+**Date**: October 2025  
+**Approach**: Centralized database control for flexible reward management
+
+### 📊 Reward Distribution Points
+
+#### 1. **Survey Completion** (Onboarding)
+**Location**: `AWS Backend/shared/lambda_function.py` → `complete_survey`  
+**Trigger**: User completes initial language level assessment
+
+**Implementation**:
+```python
+# Получаем Starter Pack из базы данных
+product_id = "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5"
+product_info = get_product_info(product_id, supabase_url, supabase_key)
+
+# Начисляем уроки из поля lessons_granted
+update_data = {
+    'current_level': transformed_level,
+    'quiz_completed_at': 'now()',
+    'lessons_left': product_info.get('lessons_granted', 1),  # Из базы!
+    'package_expires_at': product_info.get('expires_at')
+}
+```
+
+**Key Features**:
+- ✅ Reads `lessons_granted` from database (not hardcoded)
+- ✅ Fallback to 1 lesson if product not found
+- ✅ Also sets `package_expires_at` from Starter Pack
+
+#### 2. **First Feedback** (User Engagement)
+**Location**: `AWS Backend/shared/lambda_function.py` → `save_feedback`  
+**Trigger**: User submits first feedback after any lesson
+
+**Implementation**:
+```python
+# Проверяем, первый ли это фидбэк
+is_first_feedback = (feedback_count == 0)
+
+if is_first_feedback:
+    # Используем тот же Starter Pack
+    starter_pack_id = "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5"
+    starter_pack = get_product_info(starter_pack_id)
+    
+    # Добавляем уроки к текущим
+    new_lessons = current_lessons + starter_pack.get('lessons_granted', 0)
+    
+    # Продляем package_expires_at
+    duration_days = starter_pack.get('duration_days', 30)
+    new_expires_date = current_expires_date + timedelta(days=duration_days)
+```
+
+**Key Features**:
+- ✅ Grants lessons ONLY for first feedback (no repeated rewards)
+- ✅ Extends subscription period by `duration_days`
+- ✅ Adds to existing lessons (doesn't replace)
+
+### 🔧 Starter Pack Configuration
+
+**Database Table**: `products`  
+**Record ID**: `7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5`
+
+**Key Fields**:
+```sql
+{
+  "id": "7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5",
+  "name": "Starter Pack",
+  "lessons_granted": 1,        -- Controls BOTH rewards
+  "duration_days": 30,          -- Subscription extension
+  "price": 0,                   -- Free reward
+  "is_active": true
+}
+```
+
+### ✨ Benefits of Database-Driven Approach
+
+#### **Flexibility**:
+- ✅ Change reward amount without code deployment
+- ✅ A/B testing different reward values
+- ✅ Seasonal promotions (e.g., 3 lessons during holidays)
+
+#### **Consistency**:
+- ✅ Single source of truth for reward amounts
+- ✅ Survey and feedback rewards always in sync
+- ✅ No discrepancies between different code sections
+
+#### **Maintainability**:
+- ✅ Non-technical staff can adjust rewards
+- ✅ No code changes = no testing needed
+- ✅ Instant updates via database query
+
+### 📝 How to Change Rewards
+
+**To change from 1 lesson to any other amount**:
+
+```sql
+-- Update Starter Pack in Supabase
+UPDATE products 
+SET lessons_granted = 3  -- Change to desired amount
+WHERE id = '7d9d5dbb-7ed2-4bdc-9d2f-c88929085ab5';
+
+-- Both survey completion AND first feedback will now grant 3 lessons
+```
+
+**No code deployment needed!** ✅
+
+### 🎯 User Flow Example
+
+**New User Journey**:
+1. User starts bot → Sees welcome message
+2. User completes survey → **Receives 1 lesson** (from `lessons_granted`)
+3. User takes first audio lesson → Uses 1 lesson (0 remaining)
+4. User submits feedback → **Receives 1 lesson** (from `lessons_granted`)
+5. Total lessons granted: **2 lessons**
+
+**Old System** (Before Database-Driven):
+- Survey: **3 lessons** (hardcoded in code)
+- First feedback: **3 lessons** (from database)
+- Total: **6 lessons**
+
+**Current System** (Database-Driven):
+- Survey: **1 lesson** (from database `lessons_granted`)
+- First feedback: **1 lesson** (from database `lessons_granted`)
+- Total: **2 lessons** ← Controlled by single database field
+
+---
 
 ## 🐛 Known Issues & Solutions
 
