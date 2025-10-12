@@ -1470,16 +1470,16 @@ if (update.message?.text === '/feedback') {
                   ? `🎉 Welcome to LinguaPulse!
 
 Choose your AI learning mode:
-• 💬 *Text mode* — grammar help, translations, text corrections
-• 🎤 *Audio practice* — real speech training with AI to overcome language barriers
-• 📝 *Grammar mode* — detailed explanations and exercises
-• 🔄 *Translation mode* — instant translations with context
+• 💬 *Text Dialog* — conversation with AI in English via text (for those who find it difficult)
+• 🎤 *Audio Practice* — real speech training with AI to overcome language barriers
+• 📝 *Grammar Mode* — detailed explanations and exercises
+• 🔄 *Translation Mode* — instant translations with context
 
 Start with the mode that suits you best!`
                   : `🎉 Добро пожаловать в LinguaPulse!
 
 Выбери свой режим обучения с ИИ:
-• 💬 *Текстовый режим* — помощь с грамматикой, переводы, правка текстов
+• 💬 *Текстовый диалог* — разговор с ИИ на английском через текст (для тех, кому совсем тяжело)
 • 🎤 *Аудио-практика* — реальная тренировка речи с ИИ для преодоления языкового барьера
 • 📝 *Режим грамматики* — подробные объяснения и упражнения
 • 🔄 *Режим переводов* — мгновенные переводы с контекстом
