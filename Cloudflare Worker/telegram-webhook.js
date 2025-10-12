@@ -566,10 +566,13 @@ if (update.message?.text === '/feedback') {
                 const userTextLower = userText.toLowerCase().trim();
                 const endPhrases = [
                   'end dialog', 'end lesson', 'stop dialog', 'stop lesson',
+                  'let\'s wrap up', 'wrap up', 'let\'s wrap it up', 'wrap it up', 'let\'s finish', 'let\'s end',
+                  'i need to go', 'i have to go', 'i must go', 'gotta go', 'got to go',
                   'завершить диалог', 'завершить урок', 'стоп диалог', 'стоп урок',
-                  'конец диалога', 'конец урока', 'хватит диалога', 'хватит урока'
+                  'конец диалога', 'конец урока', 'хватит диалога', 'хватит урока',
+                  'давай закончим', 'давай завершим', 'мне нужно идти', 'мне пора'
                 ];
-                const endWords = ['end', 'stop', 'завершить', 'стоп', 'конец', 'хватит'];
+                const endWords = ['end', 'stop', 'завершить', 'стоп', 'конец', 'хватит', 'finish', 'закончить'];
                 
                 // Check for exact phrases first, then simple words as whole words
                 const userWantsToEnd = endPhrases.some(phrase => userTextLower.includes(phrase)) ||
