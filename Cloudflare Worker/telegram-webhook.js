@@ -612,11 +612,14 @@ if (update.message?.text === '/feedback') {
                   }
                 }
                 
-                // Dialog ends ONLY at 15 AUDIO messages OR user request
-                if (audioMessageCount >= 15 || userWantsToEnd) {
+                // Dialog ends at 15 AUDIO messages OR user request (if >= 5 messages)
+                const shouldEndDialog = audioMessageCount >= 15 || (userWantsToEnd && audioMessageCount >= 5);
+                console.log(`🔍 [${chatId}] End dialog check: audioMessageCount=${audioMessageCount}, userWantsToEnd=${userWantsToEnd}, shouldEndDialog=${shouldEndDialog}`);
+                
+                if (shouldEndDialog) {
                   // End dialog and provide final feedback
-                  const endReason = userWantsToEnd ? 'user request' : '15 message limit';
-                  console.log(`🏁 [${chatId}] Audio dialog ending (${endReason}), completing lesson`);
+                  const endReason = audioMessageCount >= 15 ? '15 message limit' : 'user request';
+                  console.log(`🏁 [${chatId}] Audio dialog ending (${endReason}), total audio messages: ${audioMessageCount}`);
                   
                   // Clear session data
                   await env.CHAT_KV.delete(audioCountKey);
@@ -652,26 +655,37 @@ if (update.message?.text === '/feedback') {
                   await env.CHAT_KV.delete(lessonUsedKey);
                   
                   // Generate final feedback via Lambda (AUDIO dialog)
+                  console.log(`📊 [${chatId}] ===== STARTING FEEDBACK GENERATION =====`);
                   try {
-                    console.log(`📊 [${chatId}] Generating final feedback for audio dialog`);
+                    console.log(`📊 [${chatId}] Calling audio_dialog Lambda with action: generate_dialog_feedback`);
+                    
                     const feedbackResponse = await callLambdaFunction('audio_dialog', {
                       user_id: chatId,
                       action: 'generate_dialog_feedback',
                       user_lang: 'ru'  // TODO: get from user profile
                     }, env);
                     
-                    console.log(`📊 [${chatId}] Feedback response:`, feedbackResponse);
+                    console.log(`📊 [${chatId}] Lambda response received:`, JSON.stringify(feedbackResponse));
+                    console.log(`📊 [${chatId}] Response type:`, typeof feedbackResponse);
+                    console.log(`📊 [${chatId}] Has success?`, !!feedbackResponse?.success);
+                    console.log(`📊 [${chatId}] Has feedback?`, !!feedbackResponse?.feedback);
                     
                     if (feedbackResponse?.success && feedbackResponse.feedback) {
-                      console.log(`📊 [${chatId}] Sending feedback to user:`, feedbackResponse.feedback);
+                      console.log(`📊 [${chatId}] ✅ Valid feedback received! Length: ${feedbackResponse.feedback.length} chars`);
+                      console.log(`📊 [${chatId}] Feedback preview:`, feedbackResponse.feedback.substring(0, 100));
+                      
                       await sendMessageViaTelegram(chatId, feedbackResponse.feedback, env);
-                      console.log(`✅ [${chatId}] Feedback sent successfully`);
+                      console.log(`✅ [${chatId}] ===== FEEDBACK SENT TO USER =====`);
                     } else {
-                      console.error(`❌ [${chatId}] Invalid feedback response:`, feedbackResponse);
+                      console.error(`❌ [${chatId}] Invalid feedback response structure!`);
+                      console.error(`❌ [${chatId}] Full response:`, JSON.stringify(feedbackResponse, null, 2));
                     }
                   } catch (error) {
-                    console.error(`❌ [${chatId}] Error generating final feedback:`, error);
+                    console.error(`❌ [${chatId}] EXCEPTION in feedback generation:`, error);
+                    console.error(`❌ [${chatId}] Error message:`, error.message);
+                    console.error(`❌ [${chatId}] Error stack:`, error.stack);
                   }
+                  console.log(`📊 [${chatId}] ===== FEEDBACK GENERATION COMPLETE =====`);
                   
                   // Streak is now updated in handle_decrease_lessons_left function
                   
