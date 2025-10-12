@@ -1466,25 +1466,31 @@ if (update.message?.text === '/feedback') {
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 
                 // Финальное сообщение с информацией о текстовом помощнике и предзаписи на аудио-практику
-                const successText = interfaceLanguage === 'en' 
-                  ? `🎉 Done!
-Today you have access to a *free English text assistant*. Ask questions: grammar, vocabulary, translations, text corrections, interview preparation.
+                const successText = interfaceLanguage === 'en'
+                  ? `🎉 Welcome to LinguaPulse!
 
-🚀 Very soon we're launching *audio practice* — real speech training with AI that helps overcome language barriers and start speaking fluently.
+Choose your AI learning mode:
+• 💬 *Text mode* — grammar help, translations, text corrections
+• 🎤 *Audio practice* — real speech training with AI to overcome language barriers
+• 📝 *Grammar mode* — detailed explanations and exercises
+• 🔄 *Translation mode* — instant translations with context
 
-The first users who sign up for the list will get a series of audio lessons for free. Limited spots available — be among the first.`
-                  : `🎉 Готово!
-Сегодня у тебя есть доступ к *бесплатному текстовому помощнику по английскому*. Задавай вопросы: грамматика, лексика, переводы, правка текстов, подготовка к собеседованию.
+Start with the mode that suits you best!`
+                  : `🎉 Добро пожаловать в LinguaPulse!
 
-🚀 Совсем скоро мы запускаем *аудио-практику* — это реальная тренировка речи с ИИ, которая помогает преодолеть языковой барьер и начать свободно говорить.
+Выбери свой режим обучения с ИИ:
+• 💬 *Текстовый режим* — помощь с грамматикой, переводы, правка текстов
+• 🎤 *Аудио-практика* — реальная тренировка речи с ИИ для преодоления языкового барьера
+• 📝 *Режим грамматики* — подробные объяснения и упражнения
+• 🔄 *Режим переводов* — мгновенные переводы с контекстом
 
-Первые пользователи, кто запишется в список, получат серию аудио-уроков бесплатно. Количество мест ограничено — будь среди первых.`;
+Начни с режима, который тебе больше подходит!`;
 
-                const askQuestionButtonText = interfaceLanguage === 'en' ? "Ask AI" : "Спросить ИИ";
+                const selectModeButtonText = interfaceLanguage === 'en' ? "🤖 Choose AI Mode" : "🤖 Выбрать ИИ режим";
                 const viewProfileButtonText = interfaceLanguage === 'en' ? "📊 My Profile" : "📊 Мой профиль";
                 
                 const buttons = [
-                  [{ text: askQuestionButtonText, callback_data: "text_helper:start" }],
+                  [{ text: selectModeButtonText, callback_data: "text_helper:start" }],
                   [{ text: viewProfileButtonText, callback_data: "profile:show" }]
                 ];
                 
