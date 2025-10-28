@@ -10,27 +10,6 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 // ============================================
 
 export type AuthProvider = 'telegram' | 'magic_link' | 'google' | 'email'
-export type DemoEndReason = 'completed' | 'timeout' | 'abandoned' | 'error' | 'user_stopped'
-export type EventType = 
-  | 'visit'
-  | 'question_viewed'
-  | 'question_answered'
-  | 'funnel_completed'
-  | 'paywall_view'
-  | 'cta_click'
-  | 'demo_start'
-  | 'demo_message_sent'
-  | 'demo_completed'
-  | 'demo_abandoned'
-  | 'magic_link_sent'
-  | 'magic_link_clicked'
-  | 'user_registered'
-  | 'payment_started'
-  | 'payment_success'
-  | 'payment_failed'
-  | 'first_lesson_start'
-  | 'lesson_completed'
-  | 'custom'
 
 // ============================================
 // TABLE TYPES
@@ -44,25 +23,10 @@ export interface Database {
         Insert: UserInsert
         Update: UserUpdate
       }
-      web_visitors: {
-        Row: WebVisitor
-        Insert: WebVisitorInsert
-        Update: WebVisitorUpdate
-      }
-      funnel_answers: {
-        Row: FunnelAnswer
-        Insert: FunnelAnswerInsert
-        Update: FunnelAnswerUpdate
-      }
-      events: {
-        Row: Event
-        Insert: EventInsert
-        Update: EventUpdate
-      }
-      demo_sessions: {
-        Row: DemoSession
-        Insert: DemoSessionInsert
-        Update: DemoSessionUpdate
+      anonymous_sessions: {
+        Row: AnonymousSession
+        Insert: AnonymousSessionInsert
+        Update: AnonymousSessionUpdate
       }
       lesson_sessions: {
         Row: LessonSession
@@ -108,7 +72,6 @@ export interface User {
   last_lesson_date?: string | null
   
   // Web tracking
-  visitor_id?: string | null
   onboarding_completed: boolean
   
   // Meta
@@ -125,17 +88,13 @@ export type UserInsert = Omit<User, 'id' | 'created_at' | 'updated_at'> & {
 export type UserUpdate = Partial<UserInsert>
 
 // ============================================
-// WEB VISITOR
+// ANONYMOUS SESSION
 // ============================================
 
-export interface WebVisitor {
+export interface AnonymousSession {
   id: string
   
-  // Tracking
-  first_visit_at: string
-  last_visit_at: string
-  
-  // Attribution
+  // Attribution (UTM tracking)
   utm_source?: string | null
   utm_medium?: string | null
   utm_campaign?: string | null
@@ -143,150 +102,36 @@ export interface WebVisitor {
   utm_term?: string | null
   referrer?: string | null
   
-  // Device/Location
-  user_agent?: string | null
-  ip_address?: string | null
-  country?: string | null
-  city?: string | null
+  // Funnel data (JSONB)
+  funnel_answers: Json // Array: [{"question": 1, "answer": "English"}]
+  funnel_completed: boolean
   
-  // Session
-  session_id?: string | null
+  // Demo session data (JSONB)
+  demo_scenario?: string | null
+  demo_transcript?: Json | null // Array: [{"role": "user", "content": "Hello"}]
+  demo_feedback?: string | null
+  demo_scores?: Json | null // {"grammar": 8, "vocabulary": 7}
+  demo_completed: boolean
   
-  // Conversion
+  // Conversion tracking
   converted_to_user_id?: string | null
   converted_at?: string | null
   
-  // Metadata
-  metadata?: Json
-}
-
-export type WebVisitorInsert = Omit<WebVisitor, 'id' | 'first_visit_at'> & {
-  id?: string
-  first_visit_at?: string
-}
-
-export type WebVisitorUpdate = Partial<WebVisitorInsert>
-
-// ============================================
-// FUNNEL ANSWER
-// ============================================
-
-export interface FunnelAnswer {
-  id: string
-  
-  // User identification
-  visitor_id?: string | null
-  user_id?: string | null
-  
-  // Question data
-  question_number: number
-  question_text: string
-  question_type: string
-  answer_value: string
-  answer_label?: string | null
-  
-  // Metadata
-  answered_at: string
-  time_spent_seconds?: number | null
-  page_url?: string | null
-  metadata?: Json
-}
-
-export type FunnelAnswerInsert = Omit<FunnelAnswer, 'id' | 'answered_at'> & {
-  id?: string
-  answered_at?: string
-}
-
-export type FunnelAnswerUpdate = Partial<FunnelAnswerInsert>
-
-// ============================================
-// EVENT
-// ============================================
-
-export interface Event {
-  id: string
-  
-  // User identification
-  visitor_id?: string | null
-  user_id?: string | null
-  session_id?: string | null
-  
-  // Event data
-  event_type: EventType
-  event_name?: string | null
-  event_data?: Json
-  
-  // Context
-  page_url?: string | null
-  referrer?: string | null
+  // Device info
   user_agent?: string | null
   
-  // Device
-  device_type?: string | null
-  os?: string | null
-  browser?: string | null
-  
-  // Timestamp
+  // Meta
   created_at: string
+  updated_at: string
 }
 
-export type EventInsert = Omit<Event, 'id' | 'created_at'> & {
+export type AnonymousSessionInsert = Omit<AnonymousSession, 'id' | 'created_at' | 'updated_at'> & {
   id?: string
   created_at?: string
+  updated_at?: string
 }
 
-export type EventUpdate = Partial<EventInsert>
-
-// ============================================
-// DEMO SESSION
-// ============================================
-
-export interface DemoSession {
-  id: string
-  
-  // User identification
-  visitor_id?: string | null
-  user_id?: string | null
-  
-  // Configuration
-  scenario_title: string
-  scenario_description?: string | null
-  difficulty?: 'beginner' | 'intermediate' | 'advanced' | null
-  target_language?: string | null
-  
-  // Conversation
-  transcript: Json // Array of messages
-  message_count: number
-  
-  // Audio
-  audio_url?: string | null
-  audio_duration_seconds?: number | null
-  
-  // Feedback
-  scores?: Json | null // {grammar: 8, vocabulary: 7, ...}
-  feedback_text?: string | null
-  feedback_generated_at?: string | null
-  
-  // Session tracking
-  started_at: string
-  ended_at?: string | null
-  duration_seconds?: number | null
-  end_reason?: DemoEndReason | null
-  
-  // Conversion
-  converted_to_payment: boolean
-  payment_id?: string | null
-  
-  // Metadata
-  metadata?: Json
-}
-
-export type DemoSessionInsert = Omit<DemoSession, 'id' | 'started_at'> & {
-  id?: string
-  started_at?: string
-}
-
-export type DemoSessionUpdate = Partial<DemoSessionInsert>
+export type AnonymousSessionUpdate = Partial<AnonymousSessionInsert>
 
 // ============================================
 // LESSON SESSION
@@ -326,8 +171,6 @@ export interface Payment {
   
   // User identification
   user_id?: string | null
-  visitor_id?: string | null
-  session_id?: string | null
   
   // Payment data
   product_id: string
@@ -375,7 +218,7 @@ export type ProductUpdate = Partial<ProductInsert>
 // HELPER TYPES
 // ============================================
 
-// Message in transcript
+// Message in transcript (for demo_transcript and lesson transcript)
 export interface TranscriptMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -392,36 +235,10 @@ export interface FeedbackScores {
   overall?: number
 }
 
-// Event data types for different events
-export interface VisitEventData {
-  landing_page?: string
-  utm_source?: string
-  utm_medium?: string
-  utm_campaign?: string
-}
-
-export interface QuestionAnsweredEventData {
-  question_number: number
+// Funnel answer item
+export interface FunnelAnswerItem {
+  question: number
   answer: string
-  time_spent_ms?: number
+  time_spent?: number
 }
-
-export interface DemoStartEventData {
-  scenario: string
-  difficulty: string
-}
-
-export interface PaymentSuccessEventData {
-  product_id: string
-  amount: number
-  provider: string
-}
-
-// Union type for all event data
-export type EventData = 
-  | VisitEventData 
-  | QuestionAnsweredEventData 
-  | DemoStartEventData 
-  | PaymentSuccessEventData 
-  | Record<string, any>
 

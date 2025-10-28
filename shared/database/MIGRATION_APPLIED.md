@@ -67,38 +67,53 @@
 - **Final:** 16 columns (was 29)
 - Status: **SUCCESS**
 
+### 11. **011_radical_simplification.sql** ✅ **[RADICAL]**
+- **Created:** `anonymous_sessions` - unified table for all anonymous user data
+  - Combines: UTM attribution, funnel answers (JSONB), demo sessions (JSONB)
+  - All-in-one: 19 columns covering entire anonymous user journey
+- **Deleted 4 tables:**
+  - `web_visitors` (replaced by anonymous_sessions)
+  - `events` (not needed, behavior tracked in funnel + demo)
+  - `funnel_answers` (moved to JSONB in anonymous_sessions)
+  - `demo_sessions` (moved to JSONB in anonymous_sessions)
+- **Removed fields:** `visitor_id` from `users` and `payments`
+- **Deleted 2 ENUMs:** `event_type`, `demo_end_reason`
+- **Result:** 5 tables total (was 8, **38% reduction**)
+- Status: **SUCCESS**
+
 ---
 
 ## 📊 Verification Results
 
-### New Tables Created:
+### Final Tables (5 total):
 ```
-✅ web_visitors
-✅ events  
-✅ funnel_answers
-✅ demo_sessions
-```
-
-### Modified Tables:
-```
-✅ users (added 10+ columns for web auth)
-✅ payments (added visitor_id, session_id)
-✅ sessions → lesson_sessions (renamed)
-✅ profiles → DELETED (merged into users)
+1. ✅ users               - Registered users (16 columns)
+2. ✅ anonymous_sessions  - All anonymous data (19 columns)
+3. ✅ lesson_sessions     - Full lessons
+4. ✅ payments            - Payment transactions
+5. ✅ products            - Subscription packages
 ```
 
-### RLS Policies Created:
+### Deleted Tables (5 total):
 ```
-users:            3 policies
-web_visitors:     2 policies
-funnel_answers:   2 policies
-events:           2 policies
-demo_sessions:    2 policies
-lesson_sessions:  7 policies
-payments:         2 policies
-products:         2 policies
+❌ profiles         (merged into users)
+❌ feedback         (Telegram-only)
+❌ text_usage_daily (Telegram-only)
+❌ web_visitors     (merged into anonymous_sessions)
+❌ events           (not needed)
+❌ funnel_answers   (merged into anonymous_sessions JSONB)
+❌ demo_sessions    (merged into anonymous_sessions JSONB)
+```
+
+### RLS Policies (Final):
+```
+users:               3 policies
+anonymous_sessions:  2 policies
+lesson_sessions:     7 policies
+payments:            2 policies
+products:            2 policies
 ─────────────────────────────
-TOTAL:           22 policies
+TOTAL:              16 policies (was 27)
 ```
 
 ### Current Data:
@@ -116,19 +131,23 @@ New tables:       All empty (ready for web traffic)
 
 ## 🔐 Database Schema
 
-### Complete Table List:
-1. **users** - Unified user table (Telegram + Web)
-2. **web_visitors** - Anonymous visitor tracking
-3. **events** - Universal analytics
-4. **funnel_answers** - Onboarding questionnaire
-5. **demo_sessions** - Pre-registration demos
-6. **lesson_sessions** - Full lessons (formerly `sessions`)
-7. **payments** - Payment transactions
-8. **products** - Subscription packages
+### Complete Table List (5 tables):
 
-**Removed (Telegram-only, not used in web):**
-- ~~**feedback**~~ - Removed in migration 009
-- ~~**text_usage_daily**~~ - Removed in migration 009
+**Core Tables:**
+1. **users** - Registered users (Telegram + Web unified)
+2. **anonymous_sessions** - Complete anonymous user journey (UTM, funnel, demo)
+3. **lesson_sessions** - Full lesson history with AI feedback
+4. **payments** - Payment transactions (YooMoney)
+5. **products** - Subscription packages
+
+**Deleted (simplified away):**
+- ~~**profiles**~~ - Merged into users
+- ~~**feedback**~~ - Telegram-only, removed
+- ~~**text_usage_daily**~~ - Telegram-only, removed
+- ~~**web_visitors**~~ - Merged into anonymous_sessions
+- ~~**events**~~ - Replaced by funnel + demo tracking
+- ~~**funnel_answers**~~ - JSONB in anonymous_sessions
+- ~~**demo_sessions**~~ - JSONB in anonymous_sessions
 
 ---
 
@@ -199,12 +218,13 @@ If needed, rollback SQL is available in migration files comments.
 All structural changes applied successfully. Database is ready for web application development.
 
 **Database Version:** PostgreSQL 17.4  
-**Schema Version:** Web v1.2  
-**Migrations Applied:** 10 (001-010)  
-**Total Tables:** 8 (4 new, 3 modified, 3 deleted)  
-**Users Table:** 16 columns (was 29, removed 13)  
-**RLS Policies:** 22 active policies  
-**Migration Time:** ~5 minutes  
+**Schema Version:** Web v2.0 - RADICALLY SIMPLIFIED  
+**Migrations Applied:** 11 (001-011)  
+**Total Tables:** 5 (was 10 initially, **50% reduction**)  
+**Anonymous Data:** 1 unified table (was 4 separate tables)  
+**Users Table:** 15 columns (was 29, **48% reduction**)  
+**RLS Policies:** 16 active policies (was 27, **41% reduction**)  
+**Migration Time:** ~8 minutes  
 **Errors:** 1 non-critical (profile migration)  
-**Status:** ✅ **PRODUCTION READY - SIMPLIFIED**
+**Status:** ✅ **PRODUCTION READY - RADICALLY SIMPLIFIED**
 
