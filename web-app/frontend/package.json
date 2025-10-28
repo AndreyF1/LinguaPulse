@@ -1,0 +1,33 @@
+{
+  "name": "linguapulse-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "LinguaPulse Web - AI-powered English conversation practice with Gemini Live API",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist node_modules",
+    "install:clean": "npm run clean && npm install"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "@google/genai": "^1.26.0",
+    "@supabase/supabase-js": "^2.47.10"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

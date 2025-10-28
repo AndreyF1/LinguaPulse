@@ -1,0 +1,7 @@
+{
+  "name": "LinguaPulse",
+  "description": "LinguaPulse is an interactive AI English tutor for Russian speakers to practice conversational English. Speak with the AI, listen to its responses, and get real-time feedback to improve your language skills.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
