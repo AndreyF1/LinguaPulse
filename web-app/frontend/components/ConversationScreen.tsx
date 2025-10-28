@@ -196,11 +196,18 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
     }, [partialCleanupForReconnect, flushTranscriptUpdates, outputSources]);
     
     const handleStop = useCallback(async () => {
-        if (status === ConversationStatus.GENERATING_FEEDBACK || isStopping.current) return;
+        if (status === ConversationStatus.GENERATING_FEEDBACK || isStopping.current) {
+            console.log('⚠️ handleStop blocked:', { status, isStopping: isStopping.current });
+            return;
+        }
         
+        console.log('🛑 Stopping conversation...');
         isStopping.current = true;
+        console.log('🔄 Setting status to GENERATING_FEEDBACK');
         setStatus(ConversationStatus.GENERATING_FEEDBACK);
+        console.log('🧹 Cleaning up resources...');
         await cleanupConversationResources();
+        console.log('✅ Cleanup complete, generating feedback...');
         
         const currentTranscript = transcriptRef.current;
         const transcriptText = currentTranscript
@@ -446,29 +453,28 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
             setTimeLeft(prev => {
                 const next = prev - 1;
                 
-                // At 30 seconds remaining, send text to AI to wrap up
-                if (next === 30 && !hasWarnedAboutTimeRef.current) {
-                    hasWarnedAboutTimeRef.current = true;
-                    sessionPromiseRef.current?.then((session) => {
-                        if (!isStopping.current) {
-                            session.send([{
-                                text: "Time is running out. Please wrap up this conversation politely in your next 1-2 responses."
-                            }]);
-                            console.log('⏰ Sent time warning to AI (30s remaining)');
-                        }
-                    }).catch(console.error);
-                }
-                
-                // At 0, stop gracefully (AI will finish current phrase)
+                // At 0, wait for AI to finish speaking before stopping
                 if (next <= 0) {
                     if (timerRef.current) clearInterval(timerRef.current);
-                    // Small delay to let AI finish speaking
-                    setTimeout(() => {
-                        if (!isStopping.current) {
-                            console.log('⏱️ Time expired, stopping conversation gracefully');
-                            handleStopRef.current();
+                    
+                    // Wait for all audio to finish playing
+                    const waitForAudioToFinish = () => {
+                        if (outputSources.size === 0 && status !== ConversationStatus.SPEAKING) {
+                            console.log('⏱️ Time expired, all audio finished, stopping gracefully');
+                            if (!isStopping.current) handleStopRef.current();
+                        } else {
+                            console.log('⏱️ Time expired, waiting for AI to finish speaking...', { 
+                                audioSources: outputSources.size, 
+                                status 
+                            });
+                            // Check again in 500ms
+                            setTimeout(waitForAudioToFinish, 500);
                         }
-                    }, 2000);
+                    };
+                    
+                    // Start checking
+                    waitForAudioToFinish();
+                    
                     return 0;
                 }
                 
@@ -512,6 +518,17 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                 onClose={() => onSaveAndExit(transcriptRef.current, finalFeedback)}
                 isSaving={isSaving}
             />
+
+            {/* Full-screen loader for feedback generation */}
+            {status === ConversationStatus.GENERATING_FEEDBACK && !isFeedbackModalOpen && (
+                <div className="absolute inset-0 bg-gray-900/95 flex flex-col items-center justify-center z-50">
+                    <div className="w-24 h-24 border-4 border-cyan-600 border-t-transparent rounded-full animate-spin mb-6"></div>
+                    <h2 className="text-2xl font-bold text-cyan-400 animate-pulse mb-2">Generating your feedback...</h2>
+                    <p className="text-gray-400 text-center max-w-md">
+                        Our AI is analyzing your conversation and preparing detailed feedback. This usually takes 10-15 seconds.
+                    </p>
+                </div>
+            )}
 
             <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden">
                 <div className="bg-gray-800 p-3 rounded-t-lg border-b border-gray-700 flex justify-between items-center">

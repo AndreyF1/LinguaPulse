@@ -158,13 +158,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         try {
             console.log('🔐 Getting auth session...');
-            // Get JWT token
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            // Get JWT token - use refreshSession to avoid hanging
+            const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
             if (sessionError || !session) {
                 console.error('❌ Session error:', sessionError);
-                throw new Error('Could not retrieve user session');
+                throw new Error('Could not retrieve user session. Please refresh the page.');
             }
-            console.log('✅ Auth session retrieved');
+            console.log('✅ Auth session retrieved, token length:', session.access_token.length);
 
             // Call Edge Function to save session
             console.log('📡 Calling save-session Edge Function...');
