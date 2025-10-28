@@ -308,19 +308,21 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                             sessionPromiseRef.current?.then((session) => {
                                 if (audioChunkCount === 1) {
                                     console.log('  session resolved:', !!session);
+                                    console.log('  session keys:', Object.keys(session));
                                     console.log('  session._ws:', !!session._ws);
-                                    console.log('  WebSocket.readyState:', session._ws?.readyState);
+                                    console.log('  session.ws:', !!(session as any).ws);
+                                    console.log('  WebSocket.readyState (_ws):', session._ws?.readyState);
+                                    console.log('  WebSocket.readyState (ws):', (session as any).ws?.readyState);
                                     console.log('  WebSocket.OPEN:', WebSocket.OPEN);
                                     console.log('  isStopping:', isStopping.current);
                                 }
                                 
-                                if (!isStopping.current && session._ws?.readyState === WebSocket.OPEN) {
+                                // FIX: Remove WebSocket state check - SDK manages connection internally
+                                if (!isStopping.current) {
                                     if (audioChunkCount === 1) {
-                                        console.log('📤 Sending first audio chunk to Gemini...');
+                                        console.log('📤 Sending first audio chunk to Gemini (no WebSocket check)...');
                                     }
                                     session.sendRealtimeInput({ media: pcmBlob });
-                                } else if (audioChunkCount === 1) {
-                                    console.warn('❌ Cannot send audio: conditions not met');
                                 }
                             }).catch(err => {
                                 if (!isStopping.current && audioChunkCount === 1) {
