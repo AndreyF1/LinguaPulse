@@ -4,10 +4,11 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# Environment variables
+# Environment variables (NEVER commit API keys!)
 .env
 .env.local
 .env.*.local
+.env.production
 
 # Build output
 dist/
