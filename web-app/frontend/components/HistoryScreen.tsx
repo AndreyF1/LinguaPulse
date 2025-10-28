@@ -59,7 +59,9 @@ const HistoryScreen: React.FC = () => {
         }));
     
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+            const ai = new GoogleGenAI({ 
+                apiKey: process.env.API_KEY || 'AIzaSyBRp8FXE_lU1-jIlQvUZvrR6qSna1d_i-E' 
+            });
             const prompt = MONTHLY_REPORT_PROMPT_TEMPLATE.replace('{feedbackData}', JSON.stringify(feedbackData, null, 2));
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
             setMonthlyReport(response.text);

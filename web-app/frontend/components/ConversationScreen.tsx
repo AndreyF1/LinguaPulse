@@ -85,7 +85,9 @@ interface Props {
     isSaving: boolean;
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+const ai = new GoogleGenAI({ 
+    apiKey: process.env.API_KEY || 'AIzaSyBRp8FXE_lU1-jIlQvUZvrR6qSna1d_i-E' 
+});
 const IN_PROGRESS_SESSION_KEY = 'in-progress-session';
 
 const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving }) => {
