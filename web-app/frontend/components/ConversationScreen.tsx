@@ -265,6 +265,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
 
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaStreamRef.current = stream;
+            console.log('✅ Microphone stream acquired:', stream.getAudioTracks()[0].label);
     
             sessionPromiseRef.current = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -279,17 +280,30 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                     onopen: () => {
                         if (isStopping.current) return;
                         
+                        console.log('🔗 WebSocket opened, setting up audio processing...');
                         setStatus(ConversationStatus.LISTENING);
                         const source = inputAudioContextRef.current!.createMediaStreamSource(mediaStreamRef.current!);
                         const scriptProcessor = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
                         scriptProcessorRef.current = scriptProcessor;
+                        console.log('🎙️ ScriptProcessor created, connecting audio chain...');
     
+                        let audioChunkCount = 0;
                         scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
                             if (isStopping.current) return;
+                            audioChunkCount++;
+                            if (audioChunkCount === 1) {
+                                console.log('🎤 First audio chunk received, audio is being captured!');
+                            }
+                            if (audioChunkCount % 100 === 0) {
+                                console.log(`📊 Processed ${audioChunkCount} audio chunks`);
+                            }
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                             const pcmBlob = createBlob(inputData);
                             sessionPromiseRef.current?.then((session) => {
                                 if (!isStopping.current && session._ws?.readyState === WebSocket.OPEN) {
+                                    if (audioChunkCount === 1) {
+                                        console.log('📤 Sending first audio chunk to Gemini...');
+                                    }
                                     session.sendRealtimeInput({ media: pcmBlob });
                                 }
                             }).catch(err => {
@@ -298,6 +312,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                         };
                         source.connect(scriptProcessor);
                         scriptProcessor.connect(inputAudioContextRef.current!.destination);
+                        console.log('✅ Audio chain connected: microphone → processor → destination');
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         if (isStopping.current) return;
@@ -345,12 +360,13 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                          }
                     },
                     onerror: (e) => {
-                        console.error('API Error:', e);
+                        console.error('❌ API Error:', e);
+                        console.log('Error details:', JSON.stringify(e, null, 2));
                         setError('An API error occurred. The lesson has been stopped.');
                         cleanupConversationResources();
                     },
                     onclose: () => {
-                        console.log('Session closed.');
+                        console.log('🔌 WebSocket closed', isStopping.current ? '(intentional)' : '(unexpected)');
                         if (!isStopping.current && timeLeft > 15) {
                             setStatus(ConversationStatus.RECONNECTING);
                             partialCleanupForReconnect().then(() => {
@@ -368,7 +384,9 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                 },
             });
         } catch (err) {
-            console.error('Failed to start conversation:', err);
+            console.error('❌ Failed to start conversation:', err);
+            console.log('Error type:', err instanceof Error ? err.name : typeof err);
+            console.log('Error message:', err instanceof Error ? err.message : String(err));
             setError('Could not access microphone. Check permissions and try again.');
             setStatus(ConversationStatus.ERROR);
             await cleanupConversationResources();
