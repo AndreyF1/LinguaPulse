@@ -1,5 +1,39 @@
 # LinguaPulse Project Documentation
 
+## ⚠️ PROJECT RESTRUCTURED (October 2025)
+
+**Important**: This project now contains TWO versions:
+
+1. **Telegram Bot** (Archived) - Located in `/telegram-bot/` and branch `telegram-version`
+   - Full-featured Telegram bot with AWS Lambda backend
+   - Active and maintained for existing users
+   - Documentation remains in this file below
+
+2. **Web Application** (New Development) - Located in `/web-app/`
+   - Modern web interface with TypeScript
+   - Supabase-powered backend (Auth, DB, Edge Functions)
+   - Magic Link authentication
+   - User dashboard with feedback history
+   - Will eventually support mobile conversion
+
+### Repository Structure
+
+```
+LinguaPulse/
+├── telegram-bot/           # Telegram version (archived)
+│   ├── AWS Backend/        # Lambda functions
+│   └── Cloudflare Worker/  # Webhook handler
+├── web-app/                # Web version (active development)
+│   ├── frontend/           # Next.js + TypeScript
+│   └── supabase/           # Edge Functions + migrations
+├── shared/                 # Common code/types
+│   ├── types/              # TypeScript definitions
+│   └── database/           # SQL schemas
+└── [docs]                  # Project documentation
+```
+
+---
+
 ## 🔧 Development Workflow Rules
 
 ### CRITICAL: Always commit and push changes
@@ -16,7 +50,7 @@
 
 ---
 
-## 📋 Current Status (October 2025)
+## 📋 Current Status - Telegram Bot (October 2025)
 
 ### 🎯 PRODUCTION-READY SYSTEM ✅
 
