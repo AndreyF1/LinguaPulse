@@ -299,15 +299,33 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                             }
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                             const pcmBlob = createBlob(inputData);
+                            
+                            if (audioChunkCount === 1) {
+                                console.log('🔍 Checking session state...');
+                                console.log('  sessionPromiseRef.current:', !!sessionPromiseRef.current);
+                            }
+                            
                             sessionPromiseRef.current?.then((session) => {
+                                if (audioChunkCount === 1) {
+                                    console.log('  session resolved:', !!session);
+                                    console.log('  session._ws:', !!session._ws);
+                                    console.log('  WebSocket.readyState:', session._ws?.readyState);
+                                    console.log('  WebSocket.OPEN:', WebSocket.OPEN);
+                                    console.log('  isStopping:', isStopping.current);
+                                }
+                                
                                 if (!isStopping.current && session._ws?.readyState === WebSocket.OPEN) {
                                     if (audioChunkCount === 1) {
                                         console.log('📤 Sending first audio chunk to Gemini...');
                                     }
                                     session.sendRealtimeInput({ media: pcmBlob });
+                                } else if (audioChunkCount === 1) {
+                                    console.warn('❌ Cannot send audio: conditions not met');
                                 }
                             }).catch(err => {
-                                if (!isStopping.current) console.warn("Could not send audio data:", err);
+                                if (!isStopping.current && audioChunkCount === 1) {
+                                    console.warn("❌ Session promise rejected:", err);
+                                }
                             });
                         };
                         source.connect(scriptProcessor);
