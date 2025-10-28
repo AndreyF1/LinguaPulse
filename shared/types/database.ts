@@ -106,8 +106,7 @@ export interface AnonymousSession {
   funnel_answers: Json // Array: [{"question": 1, "answer": "English"}]
   funnel_completed: boolean
   
-  // Demo session data (JSONB)
-  demo_scenario?: string | null
+  // Demo session data (JSONB) - fixed scenario, no user selection
   demo_transcript?: Json | null // Array: [{"role": "user", "content": "Hello"}]
   demo_feedback?: string | null
   demo_scores?: Json | null // {"grammar": 8, "vocabulary": 7}
