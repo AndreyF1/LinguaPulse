@@ -20,55 +20,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [authMessage, setAuthMessage] = useState<string | null>(null);
 
     const fetchUserProfile = useCallback(async (supabaseUser: SupabaseUser): Promise<UserWithSessions | null> => {
-        // 1. Fetch user from users table
-        const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', supabaseUser.id)
-            .single();
-
-        if (userError && userError.code !== 'PGRST116') { // PGRST116: no rows found
-            throw new Error(`Error fetching user: ${userError.message}. Check your RLS policies for the 'users' table.`);
+        // Get JWT token
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) {
+            throw new Error('Could not retrieve user session');
         }
 
-        let user = userData;
+        // Call Edge Function to get/create user profile and sessions
+        const response = await fetch(`${supabase.supabaseUrl}/functions/v1/get-user`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+            },
+        });
 
-        // 2. If user doesn't exist in users table, create it
-        if (!user) {
-            const newUsername = supabaseUser.email!.split('@')[0];
-            const { data: newUser, error: insertError } = await supabase
-                .from('users')
-                .insert({
-                    id: supabaseUser.id,
-                    username: newUsername,
-                    email: supabaseUser.email,
-                    auth_provider: 'magic_link' as const,
-                    email_verified: !!supabaseUser.email_confirmed_at,
-                    lessons_left: 0,
-                    total_lessons_completed: 0,
-                    current_streak: 0,
-                    onboarding_completed: false,
-                })
-                .select()
-                .single();
-
-            if (insertError) {
-                throw new Error(`Error creating user: ${insertError.message}. Check your RLS policies for the 'users' table.`);
-            }
-            user = newUser;
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to fetch user profile');
         }
-        
-        // 3. Fetch user lesson sessions from the 'lesson_sessions' table
-        const { data: sessionsData, error: sessionsError } = await supabase
-            .from('lesson_sessions')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false });
 
-        if (sessionsError) {
-             console.error(`Error fetching lesson sessions: ${sessionsError.message}. Check your RLS policies.`);
-             // We can still continue without sessions
-        }
+        const { user, sessions } = await response.json();
 
         // Fallback username from email
         const displayUsername = user.username || supabaseUser.email?.split('@')[0] || 'User';
@@ -76,7 +48,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
             ...user,
             username: displayUsername,
-            sessions: (sessionsData as LessonSession[]) || [],
+            sessions: (sessions as LessonSession[]) || [],
         };
     }, []);
 
@@ -142,39 +114,37 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         try {
-            // Save session directly to Supabase (RLS policies will handle security)
-            const { data: newSession, error: insertError } = await supabase
-                .from('lesson_sessions')
-                .insert({
-                    ...sessionData,
-                    user_id: currentUser.id,
-                })
-                .select()
-                .single();
-
-            if (insertError) {
-                console.error('Error inserting session:', insertError);
-                throw new Error(insertError.message || 'Failed to save session');
+            // Get JWT token
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !session) {
+                throw new Error('Could not retrieve user session');
             }
+
+            // Call Edge Function to save session
+            const response = await fetch(`${supabase.supabaseUrl}/functions/v1/save-session`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ sessionData }),
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to save session');
+            }
+
+            const { session: newSession, sessions: allSessions } = await response.json();
 
             console.log("Session saved successfully:", newSession.id);
 
-            // Update local state by refetching all sessions
-            const { data: refreshedSessions, error: selectError } = await supabase
-                .from('lesson_sessions')
-                .select('*')
-                .eq('user_id', currentUser.id)
-                .order('created_at', { ascending: false });
+            // Update local state with fresh sessions list
+            setCurrentUser(prevUser => {
+                if (!prevUser) return null;
+                return { ...prevUser, sessions: (allSessions as LessonSession[]) || [] };
+            });
 
-            if (selectError) {
-                console.error(`Session was saved, but failed to refetch: ${selectError.message}`);
-            } else {
-                // Update the local state with the fresh list of sessions
-                setCurrentUser(prevUser => {
-                    if (!prevUser) return null;
-                    return { ...prevUser, sessions: (refreshedSessions as LessonSession[]) || [] };
-                });
-            }
         } catch (error: any) {
             console.error("Error saving session:", error);
             throw error;
