@@ -80,16 +80,6 @@ export interface Database {
         Insert: ProductInsert
         Update: ProductUpdate
       }
-      feedback: {
-        Row: Feedback
-        Insert: FeedbackInsert
-        Update: FeedbackUpdate
-      }
-      text_usage_daily: {
-        Row: TextUsageDaily
-        Insert: TextUsageDailyInsert
-        Update: TextUsageDailyUpdate
-      }
     }
   }
 }
@@ -399,38 +389,6 @@ export type ProductInsert = Omit<Product, 'id'> & {
 }
 
 export type ProductUpdate = Partial<ProductInsert>
-
-// ============================================
-// FEEDBACK
-// ============================================
-
-export interface Feedback {
-  id: string
-  user_id: string
-  telegram_id?: number | null
-  text: string
-  created_at: string
-}
-
-export type FeedbackInsert = Omit<Feedback, 'id' | 'created_at'> & {
-  id?: string
-  created_at?: string
-}
-
-export type FeedbackUpdate = Partial<FeedbackInsert>
-
-// ============================================
-// TEXT USAGE DAILY
-// ============================================
-
-export interface TextUsageDaily {
-  user_id: string
-  day: string
-  messages: number
-}
-
-export type TextUsageDailyInsert = TextUsageDaily
-export type TextUsageDailyUpdate = Partial<TextUsageDaily>
 
 // ============================================
 // HELPER TYPES

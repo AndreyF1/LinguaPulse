@@ -53,6 +53,12 @@
 - Created helper function `is_service_role()`
 - Status: **SUCCESS**
 
+### 9. **009_drop_unused_tables.sql** ✅
+- Dropped `feedback` table (Telegram-only, not used in web)
+- Dropped `text_usage_daily` table (Telegram-only, not used in web)
+- Removed 5 RLS policies for dropped tables
+- Status: **SUCCESS**
+
 ---
 
 ## 📊 Verification Results
@@ -83,10 +89,8 @@ demo_sessions:    2 policies
 lesson_sessions:  7 policies
 payments:         2 policies
 products:         2 policies
-feedback:         3 policies
-text_usage_daily: 2 policies
 ─────────────────────────────
-TOTAL:           27 policies
+TOTAL:           22 policies
 ```
 
 ### Current Data:
@@ -113,8 +117,10 @@ New tables:       All empty (ready for web traffic)
 6. **lesson_sessions** - Full lessons (formerly `sessions`)
 7. **payments** - Payment transactions
 8. **products** - Subscription packages
-9. **feedback** - User feedback
-10. **text_usage_daily** - Daily usage statistics
+
+**Removed (Telegram-only, not used in web):**
+- ~~**feedback**~~ - Removed in migration 009
+- ~~**text_usage_daily**~~ - Removed in migration 009
 
 ---
 
@@ -185,8 +191,11 @@ If needed, rollback SQL is available in migration files comments.
 All structural changes applied successfully. Database is ready for web application development.
 
 **Database Version:** PostgreSQL 17.4  
-**Schema Version:** Web v1.0  
-**Migration Time:** ~2 minutes  
+**Schema Version:** Web v1.1  
+**Migrations Applied:** 9 (001-009)  
+**Total Tables:** 8 (4 new, 3 modified, 3 deleted)  
+**RLS Policies:** 22 active policies  
+**Migration Time:** ~3 minutes  
 **Errors:** 1 non-critical (profile migration)  
 **Status:** ✅ **PRODUCTION READY**
 
