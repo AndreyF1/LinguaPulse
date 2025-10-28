@@ -6,7 +6,27 @@
  * - UI-specific types for the React app
  */
 
-// Re-export database types
+// Import database types
+import type {
+  User,
+  UserInsert,
+  UserUpdate,
+  LessonSession,
+  LessonSessionInsert,
+  LessonSessionUpdate,
+  AnonymousSession,
+  AnonymousSessionInsert,
+  AnonymousSessionUpdate,
+  Payment,
+  PaymentInsert,
+  Product,
+  AuthProvider,
+  Json,
+  TranscriptMessage,
+  FeedbackScores as DBFeedbackScores,
+} from '../../shared/types/database';
+
+// Re-export database types for convenience
 export type {
   User,
   UserInsert,
@@ -23,9 +43,7 @@ export type {
   AuthProvider,
   Json,
   TranscriptMessage,
-} from '../../shared/types/database';
-
-import type { FeedbackScores as DBFeedbackScores } from '../../shared/types/database';
+};
 
 // ============================================
 // UI TYPES
@@ -70,9 +88,8 @@ export interface FinalFeedback {
 }
 
 // Frontend user type with populated sessions
-export interface UserWithSessions extends Omit<import('../../shared/types/database').User, 'id'> {
-  id: string;
-  username: string;
+export interface UserWithSessions extends User {
+  username: string; // Required (not nullable)
   sessions: LessonSession[];
 }
 

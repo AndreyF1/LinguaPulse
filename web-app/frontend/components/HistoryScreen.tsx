@@ -94,8 +94,12 @@ const HistoryScreen: React.FC = () => {
     
     const getOverallScore = (session: LessonSession) => {
         if (!session.scores) return 0;
-        const scores = session.scores as FeedbackScores;
-        const { pronunciation, grammar, vocabulary, fluency, comprehension } = scores;
+        
+        // Safe type casting: JSONB scores to FeedbackScores
+        const scores = session.scores as unknown as FeedbackScores;
+        
+        // Validate that all required fields exist
+        const { pronunciation = 0, grammar = 0, vocabulary = 0, fluency = 0, comprehension = 0 } = scores;
         return Math.round((pronunciation + grammar + vocabulary + fluency + comprehension) / 5);
     }
 
@@ -106,21 +110,24 @@ const HistoryScreen: React.FC = () => {
                     <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-2xl border border-gray-700 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                         <h2 className="text-2xl font-bold text-cyan-400 mb-4 text-center">Результаты урока: {selectedSession.scenario_title}</h2>
                         <div className="overflow-y-auto pr-2">
-                           {selectedSession.scores && (
-                                <div className="mb-6 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
-                                    <div className="text-center mb-4">
-                                        <p className="text-gray-400 text-sm">Общий балл</p>
-                                        <p className="text-5xl font-bold text-cyan-400">{getOverallScore(selectedSession)}</p>
+                           {selectedSession.scores && (() => {
+                                const scores = selectedSession.scores as unknown as FeedbackScores;
+                                return (
+                                    <div className="mb-6 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+                                        <div className="text-center mb-4">
+                                            <p className="text-gray-400 text-sm">Общий балл</p>
+                                            <p className="text-5xl font-bold text-cyan-400">{getOverallScore(selectedSession)}</p>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <ScoreDisplay label="Произношение" score={scores.pronunciation || 0} />
+                                            <ScoreDisplay label="Грамматика" score={scores.grammar || 0} />
+                                            <ScoreDisplay label="Словарный запас" score={scores.vocabulary || 0} />
+                                            <ScoreDisplay label="Беглость речи" score={scores.fluency || 0} />
+                                            <ScoreDisplay label="Понимание" score={scores.comprehension || 0} />
+                                        </div>
                                     </div>
-                                    <div className="space-y-4">
-                                        <ScoreDisplay label="Произношение" score={selectedSession.scores.pronunciation} />
-                                        <ScoreDisplay label="Грамматика" score={selectedSession.scores.grammar} />
-                                        <ScoreDisplay label="Словарный запас" score={selectedSession.scores.vocabulary} />
-                                        <ScoreDisplay label="Беглость речи" score={selectedSession.scores.fluency} />
-                                        <ScoreDisplay label="Понимание" score={selectedSession.scores.comprehension} />
-                                    </div>
-                                </div>
-                            )}
+                                );
+                            })()}
                             {selectedSession.feedback_text ? renderMarkdown(selectedSession.feedback_text) : <p>Отзыв не найден.</p>}
                         </div>
                         <button onClick={() => setSelectedSession(null)} className="mt-6 bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded transition-colors duration-200 w-full">
