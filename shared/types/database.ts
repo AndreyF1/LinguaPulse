@@ -9,7 +9,6 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 // ENUMS
 // ============================================
 
-export type UserLevel = 'Beginner' | 'Intermediate' | 'Advanced'
 export type AuthProvider = 'telegram' | 'magic_link' | 'google' | 'email'
 export type DemoEndReason = 'completed' | 'timeout' | 'abandoned' | 'error' | 'user_stopped'
 export type EventType = 
@@ -94,14 +93,9 @@ export interface User {
   // Identity
   telegram_id?: number | null
   email?: string | null
-  username: string
+  username?: string | null
   auth_provider: AuthProvider
-  
-  // Profile
-  display_name?: string | null
-  avatar_url?: string | null
-  interface_language: string
-  current_level?: UserLevel | null
+  email_verified: boolean
   
   // Subscription
   lessons_left: number
@@ -113,24 +107,11 @@ export interface User {
   current_streak: number
   last_lesson_date?: string | null
   
-  // Onboarding
-  onboarding_completed: boolean
-  target_language?: string | null
-  learning_goal?: string | null
-  time_commitment?: string | null
-  quiz_started_at?: string | null
-  quiz_completed_at?: string | null
-  
-  // Tracking
+  // Web tracking
   visitor_id?: string | null
-  text_messages_total: number
-  last_text_used_at?: string | null
-  
-  // Telegram-specific
-  ai_mode?: string | null
+  onboarding_completed: boolean
   
   // Meta
-  is_active: boolean
   created_at: string
   updated_at: string
 }

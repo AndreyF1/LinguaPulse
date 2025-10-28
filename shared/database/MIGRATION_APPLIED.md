@@ -59,6 +59,14 @@
 - Removed 5 RLS policies for dropped tables
 - Status: **SUCCESS**
 
+### 10. **010_cleanup_users_table.sql** ✅
+- Removed 13 unused columns from `users` table:
+  - Telegram-only: `ai_mode`, `text_messages_total`, `last_text_used_at`, `quiz_started_at`, `quiz_completed_at`, `is_active`
+  - Onboarding: `interface_language`, `current_level`, `target_language`, `learning_goal`, `time_commitment`
+  - Profile: `avatar_url`, `display_name`
+- **Final:** 16 columns (was 29)
+- Status: **SUCCESS**
+
 ---
 
 ## 📊 Verification Results
@@ -191,11 +199,12 @@ If needed, rollback SQL is available in migration files comments.
 All structural changes applied successfully. Database is ready for web application development.
 
 **Database Version:** PostgreSQL 17.4  
-**Schema Version:** Web v1.1  
-**Migrations Applied:** 9 (001-009)  
+**Schema Version:** Web v1.2  
+**Migrations Applied:** 10 (001-010)  
 **Total Tables:** 8 (4 new, 3 modified, 3 deleted)  
+**Users Table:** 16 columns (was 29, removed 13)  
 **RLS Policies:** 22 active policies  
-**Migration Time:** ~3 minutes  
+**Migration Time:** ~5 minutes  
 **Errors:** 1 non-critical (profile migration)  
-**Status:** ✅ **PRODUCTION READY**
+**Status:** ✅ **PRODUCTION READY - SIMPLIFIED**
 
