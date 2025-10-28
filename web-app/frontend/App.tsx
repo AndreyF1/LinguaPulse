@@ -57,8 +57,12 @@ const App: React.FC = () => {
     }, []);
 
     const handleSaveAndExit = useCallback(async (transcript: TranscriptEntry[], finalFeedback: FinalFeedback) => {
-        if (!inProgressSession || !currentUser || isSaving) return;
+        if (!inProgressSession || !currentUser || isSaving) {
+            console.log('💾 Save blocked:', { hasSession: !!inProgressSession, hasUser: !!currentUser, isSaving });
+            return;
+        }
         
+        console.log('💾 Starting save...');
         setIsSaving(true);
         const newSession: NewSessionData = {
             scenario_title: inProgressSession.scenario.title,
@@ -68,16 +72,27 @@ const App: React.FC = () => {
             feedback_text: finalFeedback.text,
         };
         
+        console.log('📦 Session data prepared:', {
+            title: newSession.scenario_title,
+            transcriptLength: transcript.length,
+            hasScores: !!finalFeedback.scores,
+            hasFeedback: !!finalFeedback.text
+        });
+        
         try {
+            console.log('📤 Calling addSessionToCurrentUser...');
             await addSessionToCurrentUser(newSession);
+            console.log('✅ Session saved successfully!');
             // Clean up ONLY on successful save
             localStorage.removeItem(IN_PROGRESS_SESSION_KEY);
             setInProgressSession(null);
             setCurrentView('scenarios');
         } catch (error: any) {
-            console.error("Failed to save session:", error);
+            console.error("❌ Failed to save session:", error);
+            console.error("Error details:", { name: error.name, message: error.message, stack: error.stack });
             alert(`Failed to save session. Please try again.\n\nError: ${error.message}`);
         } finally {
+            console.log('💾 Save completed (success or failure)');
             setIsSaving(false);
         }
 

@@ -157,14 +157,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         try {
+            console.log('🔐 Getting auth session...');
             // Get JWT token
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
             if (sessionError || !session) {
+                console.error('❌ Session error:', sessionError);
                 throw new Error('Could not retrieve user session');
             }
+            console.log('✅ Auth session retrieved');
 
             // Call Edge Function to save session
-            const response = await fetch(`${SUPABASE_URL}/functions/v1/save-session`, {
+            console.log('📡 Calling save-session Edge Function...');
+            const requestUrl = `${SUPABASE_URL}/functions/v1/save-session`;
+            console.log('  URL:', requestUrl);
+            console.log('  Session data keys:', Object.keys(sessionData));
+            
+            const response = await fetch(requestUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${session.access_token}`,
@@ -173,14 +181,25 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 body: JSON.stringify({ sessionData }),
             });
 
+            console.log('📬 Response received:', response.status, response.statusText);
+
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to save session');
+                const errorText = await response.text();
+                console.error('❌ Response error:', errorText);
+                let errorMessage = 'Failed to save session';
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.error || errorMessage;
+                } catch {
+                    errorMessage = errorText || errorMessage;
+                }
+                throw new Error(errorMessage);
             }
 
-            const { session: newSession, sessions: allSessions } = await response.json();
+            const responseData = await response.json();
+            console.log('✅ Session saved successfully:', responseData.session?.id);
 
-            console.log("Session saved successfully:", newSession.id);
+            const { session: newSession, sessions: allSessions } = responseData;
 
             // Update local state with fresh sessions list
             setCurrentUser(prevUser => {

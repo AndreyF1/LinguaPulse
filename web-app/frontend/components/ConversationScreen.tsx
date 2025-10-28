@@ -98,6 +98,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
     const [finalFeedback, setFinalFeedback] = useState<FinalFeedback>({ text: null, scores: null });
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
     const [timeLeft, setTimeLeft] = useState(10 * 60);
+    const hasWarnedAboutTimeRef = useRef(false);
 
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -443,12 +444,35 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
         
         timerRef.current = window.setInterval(() => {
             setTimeLeft(prev => {
-                if (prev <= 1) {
+                const next = prev - 1;
+                
+                // At 30 seconds remaining, send text to AI to wrap up
+                if (next === 30 && !hasWarnedAboutTimeRef.current) {
+                    hasWarnedAboutTimeRef.current = true;
+                    sessionPromiseRef.current?.then((session) => {
+                        if (!isStopping.current) {
+                            session.send([{
+                                text: "Time is running out. Please wrap up this conversation politely in your next 1-2 responses."
+                            }]);
+                            console.log('⏰ Sent time warning to AI (30s remaining)');
+                        }
+                    }).catch(console.error);
+                }
+                
+                // At 0, stop gracefully (AI will finish current phrase)
+                if (next <= 0) {
                     if (timerRef.current) clearInterval(timerRef.current);
-                    if (!isStopping.current) handleStopRef.current();
+                    // Small delay to let AI finish speaking
+                    setTimeout(() => {
+                        if (!isStopping.current) {
+                            console.log('⏱️ Time expired, stopping conversation gracefully');
+                            handleStopRef.current();
+                        }
+                    }, 2000);
                     return 0;
                 }
-                return prev - 1;
+                
+                return next;
             });
         }, 1000);
 
@@ -505,6 +529,9 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                         {isConversationActive && (
                              <div className={`absolute inset-0 rounded-full bg-cyan-500/50 ${status === ConversationStatus.LISTENING ? 'animate-pulse' : (status === ConversationStatus.RECONNECTING || status === ConversationStatus.CONNECTING ? 'animate-spin' : '')}`}></div>
                         )}
+                        {status === ConversationStatus.GENERATING_FEEDBACK && (
+                            <div className="absolute inset-0 rounded-full border-4 border-cyan-600 border-t-transparent animate-spin"></div>
+                        )}
                         <button
                             onClick={handleStop}
                             disabled={!isConversationActive}
@@ -515,7 +542,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                             <StopIcon className="w-8 h-8"/>
                         </button>
                     </div>
-                    <p className={`text-center h-6 ${status === ConversationStatus.ERROR ? 'text-red-400' : 'text-gray-400'}`}>
+                    <p className={`text-center h-6 font-semibold ${status === ConversationStatus.ERROR ? 'text-red-400' : (status === ConversationStatus.GENERATING_FEEDBACK ? 'text-cyan-400 animate-pulse' : 'text-gray-400')}`}>
                         {getStatusText()}
                     </p>
                 </div>
