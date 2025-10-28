@@ -85,8 +85,21 @@ const App: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
-                <p>Loading session...</p>
+            <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-white space-y-4">
+                <div className="flex flex-col items-center space-y-2">
+                    <div className="w-12 h-12 border-4 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p>Loading session...</p>
+                </div>
+                {/* Safety valve: if stuck, user can clear cache */}
+                <button 
+                    onClick={() => {
+                        localStorage.clear();
+                        window.location.reload();
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors mt-8"
+                >
+                    Stuck? Clear cache and reload
+                </button>
             </div>
         );
     }

@@ -53,28 +53,71 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     useEffect(() => {
-        setLoading(true);
+        let isMounted = true;
 
+        const initAuth = async () => {
+            setLoading(true);
+            
+            try {
+                // Check for existing session first
+                const { data: { session } } = await supabase.auth.getSession();
+                
+                if (!isMounted) return;
+                
+                if (session?.user) {
+                    const profile = await fetchUserProfile(session.user);
+                    if (isMounted) {
+                        setCurrentUser(profile);
+                    }
+                } else {
+                    if (isMounted) {
+                        setCurrentUser(null);
+                    }
+                }
+            } catch (error: any) {
+                console.error("Initial auth check error:", error);
+                if (isMounted) {
+                    setAuthMessage(error.message || "An authentication error occurred.");
+                    setCurrentUser(null);
+                }
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        // Initialize auth
+        initAuth();
+
+        // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
+                if (!isMounted) return;
+                
                 try {
                     if (session?.user) {
                         const profile = await fetchUserProfile(session.user);
-                        setCurrentUser(profile);
+                        if (isMounted) {
+                            setCurrentUser(profile);
+                        }
                     } else {
-                        setCurrentUser(null);
+                        if (isMounted) {
+                            setCurrentUser(null);
+                        }
                     }
                 } catch (error: any) {
                     console.error("Auth state change error:", error);
-                    setAuthMessage(error.message || "An authentication error occurred.");
-                    setCurrentUser(null);
-                } finally {
-                    setLoading(false);
+                    if (isMounted) {
+                        setAuthMessage(error.message || "An authentication error occurred.");
+                        setCurrentUser(null);
+                    }
                 }
             }
         );
 
         return () => {
+            isMounted = false;
             subscription.unsubscribe();
         };
     }, [fetchUserProfile]);
