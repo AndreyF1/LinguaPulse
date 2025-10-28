@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { UserWithSessions, NewSessionData, LessonSession } from '../types';
-import { supabase } from '../supabaseClient';
+import { supabase, SUPABASE_URL } from '../supabaseClient';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface UserContextType {
@@ -27,7 +27,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Call Edge Function to get/create user profile and sessions
-        const response = await fetch(`${supabase.supabaseUrl}/functions/v1/get-user`, {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-user`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${session.access_token}`,
@@ -121,7 +121,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             // Call Edge Function to save session
-            const response = await fetch(`${supabase.supabaseUrl}/functions/v1/save-session`, {
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/save-session`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${session.access_token}`,
