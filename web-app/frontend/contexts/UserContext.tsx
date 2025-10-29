@@ -59,29 +59,44 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setLoading(true);
             
             try {
-                // Check for existing session first
-                const { data: { session } } = await supabase.auth.getSession();
+                // Add timeout to prevent infinite loading
+                const initTimeout = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Auth initialization timed out after 5s')), 5000)
+                );
                 
-                if (!isMounted) return;
+                const authInit = async () => {
+                    // Check for existing session first
+                    const { data: { session } } = await supabase.auth.getSession();
+                    
+                    if (!isMounted) return;
+                    
+                    if (session?.user) {
+                        const profile = await fetchUserProfile(session.user);
+                        if (isMounted) {
+                            setCurrentUser(profile);
+                        }
+                    } else {
+                        if (isMounted) {
+                            setCurrentUser(null);
+                        }
+                    }
+                };
                 
-                if (session?.user) {
-                    const profile = await fetchUserProfile(session.user);
-                    if (isMounted) {
-                        setCurrentUser(profile);
-                    }
-                } else {
-                    if (isMounted) {
-                        setCurrentUser(null);
-                    }
-                }
+                await Promise.race([authInit(), initTimeout]);
             } catch (error: any) {
                 console.error("Initial auth check error:", error);
                 if (isMounted) {
-                    setAuthMessage(error.message || "An authentication error occurred.");
-                    setCurrentUser(null);
+                    if (error.message?.includes('timed out')) {
+                        console.warn('⚠️ Auth init timed out, assuming no session');
+                        setCurrentUser(null);
+                    } else {
+                        setAuthMessage(error.message || "An authentication error occurred.");
+                        setCurrentUser(null);
+                    }
                 }
             } finally {
                 if (isMounted) {
+                    console.log('✅ Auth initialization complete, setting loading=false');
                     setLoading(false);
                 }
             }
@@ -158,11 +173,34 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         try {
             console.log('🔐 Getting auth session...');
-            // Get JWT token - use refreshSession to avoid hanging
-            const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
-            if (sessionError || !session) {
-                console.error('❌ Session error:', sessionError);
-                throw new Error('Could not retrieve user session. Please refresh the page.');
+            
+            // Get JWT token with timeout to prevent hanging
+            const sessionPromise = supabase.auth.getSession();
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Session retrieval timed out after 3s')), 3000)
+            );
+            
+            let session: any = null;
+            try {
+                const { data, error } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+                if (error) throw error;
+                session = data.session;
+            } catch (timeoutError: any) {
+                console.warn('⚠️ getSession timed out, trying localStorage fallback...', timeoutError.message);
+                
+                // Fallback: Try to get token directly from localStorage
+                const storageKey = `sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`;
+                const storedSession = localStorage.getItem(storageKey);
+                if (storedSession) {
+                    const parsed = JSON.parse(storedSession);
+                    session = parsed;
+                    console.log('✅ Retrieved session from localStorage');
+                }
+            }
+            
+            if (!session || !session.access_token) {
+                console.error('❌ No valid session found');
+                throw new Error('Could not retrieve user session. Please log in again.');
             }
             console.log('✅ Auth session retrieved, token length:', session.access_token.length);
 
