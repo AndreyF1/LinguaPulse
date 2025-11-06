@@ -46,6 +46,17 @@ RULES:
 Now, please continue the conversation. You could say something like "Sorry about that, where were we?" or just continue the topic.
 `;
 
+const GOODBYE_SYSTEM_INSTRUCTION_TEMPLATE = `You are an AI English tutor. The lesson time has run out.
+
+--- CONVERSATION TRANSCRIPT ---
+{transcript}
+--- END TRANSCRIPT ---
+
+**IMPORTANT**: Say a brief, warm goodbye to the learner in 1-2 sentences. Thank them for practicing and encourage them. Keep it natural and brief. For example: "Great job today! You did really well. Keep practicing and I'll see you next time!"
+
+Do NOT ask any questions. Do NOT continue the conversation. Just say goodbye and stop speaking.
+`;
+
 const FEEDBACK_PROMPT_TEMPLATE = `
 Based on the following conversation transcript with a Russian-speaking English learner, provide a detailed but concise feedback report.
 
@@ -107,6 +118,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
     const hasWarnedAboutTimeRef = useRef(false);
     const shouldSayGoodbyeRef = useRef(false);
     const hasTriggeredGoodbyeRef = useRef(false);
+    const isInGoodbyeModeRef = useRef(false);
 
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -423,28 +435,67 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                             scheduleUpdate(prev => {
                                 const finalized = prev.map(e => ({ ...e, isFinal: true }));
                                 
-                                // Check if we should trigger goodbye and stop immediately
+                                // If we're in goodbye mode, AI just said goodbye - stop after it finishes
+                                if (isInGoodbyeModeRef.current) {
+                                    console.log('👋 AI said goodbye, waiting for audio to finish before stopping...');
+                                    const checkAndStop = () => {
+                                        if (outputSources.size === 0) {
+                                            console.log('🛑 Goodbye complete, stopping lesson now');
+                                            if (!isStopping.current) {
+                                                setTimeout(() => handleStopRef.current(), 500);
+                                            }
+                                        } else {
+                                            console.log('⏳ Waiting for goodbye to finish playing...');
+                                            setTimeout(checkAndStop, 500);
+                                        }
+                                    };
+                                    setTimeout(checkAndStop, 500);
+                                    return finalized;
+                                }
+                                
+                                // Check if we should trigger goodbye sequence
                                 if (shouldSayGoodbyeRef.current && !hasTriggeredGoodbyeRef.current) {
                                     const lastUserEntry = finalized.filter(e => e.speaker === 'user' && e.isFinal).slice(-1)[0];
                                     if (lastUserEntry) {
-                                        console.log('👋 Less than 20 seconds! Stopping microphone after AI responds...');
+                                        console.log('⏰ Less than 20 seconds! AI will say goodbye after this response...');
                                         hasTriggeredGoodbyeRef.current = true;
                                         
-                                        // Wait for AI to finish this response, then stop
-                                        const checkAndStop = () => {
+                                        // Wait for AI to finish this response, then reconnect for goodbye
+                                        const triggerGoodbye = () => {
                                             if (outputSources.size === 0) {
-                                                console.log('🛑 AI finished response, stopping lesson now');
-                                                if (!isStopping.current) {
-                                                    setTimeout(() => handleStopRef.current(), 1000);
+                                                console.log('✅ AI finished response, now triggering goodbye...');
+                                                
+                                                // Stop microphone
+                                                if (scriptProcessorRef.current) {
+                                                    try {
+                                                        scriptProcessorRef.current.disconnect();
+                                                        scriptProcessorRef.current = null;
+                                                        console.log('🎤 Microphone stopped for goodbye');
+                                                    } catch (e) {
+                                                        console.warn('Failed to stop microphone:', e);
+                                                    }
                                                 }
+                                                
+                                                // Reconnect with goodbye instruction
+                                                isInGoodbyeModeRef.current = true;
+                                                const transcriptText = transcriptRef.current
+                                                    .filter(e => e.isFinal && e.text.trim())
+                                                    .map(entry => `${entry.speaker === 'user' ? 'Learner' : 'Tutor'}: ${entry.text}`)
+                                                    .join('\n');
+                                                const goodbyeInstruction = GOODBYE_SYSTEM_INSTRUCTION_TEMPLATE.replace('{transcript}', transcriptText);
+                                                
+                                                console.log('🔄 Reconnecting with goodbye instruction...');
+                                                // Clean up current session before reconnecting
+                                                partialCleanupForReconnect().then(() => {
+                                                    startLiveSession(goodbyeInstruction);
+                                                });
                                             } else {
-                                                console.log('⏳ Waiting for AI to finish speaking...');
-                                                setTimeout(checkAndStop, 500);
+                                                console.log('⏳ Waiting for AI to finish response before goodbye...');
+                                                setTimeout(triggerGoodbye, 500);
                                             }
                                         };
                                         
-                                        // Start checking after a short delay to let AI start speaking
-                                        setTimeout(checkAndStop, 1000);
+                                        setTimeout(triggerGoodbye, 500);
                                     }
                                 }
                                 
