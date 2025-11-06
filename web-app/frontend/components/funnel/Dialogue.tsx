@@ -104,9 +104,9 @@ const Dialogue: React.FC<DialogueProps> = ({ onDialogueEnd }) => {
 
     useEffect(() => {
         async function startSession() {
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            const apiKey = import.meta.env.GEMINI_API_KEY;
             if (!apiKey) {
-                setStatus('API Key is not configured. Please set VITE_GEMINI_API_KEY.');
+                setStatus('API Key is not configured. Please set GEMINI_API_KEY.');
                 return;
             }
 

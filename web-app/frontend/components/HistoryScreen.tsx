@@ -60,7 +60,7 @@ const HistoryScreen: React.FC = () => {
     
         try {
             const ai = new GoogleGenAI({ 
-                apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' 
+                apiKey: import.meta.env.GEMINI_API_KEY || '' 
             });
             const prompt = MONTHLY_REPORT_PROMPT_TEMPLATE.replace('{feedbackData}', JSON.stringify(feedbackData, null, 2));
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
