@@ -94,7 +94,7 @@ const FunnelApp: React.FC = () => {
             isSaving={false}
             isDemoMode={true}
             durationMinutes={5}
-            tutorAvatarUrl="https://api.dicebear.com/7.x/bottts/svg?seed=linguapulse&backgroundColor=0ea5e9"
+            tutorAvatarUrl="/tutor-avatar.png"
           />
         );
       case AppView.EMAIL_FORM:

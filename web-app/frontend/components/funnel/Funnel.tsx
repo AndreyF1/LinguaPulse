@@ -263,7 +263,7 @@ const HookMicroDemo: React.FC = () => {
         <div className="bg-gray-700/50 border border-gray-600 text-white p-6 rounded-lg shadow-lg text-center animate-fade-in space-y-4">
             <div className="flex justify-center">
                 <img 
-                    src="/tutor-avatar.jpg" 
+                    src="/tutor-avatar.png" 
                     alt="AI Tutor" 
                     className="w-24 h-24 rounded-full object-cover border-2 border-cyan-500/50 shadow-lg" 
                 />
