@@ -87,6 +87,7 @@ const FunnelApp: React.FC = () => {
             isSaving={false}
             isDemoMode={true}
             durationMinutes={5}
+            tutorAvatarUrl="/tutor-avatar.jpg"
           />
         );
       case AppView.EMAIL_FORM:

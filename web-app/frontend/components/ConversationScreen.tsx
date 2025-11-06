@@ -85,6 +85,7 @@ interface Props {
     isSaving: boolean;
     isDemoMode?: boolean; // Demo mode: 5 minutes, no save, just end with transcript
     durationMinutes?: number; // Custom duration (default 10 for main, 5 for demo)
+    tutorAvatarUrl?: string; // Optional tutor avatar image URL
 }
 
 const ai = new GoogleGenAI({ 
@@ -92,7 +93,7 @@ const ai = new GoogleGenAI({
 });
 const IN_PROGRESS_SESSION_KEY = 'in-progress-session';
 
-const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving, isDemoMode = false, durationMinutes = 10 }) => {
+const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving, isDemoMode = false, durationMinutes = 10, tutorAvatarUrl }) => {
     const [status, setStatus] = useState<ConversationStatus>(ConversationStatus.CONNECTING);
     const [transcript, setTranscript] = useState<TranscriptEntry[]>(initialTranscript);
     const transcriptRef = useRef<TranscriptEntry[]>(initialTranscript);
@@ -541,7 +542,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                     </div>
                 </div>
                 <div className="flex-1 bg-gray-800 rounded-b-lg p-4 overflow-y-auto mb-4 border border-t-0 border-gray-700">
-                    <TranscriptList transcript={transcript} />
+                    <TranscriptList transcript={transcript} tutorAvatarUrl={tutorAvatarUrl} />
                 </div>
                 <div className="flex flex-col items-center justify-center space-y-4">
                      <div className="relative flex items-center justify-center w-24 h-24">
@@ -570,7 +571,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
     );
 };
 
-const TranscriptList = React.memo(({ transcript }: { transcript: TranscriptEntry[] }) => {
+const TranscriptList = React.memo(({ transcript, tutorAvatarUrl }: { transcript: TranscriptEntry[], tutorAvatarUrl?: string }) => {
     const transcriptEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -580,14 +581,14 @@ const TranscriptList = React.memo(({ transcript }: { transcript: TranscriptEntry
     return (
         <>
             {transcript.map((entry) => (
-                <TranscriptItem key={entry.id} entry={entry} />
+                <TranscriptItem key={entry.id} entry={entry} tutorAvatarUrl={tutorAvatarUrl} />
             ))}
             <div ref={transcriptEndRef} />
         </>
     );
 });
 
-const TranscriptItem = React.memo(({ entry }: { entry: TranscriptEntry }) => {
+const TranscriptItem = React.memo(({ entry, tutorAvatarUrl }: { entry: TranscriptEntry, tutorAvatarUrl?: string }) => {
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
     const [translation, setTranslation] = useState<string | undefined>(entry.translation);
     
@@ -607,7 +608,15 @@ const TranscriptItem = React.memo(({ entry }: { entry: TranscriptEntry }) => {
 
     return (
         <div className={`flex items-start gap-3 my-4 ${entry.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {entry.speaker === 'ai' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center"><BotIcon className="w-5 h-5"/></div>}
+            {entry.speaker === 'ai' && (
+                tutorAvatarUrl ? (
+                    <img src={tutorAvatarUrl} alt="Tutor" className="flex-shrink-0 w-8 h-8 rounded-full object-cover" />
+                ) : (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center">
+                        <BotIcon className="w-5 h-5"/>
+                    </div>
+                )
+            )}
             <div className={`max-w-xl p-3 rounded-lg flex flex-col ${entry.speaker === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-gray-700 text-gray-200 rounded-bl-none'} ${!entry.isFinal ? 'opacity-70' : ''}`}>
                 <p>{entry.text}</p>
                 {entry.speaker === 'ai' && entry.isFinal && entry.text && (
