@@ -9,6 +9,18 @@ import { decode, decodeAudioData } from '../../services/audioService';
 
 // Avatar will be loaded from /public
 
+// Pre-defined AI responses for demo hook
+const AI_RESPONSES = {
+    response1: {
+        text: "That's great to hear! How are you doing today?",
+        cacheKey: 'demo_audio_response1'
+    },
+    response2: {
+        text: "I'm so glad to hear that! It was a pleasure to meet you. I hope to see you in our lessons where I can help you become a true pro in English.",
+        cacheKey: 'demo_audio_response2'
+    }
+};
+
 const HookMicroDemo: React.FC = () => {
     type DemoStep = 'prompt_user1' | 'responding_ai1' | 'prompt_user2' | 'responding_ai2' | 'done';
     type RecordingStatus = 'idle' | 'recording';
@@ -17,10 +29,12 @@ const HookMicroDemo: React.FC = () => {
     const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
     const [error, setError] = useState<string>('');
     const [aiSpeechText, setAiSpeechText] = useState<string | null>(null);
+    const [isLoadingAudio, setIsLoadingAudio] = useState<boolean>(false);
 
     const audioContextRef = useRef<AudioContext | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const audioCacheRef = useRef<{ [key: string]: string }>({});
 
     const playAudio = useCallback(async (base64Audio: string) => {
         return new Promise<void>((resolve, reject) => {
@@ -42,7 +56,24 @@ const HookMicroDemo: React.FC = () => {
         });
     }, []);
 
-    const getAiAudioResponse = useCallback(async (text: string): Promise<string> => {
+    // Get cached or generate audio for pre-defined responses
+    const getAiAudioResponse = useCallback(async (text: string, cacheKey: string): Promise<string> => {
+        // Check memory cache first
+        if (audioCacheRef.current[cacheKey]) {
+            console.log('📦 Using cached audio for:', cacheKey);
+            return audioCacheRef.current[cacheKey];
+        }
+
+        // Check localStorage cache
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            console.log('💾 Using localStorage cached audio for:', cacheKey);
+            audioCacheRef.current[cacheKey] = cached;
+            return cached;
+        }
+
+        // Generate new audio
+        console.log('🎤 Generating audio for:', cacheKey);
         const apiKey = import.meta.env.GEMINI_API_KEY;
         if (!apiKey) throw new Error("API Key not found. Please set GEMINI_API_KEY.");
         const ai = new GoogleGenAI({ apiKey });
@@ -55,6 +86,16 @@ const HookMicroDemo: React.FC = () => {
         });
         const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         if (!base64Audio) throw new Error("No audio data received from API.");
+        
+        // Cache it
+        audioCacheRef.current[cacheKey] = base64Audio;
+        try {
+            localStorage.setItem(cacheKey, base64Audio);
+            console.log('✅ Cached audio to localStorage:', cacheKey);
+        } catch (e) {
+            console.warn('⚠️ Could not cache to localStorage (quota exceeded?):', e);
+        }
+        
         return base64Audio;
     }, []);
 
@@ -89,31 +130,37 @@ const HookMicroDemo: React.FC = () => {
             stopRecording();
             if (demoStep === 'prompt_user1') {
                 setDemoStep('responding_ai1');
-                const aiText = "That's great to hear! How are you doing today?";
-                setAiSpeechText(aiText);
+                setIsLoadingAudio(true);
+                const response = AI_RESPONSES.response1;
+                setAiSpeechText(response.text);
                 try {
-                    const audio = await getAiAudioResponse(aiText);
+                    const audio = await getAiAudioResponse(response.text, response.cacheKey);
+                    setIsLoadingAudio(false);
                     await playAudio(audio);
                     setDemoStep('prompt_user2');
                 } catch (e) {
                     console.error(e);
                     setError('Не удалось получить ответ. Попробуйте снова.');
                     setDemoStep('prompt_user1');
+                    setIsLoadingAudio(false);
                 } finally {
                     setAiSpeechText(null);
                 }
             } else if (demoStep === 'prompt_user2') {
-                 setDemoStep('responding_ai2');
-                const aiText = "I'm so glad to hear that! It was a pleasure to meet you. I hope to see you in our lessons where I can help you become a true PRO in English.";
-                setAiSpeechText(aiText);
+                setDemoStep('responding_ai2');
+                setIsLoadingAudio(true);
+                const response = AI_RESPONSES.response2;
+                setAiSpeechText(response.text);
                 try {
-                    const audio = await getAiAudioResponse(aiText);
+                    const audio = await getAiAudioResponse(response.text, response.cacheKey);
+                    setIsLoadingAudio(false);
                     await playAudio(audio);
                     setDemoStep('done');
                 } catch (e) {
                     console.error(e);
                     setError('Не удалось получить ответ. Попробуйте снова.');
                     setDemoStep('prompt_user1');
+                    setIsLoadingAudio(false);
                 } finally {
                     setAiSpeechText(null);
                 }
@@ -126,11 +173,19 @@ const HookMicroDemo: React.FC = () => {
     const isResponding = demoStep === 'responding_ai1' || demoStep === 'responding_ai2';
 
     const getDisplayContent = () => {
+        if (isLoadingAudio) {
+            return (
+                <div className="flex flex-col items-center text-center gap-2 animate-fade-in">
+                    <SpinnerIcon className="w-8 h-8 text-cyan-400" />
+                    <p className="text-gray-300 text-sm">Подготавливаю ответ...</p>
+                </div>
+            );
+        }
         if (aiSpeechText) {
             return (
                 <div className="bg-gray-800 text-sm text-gray-200 p-3 rounded-lg shadow-md relative animate-fade-in w-full max-w-sm mx-auto">
                     <p>{aiSpeechText}</p>
-                    <div className="absolute bottom-full left-1/2 -trangray-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-b-8 border-b-gray-800"></div>
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-b-8 border-b-gray-800"></div>
                 </div>
             );
         }
