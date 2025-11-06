@@ -432,8 +432,8 @@ const HookFeedback: React.FC = () => {
         { label: 'Беглость', score: 70 },
         { label: 'Словарь', score: 55 },
         { label: 'Грамматика', score: 65 },
-        { label: 'Аудирование', score: 75 },
-        { label: 'Произношение', score: 80 },
+        { label: 'Слух', score: 75 }, // Аудирование
+        { label: 'Речь', score: 80 }, // Произношение
     ];
 
     return (
@@ -444,7 +444,7 @@ const HookFeedback: React.FC = () => {
         <RadarChart data={radarData} theme="dark" />
 
         <div className="bg-gray-700/50 p-4 rounded-md">
-            <h3 className="font-semibold text-gray-300 mb-2">Пример анализа (Словарный запас):</h3>
+            <h3 className="font-semibold text-gray-300 mb-2">Пример анализа (Словарь):</h3>
             <p className="text-sm text-gray-400">
                 Вы уверенно используете базовую лексику. Чтобы сделать речь богаче, попробуйте добавлять синонимы. Например, вместо <code className="bg-gray-600 text-xs px-1 rounded">"good"</code> можно использовать <code className="bg-gray-600 text-xs px-1 rounded">"great"</code>, <code className="bg-gray-600 text-xs px-1 rounded">"excellent"</code> или <code className="bg-gray-600 text-xs px-1 rounded">"wonderful"</code>.
             </p>
@@ -452,6 +452,10 @@ const HookFeedback: React.FC = () => {
                 <span className="font-bold">Рекомендация:</span> В следующем диалоге постарайтесь использовать 3 новых прилагательных.
             </p>
         </div>
+
+        <p className="text-xs text-gray-400 text-center mt-4 italic">
+            💡 Слух = Аудирование, Речь = Произношение
+        </p>
 
         <p className="text-sm text-gray-400 text-center mt-6">В полном отчёте вы увидите такой же детальный разбор по <span className="font-semibold text-gray-300">каждому</span> из пяти аспектов языка.</p>
     </div>
