@@ -221,16 +221,29 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
             .map(entry => `${entry.speaker === 'user' ? 'Learner' : 'Tutor'}: ${entry.text}`)
             .join('\n');
         
-        if (currentTranscript.length === 0 || !currentTranscript.some(e => e.speaker === 'user' && e.text.trim())) {
+        // Count user turns
+        const userTurns = currentTranscript.filter(e => e.speaker === 'user' && e.text.trim() && e.isFinal).length;
+        console.log(`👤 User turns: ${userTurns}`);
+        
+        // Check minimum data requirement
+        if (currentTranscript.length === 0 || userTurns === 0) {
             const emptyFeedback = { scores: null, text: 'Недостаточно данных для отзыва. Попробуйте поговорить подольше.' };
             setFinalFeedback(emptyFeedback);
             
-            // Demo mode: skip modal, go straight to email form
             if (isDemoMode) {
                 onSaveAndExit(currentTranscript, emptyFeedback);
             } else {
                 setIsFeedbackModalOpen(true);
             }
+            return;
+        }
+        
+        // Demo mode: check if user spoke enough (at least 3 turns)
+        if (isDemoMode && userTurns < 3) {
+            console.log(`⚠️ Demo: insufficient turns (${userTurns} < 3)`);
+            const insufficientFeedback = { scores: null, text: 'INSUFFICIENT_TURNS' };
+            setFinalFeedback(insufficientFeedback);
+            onSaveAndExit(currentTranscript, insufficientFeedback);
             return;
         }
 
@@ -480,11 +493,24 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
             setTimeLeft(prev => {
                 const next = prev - 1;
                 
-                // At 0, wait for AI to finish speaking before stopping
+                // At 0, stop microphone and wait for AI to finish
                 if (next <= 0) {
                     if (timerRef.current) clearInterval(timerRef.current);
                     
-                    // Wait for all audio to finish playing
+                    console.log('⏱️ Time expired! Stopping microphone...');
+                    
+                    // Stop microphone input immediately (user can't speak anymore)
+                    if (scriptProcessorRef.current) {
+                        try {
+                            scriptProcessorRef.current.disconnect();
+                            scriptProcessorRef.current = null;
+                            console.log('🎤 Microphone stopped (time limit reached)');
+                        } catch (e) {
+                            console.warn('Failed to stop microphone:', e);
+                        }
+                    }
+                    
+                    // Wait for AI to finish speaking before stopping
                     const waitForAudioToFinish = () => {
                         if (outputSources.size === 0 && status !== ConversationStatus.SPEAKING) {
                             console.log('⏱️ Time expired, all audio finished, stopping gracefully');
@@ -503,6 +529,12 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                     waitForAudioToFinish();
                     
                     return 0;
+                }
+                
+                // Warning at 30 seconds
+                if (next === 30 && !hasWarnedAboutTimeRef.current) {
+                    console.log('⚠️ 30 seconds remaining');
+                    hasWarnedAboutTimeRef.current = true;
                 }
                 
                 return next;
@@ -558,7 +590,8 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
             )}
 
             <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden">
-                <div className="bg-gray-800 p-3 rounded-t-lg border-b border-gray-700 flex justify-between items-center">
+                {/* Sticky header with timer */}
+                <div className="sticky top-0 z-10 bg-gray-800 p-3 rounded-t-lg border-b border-gray-700 flex justify-between items-center shadow-lg">
                     <div className="w-16"></div> {/* Spacer */}
                     <h2 className="text-xl font-bold text-center text-white">{scenario.title}</h2>
                     <div className="w-16 text-right text-lg font-mono text-cyan-400" aria-label="Time left">

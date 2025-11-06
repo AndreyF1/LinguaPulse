@@ -1,64 +1,42 @@
-import React, { useMemo } from 'react';
-import { RadarChart } from './Funnel'; // Re-use the radar chart
+import React from 'react';
+import { RadarChart } from './Funnel';
+import { FinalFeedback } from '../../types';
 
 interface FeedbackViewProps {
+    feedback: FinalFeedback;
     transcript: string;
     onContinue: () => void;
     onGoToApp?: () => void;
 }
 
-const generateFeedbackScores = (transcript: string) => {
-    const userTurns = transcript.split('\n').filter(line => line.startsWith('User:'));
-    const userText = userTurns.map(line => line.replace('User: ', '')).join(' ');
-    const userWords = userText.split(/\s+/).filter(Boolean);
-    const uniqueWords = new Set(userWords.map(w => w.toLowerCase().replace(/[.,!?]/g, '')));
-
-    const fluencyScore = Math.min(95, 40 + userWords.length * 1.2 + Math.random() * 10);
-    const vocabScore = Math.min(95, 30 + uniqueWords.size * 1.8 + Math.random() * 10);
-    
-    const grammarScore = 60 + Math.random() * 25;
-    const listeningScore = 65 + Math.random() * 25;
-    const pronunciationScore = 55 + Math.random() * 30;
-
-    return [
-        { label: 'Беглость', score: Math.round(fluencyScore) },
-        { label: 'Словарь', score: Math.round(vocabScore) },
-        { label: 'Грамматика', score: Math.round(grammarScore) },
-        { label: 'Аудирование', score: Math.round(listeningScore) },
-        { label: 'Произношение', score: Math.round(pronunciationScore) },
-    ];
-};
-
-const getDynamicAnalysis = (scores: {label: string, score: number}[]) => {
-    const vocab = scores.find(s => s.label === 'Словарь');
-    if (vocab && vocab.score < 50) {
-        return {
-            title: "Анализ словарного запаса:",
-            text: "Вы отлично справляетесь с базовыми фразами. Следующий шаг — расширение словарного запаса. Попробуйте вводить по 2-3 новых слова в каждом диалоге, чтобы сделать речь ярче.",
-            recommendation: "В следующем диалоге попробуйте описать свой любимый фильм, используя новые прилагательные."
-        };
-    }
-    const fluency = scores.find(s => s.label === 'Беглость');
-     if (fluency && fluency.score < 65) {
-        return {
-            title: "Анализ беглости речи:",
-            text: "Вы хорошо поддерживали диалог! Иногда возникали паузы — это абсолютно нормально. Чем больше практики, тем быстрее и увереннее вы будете говорить.",
-            recommendation: "Не бойтесь делать ошибки. Главное — продолжать говорить!"
-        };
-    }
-
-    return {
-        title: "Анализ грамматики:",
-        text: `Вы продемонстрировали хорошее понимание базовых конструкций. Например, фраза "I am excited" использована верно. Есть потенциал для роста в использовании более сложных времен.`,
-        recommendation: "Попробуйте в следующий раз использовать прошедшее (Past Simple) или будущее (Future Simple) время."
-    }
-}
-
-const FeedbackView: React.FC<FeedbackViewProps> = ({ transcript, onContinue, onGoToApp }) => {
+const FeedbackView: React.FC<FeedbackViewProps> = ({ feedback, transcript, onContinue, onGoToApp }) => {
     const hasTranscript = transcript && transcript.trim().length > 0;
-
-    const feedbackData = useMemo(() => generateFeedbackScores(transcript), [transcript]);
-    const analysis = useMemo(() => getDynamicAnalysis(feedbackData), [feedbackData]);
+    
+    // Prepare radar data from AI-generated scores
+    const radarData = feedback.scores ? [
+        { label: 'Речь', score: feedback.scores.pronunciation },
+        { label: 'Словарь', score: feedback.scores.vocabulary },
+        { label: 'Грамматика', score: feedback.scores.grammar },
+        { label: 'Слух', score: feedback.scores.comprehension },
+        { label: 'Беглость', score: feedback.scores.fluency },
+    ] : [];
+    
+    const overallScore = feedback.scores 
+        ? Math.round((feedback.scores.pronunciation + feedback.scores.grammar + feedback.scores.vocabulary + feedback.scores.fluency + feedback.scores.comprehension) / 5)
+        : 0;
+    
+    // Render markdown-style feedback text
+    const renderFeedbackText = (text: string | null) => {
+        if (!text) return <p className="text-gray-600">Загрузка отзыва...</p>;
+        
+        const html = text
+            .replace(/### (.*?)(\n|$)/g, '<h3 class="text-xl font-bold text-cyan-700 mt-4 mb-2">$1</h3>')
+            .replace(/## (.*?)(\n|$)/g, '<h2 class="text-2xl font-bold text-cyan-700 mt-5 mb-3">$1</h2>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-cyan-600">$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/(\n)/g, '<br />');
+        return <div className="text-gray-700 whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
+    };
     
     return (
         <div className="min-h-screen bg-gray-50 text-gray-800 py-10 px-4 sm:px-6 lg:px-8">
@@ -67,17 +45,24 @@ const FeedbackView: React.FC<FeedbackViewProps> = ({ transcript, onContinue, onG
                 <p className="text-gray-600 mb-8">Отличная работа! Вот анализ вашего 5-минутного диалога.</p>
                 
                 <div className="space-y-6">
-                    <div className="bg-white border border-gray-200 p-6 rounded-lg">
-                        <p className="font-bold text-lg mb-2 text-center">Ваши навыки на старте</p>
-                        <RadarChart data={feedbackData} theme="light" />
-
-                        <div className="bg-gray-50 p-4 rounded-md mt-4 border border-gray-200">
-                            <h3 className="font-semibold text-gray-700 mb-2">{analysis.title}</h3>
-                            <p className="text-sm text-gray-600">{analysis.text}</p>
-                            <p className="text-xs text-gray-500 mt-2">
-                                <span className="font-bold">Рекомендация:</span> {analysis.recommendation}
+                    {feedback.scores && (
+                        <div className="bg-white border border-gray-200 p-6 rounded-lg">
+                            <div className="text-center mb-4">
+                                <p className="text-gray-600 text-sm mb-1">Общий балл</p>
+                                <p className="text-5xl font-bold text-cyan-600">{overallScore}</p>
+                            </div>
+                            <div className="flex justify-center">
+                                <RadarChart data={radarData} theme="light" />
+                            </div>
+                            <p className="text-xs text-gray-500 text-center mt-3 italic">
+                                💡 Слух = Понимание, Речь = Произношение
                             </p>
                         </div>
+                    )}
+                    
+                    <div className="bg-white border border-gray-200 p-6 rounded-lg">
+                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Персональный отзыв</h2>
+                        {renderFeedbackText(feedback.text)}
                     </div>
 
                     {hasTranscript && (

@@ -49,7 +49,14 @@ const FunnelApp: React.FC = () => {
     console.log('📊 Feedback:', feedback);
     setDemoTranscript(transcript);
     setDemoFeedback(feedback);
-    setView(AppView.EMAIL_FORM);
+    
+    // Check if user didn't speak enough
+    if (feedback.text === 'INSUFFICIENT_TURNS') {
+      console.log('⚠️ Insufficient user turns, showing retry screen');
+      setView(AppView.INSUFFICIENT_DEMO);
+    } else {
+      setView(AppView.EMAIL_FORM);
+    }
   }, []);
 
   const handleEmailSubmitted = useCallback(() => {
@@ -95,7 +102,38 @@ const FunnelApp: React.FC = () => {
         return <EmailForm onEmailSubmitted={handleEmailSubmitted} anonymUserId={anonymUserId} transcript={transcriptText} />;
       case AppView.FEEDBACK_VIEW:
         const feedbackTranscript = demoTranscript.map(t => `${t.speaker}: ${t.text}`).join('\n');
-        return <FeedbackView transcript={feedbackTranscript} onContinue={handleReturnToPaywall} onGoToApp={handleGoToMainApp} />;
+        return <FeedbackView feedback={demoFeedback} transcript={feedbackTranscript} onContinue={handleReturnToPaywall} onGoToApp={handleGoToMainApp} />;
+      case AppView.INSUFFICIENT_DEMO:
+        return (
+          <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700">
+              <div className="text-center">
+                <div className="text-6xl mb-6">⏱️</div>
+                <h1 className="text-3xl font-bold text-gray-100 mb-4">
+                  Урок завершён слишком рано
+                </h1>
+                <p className="text-gray-400 mb-6 leading-relaxed">
+                  К сожалению, мы не успели оценить ваши навыки — нужно минимум 3 реплики в диалоге. 
+                  Попробуйте снова и поговорите чуть дольше, чтобы получить детальный фидбэк!
+                </p>
+                <div className="space-y-3">
+                  <button
+                    onClick={handleStartDemo}
+                    className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105"
+                  >
+                    🎯 Попробовать демо снова
+                  </button>
+                  <button
+                    onClick={handleReturnToPaywall}
+                    className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105"
+                  >
+                    💳 Купить полный доступ
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
       default:
         return <Funnel onComplete={handleFunnelComplete} anonymUserId={anonymUserId} />;
     }

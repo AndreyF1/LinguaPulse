@@ -23,7 +23,8 @@ export enum AppView {
     DIALOGUE = 'DIALOGUE',
     EMAIL_FORM = 'EMAIL_FORM',
     FEEDBACK_SENT = 'FEEDBACK_SENT',
-    FEEDBACK_VIEW = 'FEEDBACK_VIEW'
+    FEEDBACK_VIEW = 'FEEDBACK_VIEW',
+    INSUFFICIENT_DEMO = 'INSUFFICIENT_DEMO'
 }
 
 export type Answers = Record<number, string | string[]>;
