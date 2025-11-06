@@ -13,10 +13,11 @@
     "install:clean": "npm run clean && npm install"
   },
   "dependencies": {
+    "@google/genai": "^1.26.0",
+    "@supabase/supabase-js": "^2.47.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "@google/genai": "^1.26.0",
-    "@supabase/supabase-js": "^2.47.10"
+    "react-router-dom": "^7.9.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

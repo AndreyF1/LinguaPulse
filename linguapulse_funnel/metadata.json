@@ -1,0 +1,7 @@
+{
+  "name": "LinguaPulse",
+  "description": "An interactive web funnel to engage users with a series of questions and a live voice demo, guiding them to a subscription paywall for an English learning service.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
