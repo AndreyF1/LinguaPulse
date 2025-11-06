@@ -423,21 +423,28 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                             scheduleUpdate(prev => {
                                 const finalized = prev.map(e => ({ ...e, isFinal: true }));
                                 
-                                // Check if we should trigger goodbye
+                                // Check if we should trigger goodbye and stop immediately
                                 if (shouldSayGoodbyeRef.current && !hasTriggeredGoodbyeRef.current) {
-                                    // Find last finalized user message
                                     const lastUserEntry = finalized.filter(e => e.speaker === 'user' && e.isFinal).slice(-1)[0];
                                     if (lastUserEntry) {
-                                        console.log('👋 Time to say goodbye! Triggering AI farewell...');
+                                        console.log('👋 Less than 20 seconds! Stopping microphone after AI responds...');
                                         hasTriggeredGoodbyeRef.current = true;
                                         
-                                        // Send text instruction to AI to say goodbye
-                                        sessionPromiseRef.current?.then((session) => {
-                                            session.send({
-                                                text: "SYSTEM: Less than 20 seconds remaining. Please politely say goodbye to the learner now and end the conversation within 10 seconds. Keep it brief and warm."
-                                            });
-                                            console.log('📤 Goodbye instruction sent to AI');
-                                        }).catch(err => console.warn('Failed to send goodbye instruction:', err));
+                                        // Wait for AI to finish this response, then stop
+                                        const checkAndStop = () => {
+                                            if (outputSources.size === 0) {
+                                                console.log('🛑 AI finished response, stopping lesson now');
+                                                if (!isStopping.current) {
+                                                    setTimeout(() => handleStopRef.current(), 1000);
+                                                }
+                                            } else {
+                                                console.log('⏳ Waiting for AI to finish speaking...');
+                                                setTimeout(checkAndStop, 500);
+                                            }
+                                        };
+                                        
+                                        // Start checking after a short delay to let AI start speaking
+                                        setTimeout(checkAndStop, 1000);
                                     }
                                 }
                                 
@@ -619,17 +626,16 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                 </div>
             )}
 
-            {/* Fixed header with timer - always visible */}
-            <div className="bg-gray-800 p-3 border-b border-gray-700 flex justify-between items-center shadow-lg mx-4 mt-4 md:mx-6 md:mt-6 rounded-t-lg">
-                <div className="w-16"></div> {/* Spacer */}
-                <h2 className="text-xl font-bold text-center text-white">{scenario.title}</h2>
-                <div className="w-16 text-right text-lg font-mono text-cyan-400" aria-label="Time left">
-                    {formatTime(timeLeft)}
+            {/* Floating timer - always visible on top */}
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-gray-800/95 backdrop-blur-sm px-6 py-2 rounded-full border border-gray-700 shadow-2xl flex items-center gap-4">
+                <h2 className="text-lg font-bold text-white">{scenario.title}</h2>
+                <div className="text-2xl font-mono text-cyan-400 font-bold" aria-label="Time left">
+                    ⏱️ {formatTime(timeLeft)}
                 </div>
             </div>
 
-            <div className="flex-1 flex flex-col px-4 md:px-6 pb-4 md:pb-6 overflow-hidden">
-                <div className="flex-1 bg-gray-800 rounded-b-lg p-4 overflow-y-auto mb-4 border border-t-0 border-gray-700">
+            <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden pt-20">
+                <div className="flex-1 bg-gray-800 rounded-lg p-4 overflow-y-auto mb-4 border border-gray-700">
                     <TranscriptList transcript={transcript} tutorAvatarUrl={tutorAvatarUrl} />
                 </div>
                 <div className="flex flex-col items-center justify-center space-y-4">
