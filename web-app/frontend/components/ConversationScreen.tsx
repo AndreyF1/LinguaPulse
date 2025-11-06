@@ -83,6 +83,8 @@ interface Props {
     initialTranscript: TranscriptEntry[];
     onSaveAndExit: (transcript: TranscriptEntry[], finalFeedback: FinalFeedback) => void;
     isSaving: boolean;
+    isDemoMode?: boolean; // Demo mode: 5 minutes, no save, just end with transcript
+    durationMinutes?: number; // Custom duration (default 10 for main, 5 for demo)
 }
 
 const ai = new GoogleGenAI({ 
@@ -90,14 +92,14 @@ const ai = new GoogleGenAI({
 });
 const IN_PROGRESS_SESSION_KEY = 'in-progress-session';
 
-const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving }) => {
+const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving, isDemoMode = false, durationMinutes = 10 }) => {
     const [status, setStatus] = useState<ConversationStatus>(ConversationStatus.CONNECTING);
     const [transcript, setTranscript] = useState<TranscriptEntry[]>(initialTranscript);
     const transcriptRef = useRef<TranscriptEntry[]>(initialTranscript);
     const [error, setError] = useState<string | null>(null);
     const [finalFeedback, setFinalFeedback] = useState<FinalFeedback>({ text: null, scores: null });
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
-    const [timeLeft, setTimeLeft] = useState(10 * 60);
+    const [timeLeft, setTimeLeft] = useState(durationMinutes * 60);
     const hasWarnedAboutTimeRef = useRef(false);
 
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
