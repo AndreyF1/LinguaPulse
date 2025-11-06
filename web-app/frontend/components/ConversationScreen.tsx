@@ -88,7 +88,7 @@ interface Props {
 }
 
 const ai = new GoogleGenAI({ 
-    apiKey: process.env.API_KEY || 'AIzaSyBRp8FXE_lU1-jIlQvUZvrR6qSna1d_i-E' 
+    apiKey: import.meta.env.VITE_GEMINI_API_KEY || ''
 });
 const IN_PROGRESS_SESSION_KEY = 'in-progress-session';
 

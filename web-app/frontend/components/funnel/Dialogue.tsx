@@ -104,8 +104,9 @@ const Dialogue: React.FC<DialogueProps> = ({ onDialogueEnd }) => {
 
     useEffect(() => {
         async function startSession() {
-            if (!process.env.API_KEY) {
-                setStatus('API Key is not configured.');
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            if (!apiKey) {
+                setStatus('API Key is not configured. Please set VITE_GEMINI_API_KEY.');
                 return;
             }
 
@@ -113,7 +114,7 @@ const Dialogue: React.FC<DialogueProps> = ({ onDialogueEnd }) => {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 setStatus('Connecting to AI...');
 
-                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                const ai = new GoogleGenAI({ apiKey });
                 
                 audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
                 outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
