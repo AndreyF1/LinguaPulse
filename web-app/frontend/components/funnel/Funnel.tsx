@@ -322,9 +322,9 @@ const HookReviews: React.FC = () => (
 );
 
 export const RadarChart: React.FC<{ data: { label: string, score: number }[], theme?: 'light' | 'dark' }> = ({ data, theme = 'light' }) => {
-    const size = 340; 
+    const size = 420; // Увеличили для длинных русских слов
     const center = size / 2;
-    const maxRadius = center - 65; 
+    const maxRadius = center - 90; // Больше отступ для меток
     const numLevels = 4;
     const numAxes = data.length;
     const angleSlice = (Math.PI * 2) / numAxes;
@@ -388,29 +388,30 @@ export const RadarChart: React.FC<{ data: { label: string, score: number }[], th
                         const textAnchor = isTopOrBottom ? "middle" : labelPoint.x < center ? "end" : "start";
 
                         return (
-                            <g key={i}>
-                                <line x1={center} y1={center} x2={dataPoints[i].x} y2={dataPoints[i].y} stroke={currentTheme.axis} strokeWidth="1" />
-                                <text
-                                    x={labelPoint.x}
-                                    y={labelPoint.y}
-                                    textAnchor={textAnchor}
-                                    dominantBaseline="middle"
-                                    fontSize="13"
-                                    fontWeight="600"
-                                    fill={currentTheme.label}
-                                >
-                                    {item.label}
-                                     <tspan
-                                        x={labelPoint.x}
-                                        dy="1.2em"
-                                        fontSize="12"
-                                        fontWeight="500"
-                                        fill={currentTheme.subLabel}
-                                    >
-                                        {item.score}/100
-                                    </tspan>
-                                </text>
-                            </g>
+                    <g key={i}>
+                        <line x1={center} y1={center} x2={dataPoints[i].x} y2={dataPoints[i].y} stroke={currentTheme.axis} strokeWidth="1" />
+                        <text
+                            x={labelPoint.x}
+                            y={labelPoint.y}
+                            textAnchor={textAnchor}
+                            dominantBaseline="middle"
+                            fontSize="12"
+                            fontWeight="600"
+                            fill={currentTheme.label}
+                            style={{ maxWidth: '80px' }}
+                        >
+                            {item.label}
+                             <tspan
+                                x={labelPoint.x}
+                                dy="1.1em"
+                                fontSize="11"
+                                fontWeight="500"
+                                fill={currentTheme.subLabel}
+                            >
+                                {item.score}/100
+                            </tspan>
+                        </text>
+                    </g>
                         );
                     })}
 
