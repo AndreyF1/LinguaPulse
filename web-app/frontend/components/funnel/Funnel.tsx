@@ -13,10 +13,12 @@ import { decode, decodeAudioData } from '../../services/audioService';
 const AI_RESPONSES = {
     response1: {
         text: "That's great to hear! How are you doing today?",
+        staticFile: '/demo-response1.base64', // Pre-generated audio (instant load)
         cacheKey: 'demo_audio_response1'
     },
     response2: {
         text: "I'm so glad to hear that! It was a pleasure to meet you. I hope to see you in our lessons where I can help you become a true pro in English.",
+        staticFile: '/demo-response2.base64', // Pre-generated audio (instant load)
         cacheKey: 'demo_audio_response2'
     }
 };
@@ -56,24 +58,32 @@ const HookMicroDemo: React.FC = () => {
         });
     }, []);
 
-    // Get cached or generate audio for pre-defined responses
-    const getAiAudioResponse = useCallback(async (text: string, cacheKey: string): Promise<string> => {
+    // Get audio: try static file first (instant), then generate
+    const getAiAudioResponse = useCallback(async (text: string, cacheKey: string, staticFile?: string): Promise<string> => {
         // Check memory cache first
         if (audioCacheRef.current[cacheKey]) {
-            console.log('📦 Using cached audio for:', cacheKey);
+            console.log('📦 Using memory cached audio for:', cacheKey);
             return audioCacheRef.current[cacheKey];
         }
 
-        // Check localStorage cache
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-            console.log('💾 Using localStorage cached audio for:', cacheKey);
-            audioCacheRef.current[cacheKey] = cached;
-            return cached;
+        // Try loading pre-generated static file (BEST for new users)
+        if (staticFile) {
+            try {
+                console.log('📥 Loading pre-generated audio from:', staticFile);
+                const response = await fetch(staticFile);
+                if (response.ok) {
+                    const base64Audio = await response.text();
+                    audioCacheRef.current[cacheKey] = base64Audio;
+                    console.log('✅ Loaded static audio file:', staticFile);
+                    return base64Audio;
+                }
+            } catch (e) {
+                console.warn('⚠️ Static file not found, will generate:', staticFile);
+            }
         }
 
-        // Generate new audio
-        console.log('🎤 Generating audio for:', cacheKey);
+        // Fallback: generate new audio (slow, for development only)
+        console.log('🎤 Generating audio (fallback):', cacheKey);
         const apiKey = import.meta.env.GEMINI_API_KEY;
         if (!apiKey) throw new Error("API Key not found. Please set GEMINI_API_KEY.");
         const ai = new GoogleGenAI({ apiKey });
@@ -89,13 +99,6 @@ const HookMicroDemo: React.FC = () => {
         
         // Cache it
         audioCacheRef.current[cacheKey] = base64Audio;
-        try {
-            localStorage.setItem(cacheKey, base64Audio);
-            console.log('✅ Cached audio to localStorage:', cacheKey);
-        } catch (e) {
-            console.warn('⚠️ Could not cache to localStorage (quota exceeded?):', e);
-        }
-        
         return base64Audio;
     }, []);
 
@@ -134,7 +137,7 @@ const HookMicroDemo: React.FC = () => {
                 const response = AI_RESPONSES.response1;
                 setAiSpeechText(response.text);
                 try {
-                    const audio = await getAiAudioResponse(response.text, response.cacheKey);
+                    const audio = await getAiAudioResponse(response.text, response.cacheKey, response.staticFile);
                     setIsLoadingAudio(false);
                     await playAudio(audio);
                     setDemoStep('prompt_user2');
@@ -152,7 +155,7 @@ const HookMicroDemo: React.FC = () => {
                 const response = AI_RESPONSES.response2;
                 setAiSpeechText(response.text);
                 try {
-                    const audio = await getAiAudioResponse(response.text, response.cacheKey);
+                    const audio = await getAiAudioResponse(response.text, response.cacheKey, response.staticFile);
                     setIsLoadingAudio(false);
                     await playAudio(audio);
                     setDemoStep('done');
