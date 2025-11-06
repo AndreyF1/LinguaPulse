@@ -755,10 +755,10 @@ const TranscriptItem = React.memo(({ entry, tutorAvatarUrl }: { entry: Transcrip
         <div className={`flex items-start gap-3 my-4 ${entry.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
             {entry.speaker === 'ai' && (
                 tutorAvatarUrl ? (
-                    <img src={tutorAvatarUrl} alt="Tutor" className="flex-shrink-0 w-8 h-8 rounded-full object-cover" />
+                    <img src={tutorAvatarUrl} alt="Tutor" className="flex-shrink-0 w-12 h-12 rounded-full object-cover" />
                 ) : (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center">
-                        <BotIcon className="w-5 h-5"/>
+                    <div className="flex-shrink-0 w-12 h-12 rounded-full bg-cyan-500 flex items-center justify-center">
+                        <BotIcon className="w-7 h-7"/>
                     </div>
                 )
             )}
@@ -776,7 +776,7 @@ const TranscriptItem = React.memo(({ entry, tutorAvatarUrl }: { entry: Transcrip
                     </div>
                 )}
             </div>
-            {entry.speaker === 'user' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center"><UserIcon className="w-5 h-5"/></div>}
+            {entry.speaker === 'user' && <div className="flex-shrink-0 w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center"><UserIcon className="w-7 h-7"/></div>}
         </div>
     );
 });

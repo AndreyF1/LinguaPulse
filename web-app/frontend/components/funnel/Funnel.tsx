@@ -265,7 +265,7 @@ const HookMicroDemo: React.FC = () => {
                 <img 
                     src="/tutor-avatar.png" 
                     alt="AI Tutor" 
-                    className="w-24 h-24 rounded-full object-cover border-2 border-cyan-500/50 shadow-lg" 
+                    className="w-32 h-32 rounded-full object-cover border-2 border-cyan-500/50 shadow-lg" 
                 />
             </div>
 
@@ -295,7 +295,7 @@ const HookReviews: React.FC = () => (
                     <img 
                         src="/anna32.png" 
                         alt="Анна" 
-                        className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-cyan-500"
+                        className="w-16 h-16 rounded-full object-cover shadow-md border-2 border-cyan-500"
                     />
                 </div>
                 <div>
