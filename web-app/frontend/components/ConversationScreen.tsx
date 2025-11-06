@@ -94,6 +94,8 @@ const ai = new GoogleGenAI({
 const IN_PROGRESS_SESSION_KEY = 'in-progress-session';
 
 const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving, isDemoMode = false, durationMinutes = 10, tutorAvatarUrl }) => {
+    console.log('⏱️ ConversationScreen initialized with durationMinutes:', durationMinutes, 'isDemoMode:', isDemoMode);
+    
     const [status, setStatus] = useState<ConversationStatus>(ConversationStatus.CONNECTING);
     const [transcript, setTranscript] = useState<TranscriptEntry[]>(initialTranscript);
     const transcriptRef = useRef<TranscriptEntry[]>(initialTranscript);
@@ -450,7 +452,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
         startLiveSession(instruction);
         
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        setTimeLeft(Math.max(0, 10 * 60 - elapsed));
+        setTimeLeft(Math.max(0, durationMinutes * 60 - elapsed));
         
         timerRef.current = window.setInterval(() => {
             setTimeLeft(prev => {
