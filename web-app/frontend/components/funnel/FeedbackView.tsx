@@ -77,21 +77,13 @@ const FeedbackView: React.FC<FeedbackViewProps> = ({ feedback, transcript, onCon
                     <div className="bg-cyan-50 border border-cyan-200 p-5 rounded-lg text-center">
                         <h2 className="text-xl font-semibold text-cyan-800 mb-3">Готовы к большему?</h2>
                         <p className="text-cyan-700 mb-5">Полная подписка откроет доступ к ежедневным диалогам, детальным отчетам и трекингу прогресса.</p>
-                        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <div className="flex justify-center">
                             <button
                                 onClick={onContinue}
-                                className="bg-cyan-600 text-white font-bold py-3 px-8 rounded-lg shadow-md hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 transition-all duration-300 transform hover:scale-105"
+                                className="bg-cyan-600 text-white font-bold py-4 px-12 rounded-lg shadow-lg hover:bg-cyan-700 focus:outline-none focus:ring-4 focus:ring-cyan-300 transition-all duration-300 transform hover:scale-105 text-lg"
                             >
-                                Вернуться к paywall
+                                💳 Купить доступ
                             </button>
-                            {onGoToApp && (
-                                <button
-                                    onClick={onGoToApp}
-                                    className="bg-gray-600 text-white font-bold py-3 px-8 rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-300 transform hover:scale-105"
-                                >
-                                    Войти в приложение
-                                </button>
-                            )}
                         </div>
                     </div>
                 </div>

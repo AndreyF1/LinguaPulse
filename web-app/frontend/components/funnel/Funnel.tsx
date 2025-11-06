@@ -262,9 +262,11 @@ const HookMicroDemo: React.FC = () => {
     return (
         <div className="bg-gray-700/50 border border-gray-600 text-white p-6 rounded-lg shadow-lg text-center animate-fade-in space-y-4">
             <div className="flex justify-center">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center border-2 border-cyan-500/50 shadow-lg text-4xl">
-                    🤖
-                </div>
+                <img 
+                    src="https://api.dicebear.com/7.x/bottts/svg?seed=linguapulse&backgroundColor=0ea5e9" 
+                    alt="AI Tutor" 
+                    className="w-24 h-24 rounded-full object-cover border-2 border-cyan-500/50 shadow-lg bg-cyan-600" 
+                />
             </div>
 
             <div className="min-h-[120px] flex flex-col justify-center items-center">

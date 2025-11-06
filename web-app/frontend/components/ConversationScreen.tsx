@@ -105,6 +105,8 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
     const [timeLeft, setTimeLeft] = useState(durationMinutes * 60);
     const hasWarnedAboutTimeRef = useRef(false);
+    const shouldSayGoodbyeRef = useRef(false);
+    const hasTriggeredGoodbyeRef = useRef(false);
 
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -418,7 +420,29 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                         if (message.serverContent?.outputTranscription) processTranscriptUpdate('ai', message.serverContent.outputTranscription.text, false);
                         
                         if (message.serverContent?.turnComplete) {
-                            scheduleUpdate(prev => prev.map(e => ({ ...e, isFinal: true })));
+                            scheduleUpdate(prev => {
+                                const finalized = prev.map(e => ({ ...e, isFinal: true }));
+                                
+                                // Check if we should trigger goodbye
+                                if (shouldSayGoodbyeRef.current && !hasTriggeredGoodbyeRef.current) {
+                                    // Find last finalized user message
+                                    const lastUserEntry = finalized.filter(e => e.speaker === 'user' && e.isFinal).slice(-1)[0];
+                                    if (lastUserEntry) {
+                                        console.log('👋 Time to say goodbye! Triggering AI farewell...');
+                                        hasTriggeredGoodbyeRef.current = true;
+                                        
+                                        // Send text instruction to AI to say goodbye
+                                        sessionPromiseRef.current?.then((session) => {
+                                            session.send({
+                                                text: "SYSTEM: Less than 20 seconds remaining. Please politely say goodbye to the learner now and end the conversation within 10 seconds. Keep it brief and warm."
+                                            });
+                                            console.log('📤 Goodbye instruction sent to AI');
+                                        }).catch(err => console.warn('Failed to send goodbye instruction:', err));
+                                    }
+                                }
+                                
+                                return finalized;
+                            });
                         }
                          if (message.serverContent?.interrupted) {
                             outputSources.forEach(source => source.stop());
@@ -537,6 +561,12 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                     hasWarnedAboutTimeRef.current = true;
                 }
                 
+                // Set goodbye flag when < 20 seconds
+                if (next < 20 && !shouldSayGoodbyeRef.current) {
+                    console.log('⏰ Less than 20 seconds remaining, will trigger goodbye after next user turn');
+                    shouldSayGoodbyeRef.current = true;
+                }
+                
                 return next;
             });
         }, 1000);
@@ -589,15 +619,16 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                 </div>
             )}
 
-            <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden">
-                {/* Sticky header with timer */}
-                <div className="sticky top-0 z-10 bg-gray-800 p-3 rounded-t-lg border-b border-gray-700 flex justify-between items-center shadow-lg">
-                    <div className="w-16"></div> {/* Spacer */}
-                    <h2 className="text-xl font-bold text-center text-white">{scenario.title}</h2>
-                    <div className="w-16 text-right text-lg font-mono text-cyan-400" aria-label="Time left">
-                        {formatTime(timeLeft)}
-                    </div>
+            {/* Fixed header with timer - always visible */}
+            <div className="bg-gray-800 p-3 border-b border-gray-700 flex justify-between items-center shadow-lg mx-4 mt-4 md:mx-6 md:mt-6 rounded-t-lg">
+                <div className="w-16"></div> {/* Spacer */}
+                <h2 className="text-xl font-bold text-center text-white">{scenario.title}</h2>
+                <div className="w-16 text-right text-lg font-mono text-cyan-400" aria-label="Time left">
+                    {formatTime(timeLeft)}
                 </div>
+            </div>
+
+            <div className="flex-1 flex flex-col px-4 md:px-6 pb-4 md:pb-6 overflow-hidden">
                 <div className="flex-1 bg-gray-800 rounded-b-lg p-4 overflow-y-auto mb-4 border border-t-0 border-gray-700">
                     <TranscriptList transcript={transcript} tutorAvatarUrl={tutorAvatarUrl} />
                 </div>
