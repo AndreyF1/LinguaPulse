@@ -4,6 +4,7 @@ import type { LiveServerMessage } from '@google/genai';
 import { ConversationStatus, TranscriptEntry, Scenario, FinalFeedback, FeedbackScores, InProgressSessionData } from '../types';
 import { createBlob, decode, decodeAudioData } from '../utils/audioUtils';
 import { BotIcon, StopIcon, UserIcon, HintIcon } from './Icons';
+import { RadarChart } from './funnel/Funnel';
 
 const START_CONVERSATION_SYSTEM_INSTRUCTION = `You are a friendly and patient AI English tutor.
 Your user is a native Russian speaker. Their goal is to practice conversational English.
@@ -221,8 +222,15 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
             .join('\n');
         
         if (currentTranscript.length === 0 || !currentTranscript.some(e => e.speaker === 'user' && e.text.trim())) {
-            setFinalFeedback({ scores: null, text: 'Недостаточно данных для отзыва. Попробуйте поговорить подольше.' });
-            setIsFeedbackModalOpen(true);
+            const emptyFeedback = { scores: null, text: 'Недостаточно данных для отзыва. Попробуйте поговорить подольше.' };
+            setFinalFeedback(emptyFeedback);
+            
+            // Demo mode: skip modal, go straight to email form
+            if (isDemoMode) {
+                onSaveAndExit(currentTranscript, emptyFeedback);
+            } else {
+                setIsFeedbackModalOpen(true);
+            }
             return;
         }
 
@@ -247,12 +255,26 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                     console.warn("Could not parse leading JSON from feedback response.", e);
                 }
             }
-            setFinalFeedback({ scores: parsedScores, text: textPart });
+            
+            const generatedFeedback = { scores: parsedScores, text: textPart };
+            setFinalFeedback(generatedFeedback);
+            
+            // Demo mode: skip modal, go straight to email form
+            if (isDemoMode) {
+                onSaveAndExit(currentTranscript, generatedFeedback);
+            } else {
+                setIsFeedbackModalOpen(true);
+            }
         } catch (err) {
             console.error('Error generating feedback:', err);
-            setFinalFeedback({ scores: null, text: 'Извините, не удалось сгенерировать отзыв для этой сессии.' });
-        } finally {
-            setIsFeedbackModalOpen(true);
+            const errorFeedback = { scores: null, text: 'Извините, не удалось сгенерировать отзыв для этой сессии.' };
+            setFinalFeedback(errorFeedback);
+            
+            if (isDemoMode) {
+                onSaveAndExit(currentTranscript, errorFeedback);
+            } else {
+                setIsFeedbackModalOpen(true);
+            }
         }
     }, [cleanupConversationResources, status]);
     
@@ -643,26 +665,25 @@ const FeedbackModal: React.FC<{isOpen: boolean, feedback: FinalFeedback, onClose
 
     const renderFeedbackText = (text: string) => {
         const html = text
+            .replace(/### (.*?)(\n|$)/g, '<h3 class="text-xl font-bold text-cyan-400 mt-4 mb-2">$1</h3>')
+            .replace(/## (.*?)(\n|$)/g, '<h2 class="text-2xl font-bold text-cyan-400 mt-5 mb-3">$1</h2>')
             .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-cyan-400">$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/(\n)/g, '<br />');
         return <div className="text-gray-300 whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
     };
 
-    const ScoreDisplay = ({ label, score }: { label: string; score: number }) => (
-        <div>
-            <div className="flex justify-between items-center mb-1">
-                <span className="text-sm font-medium text-gray-300">{label}</span>
-                <span className="text-sm font-bold text-white">{score}<span className="text-xs text-gray-400">/100</span></span>
-            </div>
-            <div className="w-full bg-gray-600 rounded-full h-2.5">
-                <div className="bg-cyan-500 h-2.5 rounded-full" style={{ width: `${score}%` }}></div>
-            </div>
-        </div>
-    );
-
     const scores = feedback.scores;
     const overallScore = scores ? Math.round((scores.pronunciation + scores.grammar + scores.vocabulary + scores.fluency + scores.comprehension) / 5) : 0;
+    
+    // Prepare data for RadarChart
+    const radarData = scores ? [
+        { label: 'Речь', score: scores.pronunciation },
+        { label: 'Словарь', score: scores.vocabulary },
+        { label: 'Грамматика', score: scores.grammar },
+        { label: 'Слух', score: scores.comprehension },
+        { label: 'Беглость', score: scores.fluency },
+    ] : [];
 
     return (
         <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -675,13 +696,12 @@ const FeedbackModal: React.FC<{isOpen: boolean, feedback: FinalFeedback, onClose
                                 <p className="text-gray-400 text-sm">Общий балл</p>
                                 <p className="text-5xl font-bold text-cyan-400">{overallScore}</p>
                             </div>
-                            <div className="space-y-4">
-                                <ScoreDisplay label="Произношение" score={scores.pronunciation} />
-                                <ScoreDisplay label="Грамматика" score={scores.grammar} />
-                                <ScoreDisplay label="Словарный запас" score={scores.vocabulary} />
-                                <ScoreDisplay label="Беглость речи" score={scores.fluency} />
-                                <ScoreDisplay label="Понимание" score={scores.comprehension} />
+                            <div className="flex justify-center my-4">
+                                <RadarChart data={radarData} theme="dark" />
                             </div>
+                            <p className="text-xs text-gray-400 text-center mt-2 italic">
+                                💡 Слух = Понимание, Речь = Произношение
+                            </p>
                         </div>
                     )}
                     {feedback.text ? renderFeedbackText(feedback.text) : <p>Загрузка отзыва...</p>}
