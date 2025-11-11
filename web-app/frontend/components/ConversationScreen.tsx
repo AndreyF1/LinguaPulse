@@ -11,13 +11,6 @@ Your user is a native Russian speaker. Their goal is to practice conversational 
 You will have a conversation based on the following scenario.
 The user will speak first to begin the roleplay. You must wait for them.
 
-⏱️ **LESSON DURATION**: This is a {duration}-minute lesson. Be mindful of time. After about {duration} minutes of conversation, you should naturally wrap up and say goodbye. When wrapping up:
-- Thank the learner for practicing
-- Give brief encouragement
-- Say a warm goodbye
-- Keep the goodbye SHORT (1-2 sentences)
-Example: "Great job today! You did really well. Keep practicing and I'll see you next time!"
-
 RULES:
 1.  **Wait for the User**: DO NOT speak until the user has spoken first. They will initiate the conversation.
 2.  **Respond Naturally**: Once the user speaks, respond according to the scenario prompt.
@@ -25,7 +18,7 @@ RULES:
 4.  **Handle Russian Input**: If the user speaks in Russian, gently guide them back to English. You MUST use Russian for this guidance. For example, say: "Хорошая попытка! Давайте попробуем сказать это на английском. Как бы вы сказали...?"
 5.  **Encourage Speaking**: Ask open-ended questions to encourage the user to speak more.
 6.  **Keep it Brief**: Keep your responses relatively short to maintain a conversational flow.
-7.  **Mind the Time**: After {duration} minutes, wrap up and say goodbye naturally.
+7.  **Never Say Goodbye**: Continue the conversation naturally. Do NOT end the conversation or say goodbye unless explicitly instructed.
 
 --- SCENARIO CONTEXT ---
 The user wants to practice a scenario about: {title}.
@@ -54,15 +47,28 @@ RULES:
 Now, please continue the conversation. You could say something like "Sorry about that, where were we?" or just continue the topic.
 `;
 
-const GOODBYE_SYSTEM_INSTRUCTION_TEMPLATE = `You are an AI English tutor. The lesson time has run out.
+const GOODBYE_SYSTEM_INSTRUCTION_TEMPLATE = `You are an AI English tutor. 
+
+⏰ **TIME IS UP!** The lesson has ended. You MUST say goodbye NOW.
 
 --- CONVERSATION TRANSCRIPT ---
 {transcript}
 --- END TRANSCRIPT ---
 
-**IMPORTANT**: Say a brief, warm goodbye to the learner in 1-2 sentences. Thank them for practicing and encourage them. Keep it natural and brief. For example: "Great job today! You did really well. Keep practicing and I'll see you next time!"
+**YOUR TASK**: Say a brief, warm goodbye to the learner RIGHT NOW. This is the LAST thing you will say.
 
-Do NOT ask any questions. Do NOT continue the conversation. Just say goodbye and stop speaking.
+**FORMAT**:
+- 1-2 sentences maximum
+- Thank them for practicing
+- Give brief encouragement
+- NO questions, NO small talk, NO continuation
+
+**EXAMPLES**:
+- "Great job today! Keep practicing and I'll see you next time!"
+- "Well done! You did really well. Keep up the good work!"
+- "Excellent practice session! I'm proud of your progress. See you soon!"
+
+Now say goodbye and STOP SPEAKING immediately after.
 `;
 
 const FEEDBACK_PROMPT_TEMPLATE = `
@@ -333,9 +339,15 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                 await outputAudioContextRef.current.resume();
             }
 
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaStreamRef.current = stream;
-            console.log('✅ Microphone stream acquired:', stream.getAudioTracks()[0].label);
+            // In goodbye mode, don't start microphone (AI just says goodbye and stops)
+            let stream: MediaStream | null = null;
+            if (!isInGoodbyeModeRef.current) {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaStreamRef.current = stream;
+                console.log('✅ Microphone stream acquired:', stream.getAudioTracks()[0].label);
+            } else {
+                console.log('🚫 Goodbye mode: microphone not started (AI will say goodbye only)');
+            }
     
             sessionPromiseRef.current = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -350,7 +362,17 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                     onopen: () => {
                         if (isStopping.current) return;
                         
-                        console.log('🔗 WebSocket opened, setting up audio processing...');
+                        console.log('🔗 WebSocket opened');
+                        
+                        // In goodbye mode, don't setup audio processing (AI will just say goodbye)
+                        if (isInGoodbyeModeRef.current) {
+                            console.log('👋 Goodbye mode: skipping microphone setup, waiting for AI farewell...');
+                            setStatus(ConversationStatus.SPEAKING);
+                            return;
+                        }
+                        
+                        // Normal mode: setup audio processing
+                        console.log('🔗 Setting up audio processing...');
                         setStatus(ConversationStatus.LISTENING);
                         const source = inputAudioContextRef.current!.createMediaStreamSource(mediaStreamRef.current!);
                         const scriptProcessor = inputAudioContextRef.current!.createScriptProcessor(4096, 1, 1);
@@ -525,7 +547,6 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
         } else {
             // This is a new session, user speaks first
             instruction = START_CONVERSATION_SYSTEM_INSTRUCTION
-                .replace(/{duration}/g, String(durationMinutes))
                 .replace('{title}', scenario.title)
                 .replace('{description}', scenario.description)
                 .replace('{prompt}', scenario.prompt);
