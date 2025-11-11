@@ -99,11 +99,28 @@ export async function createAnonymousSession(): Promise<string | null> {
  */
 export async function getOrCreateSessionId(): Promise<string> {
   const existing = localStorage.getItem(STORAGE_KEY);
+  
+  // If we have a local_ session from before, try to upgrade to Supabase
+  if (existing && existing.startsWith('local_')) {
+    console.log('🔄 Found old local session, upgrading to Supabase...');
+    localStorage.removeItem(STORAGE_KEY);
+    const sessionId = await createAnonymousSession();
+    if (sessionId) {
+      return sessionId;
+    }
+    // If upgrade fails, keep the old local session
+    localStorage.setItem(STORAGE_KEY, existing);
+    console.warn('⚠️ Upgrade failed, keeping local session');
+    return existing;
+  }
+  
+  // If we have a valid UUID session, use it
   if (existing) {
     console.log('📦 Using existing anonymous session:', existing);
     return existing;
   }
   
+  // Create new session
   const sessionId = await createAnonymousSession();
   if (sessionId) {
     return sessionId;
