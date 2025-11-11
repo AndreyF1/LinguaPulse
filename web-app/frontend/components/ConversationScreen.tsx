@@ -112,6 +112,7 @@ interface Props {
     isDemoMode?: boolean; // Demo mode: 5 minutes, no save, just end with transcript
     durationMinutes?: number; // Custom duration (default 10 for main, 5 for demo)
     tutorAvatarUrl?: string; // Optional tutor avatar image URL
+    initialFeedback?: FinalFeedback; // Pre-loaded feedback (e.g., from demo via Magic Link)
 }
 
 const ai = new GoogleGenAI({ 
@@ -119,15 +120,15 @@ const ai = new GoogleGenAI({
 });
 const IN_PROGRESS_SESSION_KEY = 'in-progress-session';
 
-const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving, isDemoMode = false, durationMinutes = 10, tutorAvatarUrl }) => {
-    console.log('⏱️ ConversationScreen initialized with durationMinutes:', durationMinutes, 'isDemoMode:', isDemoMode);
+const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTranscript, onSaveAndExit, isSaving, isDemoMode = false, durationMinutes = 10, tutorAvatarUrl, initialFeedback }) => {
+    console.log('⏱️ ConversationScreen initialized with durationMinutes:', durationMinutes, 'isDemoMode:', isDemoMode, 'initialFeedback:', !!initialFeedback);
     
-    const [status, setStatus] = useState<ConversationStatus>(ConversationStatus.CONNECTING);
+    const [status, setStatus] = useState<ConversationStatus>(initialFeedback ? ConversationStatus.IDLE : ConversationStatus.CONNECTING);
     const [transcript, setTranscript] = useState<TranscriptEntry[]>(initialTranscript);
     const transcriptRef = useRef<TranscriptEntry[]>(initialTranscript);
     const [error, setError] = useState<string | null>(null);
-    const [finalFeedback, setFinalFeedback] = useState<FinalFeedback>({ text: null, scores: null });
-    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false);
+    const [finalFeedback, setFinalFeedback] = useState<FinalFeedback>(initialFeedback || { text: null, scores: null });
+    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(!!initialFeedback); // Auto-open if pre-loaded
     const [timeLeft, setTimeLeft] = useState(durationMinutes * 60);
     const hasWarnedAboutTimeRef = useRef(false);
     const shouldSayGoodbyeRef = useRef(false);
@@ -535,6 +536,12 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
     }, [handleStop]);
     
     useEffect(() => {
+        // If we have pre-loaded feedback (e.g., from demo Magic Link), skip the live session
+        if (initialFeedback) {
+            console.log('📋 Pre-loaded feedback detected, skipping live session');
+            return;
+        }
+        
         // This effect runs once on mount to start the conversation automatically.
         let instruction: string;
         if (initialTranscript.length > 0) {
