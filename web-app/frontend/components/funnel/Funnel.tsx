@@ -6,6 +6,7 @@ import { HookType } from './funnelTypes';
 import { ChevronLeftIcon, ChevronRightIcon, MicrophoneIcon, StopIcon, SpinnerIcon, CheckCircleIcon } from './IconComponents';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { decode, decodeAudioData } from '../../services/audioService';
+import { saveFunnelAnswers } from '../../services/anonymousSessionService';
 
 // Avatar will be loaded from /public
 
@@ -261,11 +262,11 @@ const HookMicroDemo: React.FC = () => {
 
     return (
         <div className="bg-gray-700/50 border border-gray-600 text-white p-6 rounded-lg shadow-lg text-center animate-fade-in space-y-4">
-            <div className="flex justify-center">
+            <div className="flex justify-center pt-2">
                 <img 
                     src="/tutor-avatar.png" 
                     alt="AI Tutor" 
-                    className="w-32 h-32 rounded-full object-cover border-2 border-cyan-500/50 shadow-lg" 
+                    className="w-32 h-32 rounded-full object-contain border-2 border-cyan-500/50 shadow-lg bg-gray-700" 
                 />
             </div>
 
@@ -477,10 +478,10 @@ const renderHook = (type: HookType) => {
 
 interface FunnelProps {
     onComplete: () => void;
-    anonymUserId: string;
+    sessionId: string;
 }
 
-const Funnel: React.FC<FunnelProps> = ({ onComplete, anonymUserId }) => {
+const Funnel: React.FC<FunnelProps> = ({ onComplete, sessionId }) => {
     const [currentStep, setCurrentStep] = useState(0);
     const [answers, setAnswers] = useState<Answers>({});
     const [showingHook, setShowingHook] = useState<Hook | null>(null);
@@ -513,18 +514,30 @@ const Funnel: React.FC<FunnelProps> = ({ onComplete, anonymUserId }) => {
         return false;
     }, [answers, currentQuestion, showingHook]);
 
-    const handleNext = useCallback(() => {
+    const handleNext = useCallback(async () => {
         if (showingHook) {
             setShowingHook(null);
             if (currentStep < QUESTIONS.length - 1) {
                 setCurrentStep(prev => prev + 1);
             } else {
+                // Save funnel answers before completing
+                const funnelAnswers = Object.entries(answers).map(([questionId, answer]) => ({
+                    question: parseInt(questionId),
+                    answer: Array.isArray(answer) ? answer.join(', ') : answer,
+                }));
+                await saveFunnelAnswers(sessionId, funnelAnswers, true);
                 onComplete();
             }
             return;
         }
 
         if (!currentQuestion) {
+            // Save funnel answers before completing
+            const funnelAnswers = Object.entries(answers).map(([questionId, answer]) => ({
+                question: parseInt(questionId),
+                answer: Array.isArray(answer) ? answer.join(', ') : answer,
+            }));
+            await saveFunnelAnswers(sessionId, funnelAnswers, true);
             onComplete();
             return;
         }
@@ -537,10 +550,16 @@ const Funnel: React.FC<FunnelProps> = ({ onComplete, anonymUserId }) => {
             if (currentStep < QUESTIONS.length - 1) {
                 setCurrentStep(prev => prev + 1);
             } else {
+                // Save funnel answers before completing
+                const funnelAnswers = Object.entries(answers).map(([questionId, answer]) => ({
+                    question: parseInt(questionId),
+                    answer: Array.isArray(answer) ? answer.join(', ') : answer,
+                }));
+                await saveFunnelAnswers(sessionId, funnelAnswers, true);
                 onComplete();
             }
         }
-    }, [currentStep, onComplete, showingHook, currentQuestion]);
+    }, [currentStep, onComplete, showingHook, currentQuestion, answers, sessionId]);
 
     const handleBack = useCallback(() => {
         if (showingHook) {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import Funnel from './components/funnel/Funnel';
 import Paywall from './components/funnel/Paywall';
 import ConversationScreen from './components/ConversationScreen';
@@ -7,6 +7,7 @@ import EmailForm from './components/funnel/EmailForm';
 import { AppView } from './components/funnel/funnelTypes';
 import { TranscriptEntry, FinalFeedback, Scenario } from './types';
 import { useNavigate } from 'react-router-dom';
+import { getOrCreateSessionId, saveDemoSession } from './services/anonymousSessionService';
 
 // Demo scenario for funnel
 const DEMO_SCENARIO: Scenario = {
@@ -22,14 +23,18 @@ const FunnelApp: React.FC = () => {
   const [demoFeedback, setDemoFeedback] = useState<FinalFeedback>({ text: null, scores: null });
   const [isDemoCompleted, setIsDemoCompleted] = useState<boolean>(false);
   
-  // Anonymous user ID (created on first funnel interaction)
-  const [anonymUserId] = useState<string>(() => {
-    const existing = localStorage.getItem('anonym_user_id');
-    if (existing) return existing;
-    const newId = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('anonym_user_id', newId);
-    return newId;
-  });
+  // Anonymous session ID from Supabase
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  
+  // Create or retrieve anonymous session on mount
+  useEffect(() => {
+    const initSession = async () => {
+      const id = await getOrCreateSessionId();
+      setSessionId(id);
+      console.log('📍 Funnel initialized with session:', id);
+    };
+    initSession();
+  }, []);
 
   const handleFunnelComplete = useCallback(() => {
     setView(AppView.PAYWALL);
@@ -44,11 +49,28 @@ const FunnelApp: React.FC = () => {
     alert('Redirecting to payment gateway... (simulation)');
   }, []);
 
-  const handleDemoEnd = useCallback((transcript: TranscriptEntry[], feedback: FinalFeedback) => {
+  const handleDemoEnd = useCallback(async (transcript: TranscriptEntry[], feedback: FinalFeedback) => {
     console.log('🎬 Demo ended, transcript length:', transcript.length);
     console.log('📊 Feedback:', feedback);
     setDemoTranscript(transcript);
     setDemoFeedback(feedback);
+    
+    // Save demo data to Supabase
+    if (sessionId) {
+      const isInsufficient = feedback.text === 'INSUFFICIENT_TURNS';
+      const demoTranscriptForDb = transcript.map(t => ({
+        role: t.speaker === 'user' ? 'user' as const : 'ai' as const,
+        content: t.text,
+      }));
+      
+      await saveDemoSession(
+        sessionId,
+        demoTranscriptForDb,
+        isInsufficient ? null : feedback.text,
+        isInsufficient ? null : feedback.scores,
+        !isInsufficient
+      );
+    }
     
     // Check if user didn't speak enough
     if (feedback.text === 'INSUFFICIENT_TURNS') {
@@ -57,7 +79,7 @@ const FunnelApp: React.FC = () => {
     } else {
       setView(AppView.EMAIL_FORM);
     }
-  }, []);
+  }, [sessionId]);
 
   const handleEmailSubmitted = useCallback(() => {
     // Mark demo as completed and show feedback
@@ -79,9 +101,20 @@ const FunnelApp: React.FC = () => {
   }, [navigate]);
 
   const renderContent = () => {
+    if (!sessionId) {
+      return (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-cyan-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400">Загрузка...</p>
+          </div>
+        </div>
+      );
+    }
+    
     switch (view) {
       case AppView.FUNNEL:
-        return <Funnel onComplete={handleFunnelComplete} anonymUserId={anonymUserId} />;
+        return <Funnel onComplete={handleFunnelComplete} sessionId={sessionId} />;
       case AppView.PAYWALL:
         return <Paywall onStartDemo={handleStartDemo} onStartPaid={handleStartPaid} isDemoCompleted={isDemoCompleted} />;
       case AppView.DIALOGUE:
@@ -99,7 +132,7 @@ const FunnelApp: React.FC = () => {
         );
       case AppView.EMAIL_FORM:
         const transcriptText = demoTranscript.map(t => `${t.speaker}: ${t.text}`).join('\n');
-        return <EmailForm onEmailSubmitted={handleEmailSubmitted} anonymUserId={anonymUserId} transcript={transcriptText} />;
+        return <EmailForm onEmailSubmitted={handleEmailSubmitted} sessionId={sessionId} transcript={transcriptText} />;
       case AppView.FEEDBACK_VIEW:
         const feedbackTranscript = demoTranscript.map(t => `${t.speaker}: ${t.text}`).join('\n');
         return <FeedbackView feedback={demoFeedback} transcript={feedbackTranscript} onContinue={handleReturnToPaywall} onGoToApp={handleGoToMainApp} />;
@@ -135,7 +168,7 @@ const FunnelApp: React.FC = () => {
           </div>
         );
       default:
-        return <Funnel onComplete={handleFunnelComplete} anonymUserId={anonymUserId} />;
+        return <Funnel onComplete={handleFunnelComplete} sessionId={sessionId} />;
     }
   };
 

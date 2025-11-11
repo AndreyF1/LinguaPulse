@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 
 interface EmailFormProps {
     onEmailSubmitted: () => void;
-    anonymUserId: string;
+    sessionId: string;
     transcript: string;
 }
 
-const EmailForm: React.FC<EmailFormProps> = ({ onEmailSubmitted, anonymUserId, transcript }) => {
+const EmailForm: React.FC<EmailFormProps> = ({ onEmailSubmitted, sessionId, transcript }) => {
     const [email, setEmail] = useState('');
     const [isValid, setIsValid] = useState(true);
 
@@ -15,10 +15,10 @@ const EmailForm: React.FC<EmailFormProps> = ({ onEmailSubmitted, anonymUserId, t
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (emailRegex.test(email)) {
             setIsValid(true);
-            // TODO: Save to Supabase (create user via magic link + link anonym_user_id)
+            // TODO: Save to Supabase (create user via magic link + link session_id)
             // For now, just store email in localStorage and continue
             localStorage.setItem('pending_email', email);
-            console.log('📧 Email captured:', email, 'for anonym user:', anonymUserId);
+            console.log('📧 Email captured:', email, 'for session:', sessionId);
             console.log('📝 Transcript length:', transcript.length);
             onEmailSubmitted();
         } else {
