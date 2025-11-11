@@ -308,9 +308,11 @@ const HookReviews: React.FC = () => (
             
             <div className="bg-gray-700/50 p-4 rounded-lg flex items-start gap-4 border border-gray-600">
                 <div className="flex-shrink-0">
-                     <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center font-bold text-white text-xl shadow-md">
-                        М
-                    </div>
+                    <img 
+                        src="/mark28.jpg" 
+                        alt="Марк" 
+                        className="w-16 h-16 rounded-full object-cover shadow-md border-2 border-cyan-500"
+                    />
                 </div>
                 <div>
                     <blockquote className="text-gray-200 italic">
