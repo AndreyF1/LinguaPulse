@@ -42,10 +42,12 @@
    await supabase.auth.signInWithOtp({
      email: email,
      options: {
-       emailRedirectTo: `${window.location.origin}/welcome?view=demo-feedback`
+       emailRedirectTo: `${window.location.origin}/?view=demo-feedback`
      }
    });
    ```
+   
+   **⚠️ ВАЖНО:** Redirect на `/` (главная страница продукта), **НЕ на `/welcome` (воронка)**!
 
 3. Показываем экран успеха:
    ```
@@ -58,68 +60,60 @@
 
 ## 🔗 Обработка Magic Link
 
-### FunnelApp.tsx
+### MainApp.tsx (Главная страница продукта)
 
 **Когда пользователь переходит по ссылке:**
 
-1. **URL:** `/welcome?view=demo-feedback`
+1. **URL:** `/?view=demo-feedback`
 
 2. **Проверка условий:**
    ```typescript
-   if (urlView === 'demo-feedback' && currentUser) {
-     loadDemoFeedback();
-   }
+   useEffect(() => {
+     const params = new URLSearchParams(location.search);
+     const urlView = params.get('view');
+     
+     if (urlView === 'demo-feedback' && currentUser) {
+       // Handle demo feedback after magic link
+     }
+   }, [location, currentUser]);
    ```
 
-3. **Загрузка данных из Supabase:**
+3. **Получить demo_session_id из localStorage:**
    ```typescript
-   // Получить demo_session_id из localStorage
    const demoSessionId = localStorage.getItem('demo_session_id');
-   
-   // Загрузить anonymous_session
-   const { data } = await supabase
-     .from('anonymous_sessions')
-     .select('*')
-     .eq('id', demoSessionId)
-     .single();
    ```
 
 4. **Связать session с user:**
    ```typescript
-   await markSessionAsConverted(demoSessionId, currentUser.id);
-   // Обновляет:
-   // - converted_to_user_id = currentUser.id
-   // - converted_at = now()
+   if (demoSessionId) {
+     await markSessionAsConverted(demoSessionId, currentUser.id);
+     // Обновляет в Supabase:
+     // - converted_to_user_id = currentUser.id
+     // - converted_at = now()
+     
+     localStorage.removeItem('demo_session_id');
+   }
    ```
 
-5. **Реконструировать данные:**
+5. **Показать Welcome модалку:**
    ```typescript
-   // demo_transcript: [{role: 'user', content: '...'}, ...]
-   const transcript: TranscriptEntry[] = data.demo_transcript.map((entry, i) => ({
-     id: `demo-${i}`,
-     speaker: entry.role === 'user' ? 'user' : 'ai',
-     text: entry.content,
-     isFinal: true
-   }));
+   setShowDemoWelcome(true);
+   ```
+
+6. **Очистить URL:**
+   ```typescript
+   window.history.replaceState({}, '', '/');
+   ```
+
+7. **Welcome Modal UI:**
+   ```
+   🎉 Добро пожаловать!
    
-   // demo_feedback: "### Vocabulary\n..."
-   // demo_scores: {grammar: 85, vocabulary: 90, ...}
-   const feedback: FinalFeedback = {
-     text: data.demo_feedback,
-     scores: data.demo_scores
-   };
-   ```
-
-6. **Показать FeedbackView:**
-   ```typescript
-   setDemoTranscript(transcript);
-   setDemoFeedback(feedback);
-   setView(AppView.FEEDBACK_VIEW);
-   ```
-
-7. **Cleanup:**
-   ```typescript
-   localStorage.removeItem('demo_session_id');
+   Спасибо за регистрацию! Ваш отчет по демо-уроку сохранен.
+   
+   Теперь вы можете купить подписку и практиковать английский с AI без ограничений!
+   
+   [Купить подписку]  [Позже]
    ```
 
 ---
