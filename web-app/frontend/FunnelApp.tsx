@@ -6,8 +6,10 @@ import FeedbackView from './components/funnel/FeedbackView';
 import EmailForm from './components/funnel/EmailForm';
 import { AppView } from './components/funnel/funnelTypes';
 import { TranscriptEntry, FinalFeedback, Scenario } from './types';
-import { useNavigate } from 'react-router-dom';
-import { getOrCreateSessionId, saveDemoSession } from './services/anonymousSessionService';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { getOrCreateSessionId, saveDemoSession, markSessionAsConverted } from './services/anonymousSessionService';
+import { supabase } from './supabaseClient';
+import { useUser } from './contexts/UserContext';
 
 // Demo scenario for funnel
 const DEMO_SCENARIO: Scenario = {
@@ -18,13 +20,89 @@ const DEMO_SCENARIO: Scenario = {
 
 const FunnelApp: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { currentUser } = useUser();
   const [view, setView] = useState<AppView>(AppView.FUNNEL);
   const [demoTranscript, setDemoTranscript] = useState<TranscriptEntry[]>([]);
   const [demoFeedback, setDemoFeedback] = useState<FinalFeedback>({ text: null, scores: null });
   const [isDemoCompleted, setIsDemoCompleted] = useState<boolean>(false);
+  const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
   
   // Anonymous session ID (Supabase or local fallback)
   const [sessionId, setSessionId] = useState<string | null>(null);
+  
+  // Handle magic link return (view=demo-feedback)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlView = params.get('view');
+    
+    if (urlView === 'demo-feedback' && currentUser) {
+      console.log('🔗 Magic link return detected, loading demo feedback...');
+      loadDemoFeedback();
+    }
+  }, [location, currentUser]);
+  
+  // Load demo feedback from Supabase after magic link login
+  const loadDemoFeedback = async () => {
+    setIsLoadingFeedback(true);
+    
+    try {
+      const demoSessionId = localStorage.getItem('demo_session_id');
+      if (!demoSessionId) {
+        console.error('❌ No demo session ID found');
+        setView(AppView.PAYWALL);
+        setIsLoadingFeedback(false);
+        return;
+      }
+      
+      // Get anonymous session data
+      const { data, error } = await supabase
+        .from('anonymous_sessions')
+        .select('*')
+        .eq('id', demoSessionId)
+        .single();
+      
+      if (error || !data) {
+        console.error('❌ Failed to load demo session:', error);
+        setView(AppView.PAYWALL);
+        setIsLoadingFeedback(false);
+        return;
+      }
+      
+      console.log('✅ Demo session loaded:', data);
+      
+      // Mark session as converted
+      if (currentUser && !data.converted_to_user_id) {
+        await markSessionAsConverted(demoSessionId, currentUser.id);
+      }
+      
+      // Reconstruct transcript and feedback
+      const transcript: TranscriptEntry[] = (data.demo_transcript as any[])?.map((entry: any, index: number) => ({
+        id: `demo-${index}`,
+        speaker: entry.role === 'user' ? 'user' as const : 'ai' as const,
+        text: entry.content,
+        isFinal: true,
+      })) || [];
+      
+      const feedback: FinalFeedback = {
+        text: data.demo_feedback,
+        scores: data.demo_scores as any,
+      };
+      
+      setDemoTranscript(transcript);
+      setDemoFeedback(feedback);
+      setIsDemoCompleted(true);
+      setView(AppView.FEEDBACK_VIEW);
+      setIsLoadingFeedback(false);
+      
+      // Clean up
+      localStorage.removeItem('demo_session_id');
+    } catch (err) {
+      console.error('❌ Error loading demo feedback:', err);
+      setView(AppView.PAYWALL);
+      setIsLoadingFeedback(false);
+    }
+  };
   
   // Create or retrieve anonymous session on mount
   useEffect(() => {
@@ -108,6 +186,19 @@ const FunnelApp: React.FC = () => {
   }, [navigate]);
 
   const renderContent = () => {
+    // Loading demo feedback after magic link
+    if (isLoadingFeedback) {
+      return (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-cyan-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400 text-lg mb-2">Загружаем ваш фидбэк...</p>
+            <p className="text-gray-500 text-sm">Это займет всего пару секунд</p>
+          </div>
+        </div>
+      );
+    }
+    
     if (!sessionId) {
       return (
         <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -139,7 +230,7 @@ const FunnelApp: React.FC = () => {
         );
       case AppView.EMAIL_FORM:
         const transcriptText = demoTranscript.map(t => `${t.speaker}: ${t.text}`).join('\n');
-        return <EmailForm onEmailSubmitted={handleEmailSubmitted} sessionId={sessionId} transcript={transcriptText} />;
+        return <EmailForm onEmailSubmitted={handleEmailSubmitted} onBackToPaywall={handleReturnToPaywall} sessionId={sessionId} transcript={transcriptText} />;
       case AppView.FEEDBACK_VIEW:
         const feedbackTranscript = demoTranscript.map(t => `${t.speaker}: ${t.text}`).join('\n');
         return <FeedbackView feedback={demoFeedback} transcript={feedbackTranscript} onContinue={handleReturnToPaywall} onGoToApp={handleGoToMainApp} />;
