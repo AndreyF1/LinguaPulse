@@ -15,13 +15,23 @@
     ↓
 Получает Magic Link на email
     ↓
-Переходит по ссылке
+Переходит по ссылке (Magic Link)
     ↓
-Автоматическая регистрация (создан user)
+Автоматическая регистрация (создан user в Supabase)
     ↓
-Авторизован + видит фидбэк по демо
+Redirect на: /?view=demo-feedback
     ↓
-Может купить полный доступ
+Загрузка данных из anonymous_sessions
+    ↓
+Сохранение в sessions (History)
+    ↓
+Связывание sessionId → userId (converted_to_user_id)
+    ↓
+Показ ConversationScreen с initialFeedback
+    ↓
+FeedbackModal автоматически открыт
+    ↓
+Пользователь видит отчет + может купить доступ
 ```
 
 ---
@@ -66,54 +76,79 @@
 
 1. **URL:** `/?view=demo-feedback`
 
-2. **Проверка условий:**
+2. **Загрузка данных из Supabase:**
    ```typescript
-   useEffect(() => {
-     const params = new URLSearchParams(location.search);
-     const urlView = params.get('view');
-     
-     if (urlView === 'demo-feedback' && currentUser) {
-       // Handle demo feedback after magic link
-     }
-   }, [location, currentUser]);
+   const { data } = await supabase
+     .from('anonymous_sessions')
+     .select('*')
+     .eq('id', demoSessionId)
+     .single();
    ```
 
-3. **Получить demo_session_id из localStorage:**
+3. **Конвертация данных:**
    ```typescript
-   const demoSessionId = localStorage.getItem('demo_session_id');
+   // demo_transcript → TranscriptEntry[]
+   const transcript: TranscriptEntry[] = data.demo_transcript.map((entry, i) => ({
+     id: `demo-${i}`,
+     speaker: entry.role === 'user' ? 'user' : 'ai',
+     text: entry.content,
+     isFinal: true
+   }));
+   
+   // demo_feedback + demo_scores → FinalFeedback
+   const feedback: FinalFeedback = {
+     text: data.demo_feedback,
+     scores: data.demo_scores
+   };
    ```
 
-4. **Связать session с user:**
+4. **Сохранение в History:**
    ```typescript
-   if (demoSessionId) {
-     await markSessionAsConverted(demoSessionId, currentUser.id);
-     // Обновляет в Supabase:
-     // - converted_to_user_id = currentUser.id
-     // - converted_at = now()
-     
-     localStorage.removeItem('demo_session_id');
-   }
+   const newSession: NewSessionData = {
+     scenario_title: 'Demo Lesson (5 min)',
+     difficulty: 'intermediate',
+     transcript: data.demo_transcript,
+     scores: data.demo_scores,
+     feedback_text: data.demo_feedback
+   };
+   
+   await addSessionToCurrentUser(newSession);
+   // Теперь демо урок в таблице sessions (History)
    ```
 
-5. **Показать Welcome модалку:**
+5. **Связать session с user:**
    ```typescript
-   setShowDemoWelcome(true);
+   await markSessionAsConverted(demoSessionId, currentUser.id);
+   // Обновляет в Supabase:
+   // - converted_to_user_id = currentUser.id
+   // - converted_at = now()
+   
+   localStorage.removeItem('demo_session_id');
    ```
 
-6. **Очистить URL:**
+6. **Показать ConversationScreen с feedback:**
+   ```typescript
+   setDemoFeedbackData({ transcript, feedback });
+   
+   // Затем в renderView():
+   <ConversationScreen
+     scenario={{ title: 'Demo Lesson (5 min)', ... }}
+     initialTranscript={transcript}
+     initialFeedback={feedback}  // ← Pre-loaded!
+     ...
+   />
+   ```
+
+7. **ConversationScreen с initialFeedback:**
+   - Статус сразу `IDLE` (не `CONNECTING`)
+   - `FeedbackModal` автоматически открыт
+   - Live API session **НЕ запускается**
+   - Таймер **НЕ запускается**
+   - Пользователь видит отчет сразу
+
+8. **Очистить URL:**
    ```typescript
    window.history.replaceState({}, '', '/');
-   ```
-
-7. **Welcome Modal UI:**
-   ```
-   🎉 Добро пожаловать!
-   
-   Спасибо за регистрацию! Ваш отчет по демо-уроку сохранен.
-   
-   Теперь вы можете купить подписку и практиковать английский с AI без ограничений!
-   
-   [Купить подписку]  [Позже]
    ```
 
 ---
