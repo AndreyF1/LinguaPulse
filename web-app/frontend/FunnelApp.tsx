@@ -23,15 +23,22 @@ const FunnelApp: React.FC = () => {
   const [demoFeedback, setDemoFeedback] = useState<FinalFeedback>({ text: null, scores: null });
   const [isDemoCompleted, setIsDemoCompleted] = useState<boolean>(false);
   
-  // Anonymous session ID from Supabase
+  // Anonymous session ID (Supabase or local fallback)
   const [sessionId, setSessionId] = useState<string | null>(null);
   
   // Create or retrieve anonymous session on mount
   useEffect(() => {
     const initSession = async () => {
-      const id = await getOrCreateSessionId();
-      setSessionId(id);
-      console.log('📍 Funnel initialized with session:', id);
+      try {
+        const id = await getOrCreateSessionId();
+        setSessionId(id);
+        console.log('📍 Funnel initialized with session:', id);
+      } catch (error) {
+        console.error('❌ Failed to initialize session:', error);
+        // Fallback to local ID
+        const fallbackId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        setSessionId(fallbackId);
+      }
     };
     initSession();
   }, []);

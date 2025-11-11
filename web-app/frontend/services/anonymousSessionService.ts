@@ -97,13 +97,23 @@ export async function createAnonymousSession(): Promise<string | null> {
 /**
  * Get or create anonymous session ID
  */
-export async function getOrCreateSessionId(): Promise<string | null> {
+export async function getOrCreateSessionId(): Promise<string> {
   const existing = localStorage.getItem(STORAGE_KEY);
   if (existing) {
     console.log('📦 Using existing anonymous session:', existing);
     return existing;
   }
-  return await createAnonymousSession();
+  
+  const sessionId = await createAnonymousSession();
+  if (sessionId) {
+    return sessionId;
+  }
+  
+  // Fallback: create local-only session if Supabase insert fails
+  console.warn('⚠️ Failed to create Supabase session, using local fallback');
+  const fallbackId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  localStorage.setItem(STORAGE_KEY, fallbackId);
+  return fallbackId;
 }
 
 /**
@@ -114,6 +124,12 @@ export async function saveFunnelAnswers(
   answers: FunnelAnswer[],
   completed: boolean
 ): Promise<boolean> {
+  // Skip Supabase save if using local fallback
+  if (sessionId.startsWith('local_')) {
+    console.warn('⚠️ Using local session, skipping Supabase save for funnel answers');
+    return true;
+  }
+  
   try {
     const { error } = await supabase
       .from('anonymous_sessions')
@@ -147,6 +163,12 @@ export async function saveDemoSession(
   scores: DemoScores | null,
   completed: boolean
 ): Promise<boolean> {
+  // Skip Supabase save if using local fallback
+  if (sessionId.startsWith('local_')) {
+    console.warn('⚠️ Using local session, skipping Supabase save for demo session');
+    return true;
+  }
+  
   try {
     const { error } = await supabase
       .from('anonymous_sessions')
