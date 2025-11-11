@@ -6,6 +6,8 @@ import ScenarioSelectionScreen from './components/ScenarioSelectionScreen';
 import ConversationScreen from './components/ConversationScreen';
 import HistoryScreen from './components/HistoryScreen';
 import { HistoryIcon, LogoutIcon } from './components/Icons';
+import { markSessionAsConverted } from './services/anonymousSessionService';
+import { useLocation } from 'react-router-dom';
 
 const scenarios: Scenario[] = [
     { title: 'Ordering Coffee', description: 'Practice ordering a drink at a coffee shop.', prompt: "Hello! Welcome to our coffee shop. What can I get for you today?" },
@@ -19,10 +21,35 @@ type View = 'scenarios' | 'history' | 'conversation';
 const IN_PROGRESS_SESSION_KEY = 'in-progress-session';
 
 const App: React.FC = () => {
+    const location = useLocation();
     const { currentUser, logout, addSessionToCurrentUser, loading } = useUser();
     const [currentView, setCurrentView] = useState<View>('scenarios');
     const [inProgressSession, setInProgressSession] = useState<InProgressSessionData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [showDemoWelcome, setShowDemoWelcome] = useState(false);
+
+    // Handle demo feedback after magic link (link anonymous session to user)
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const urlView = params.get('view');
+        
+        if (urlView === 'demo-feedback' && currentUser) {
+            console.log('🔗 Magic link: linking demo session to user...');
+            const demoSessionId = localStorage.getItem('demo_session_id');
+            
+            if (demoSessionId) {
+                markSessionAsConverted(demoSessionId, currentUser.id).then(() => {
+                    console.log('✅ Demo session linked to user');
+                    localStorage.removeItem('demo_session_id');
+                });
+            }
+            
+            setShowDemoWelcome(true);
+            
+            // Clean URL
+            window.history.replaceState({}, '', '/');
+        }
+    }, [location, currentUser]);
 
     // Effect to load a saved session from localStorage when the app loads and a user is logged in.
     useEffect(() => {
@@ -151,6 +178,39 @@ const App: React.FC = () => {
 
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
+            {/* Demo Welcome Modal */}
+            {showDemoWelcome && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-2xl max-w-md w-full p-8 border border-cyan-600">
+                        <h2 className="text-2xl font-bold text-cyan-400 mb-4">🎉 Добро пожаловать!</h2>
+                        <p className="text-gray-300 mb-6">
+                            Спасибо за регистрацию! Ваш отчет по демо-уроку сохранен.
+                        </p>
+                        <p className="text-gray-300 mb-6">
+                            Теперь вы можете купить подписку и практиковать английский с AI без ограничений!
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowDemoWelcome(false);
+                                    // TODO: Redirect to payment/subscription page
+                                    alert('Страница оплаты в разработке');
+                                }}
+                                className="flex-1 px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg transition-colors"
+                            >
+                                Купить подписку
+                            </button>
+                            <button
+                                onClick={() => setShowDemoWelcome(false)}
+                                className="px-6 py-3 border border-gray-600 hover:border-cyan-600 text-gray-300 hover:text-cyan-400 font-semibold rounded-lg transition-colors"
+                            >
+                                Позже
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <header className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800/50 backdrop-blur-sm sticky top-0 z-10">
                 <h1 className="text-2xl font-bold text-cyan-400">LinguaPulse</h1>
                 <nav className="flex items-center space-x-4">

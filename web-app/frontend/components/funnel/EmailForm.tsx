@@ -34,7 +34,7 @@ const EmailForm: React.FC<EmailFormProps> = ({ onEmailSubmitted, onBackToPaywall
             const { error } = await supabase.auth.signInWithOtp({
                 email: email,
                 options: {
-                    emailRedirectTo: `${window.location.origin}/welcome?view=demo-feedback`,
+                    emailRedirectTo: `${window.location.origin}/?view=demo-feedback`,
                 }
             });
             
