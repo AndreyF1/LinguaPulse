@@ -299,58 +299,41 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
         console.log('👋 Playing farewell message...');
         
         try {
-            // Use English farewell for now (could be made dynamic based on user language)
+            // Fixed farewell text (like in Telegram bot - строка 161-162)
             const farewellText = FAREWELL_TEXT;
             
-            // Generate audio using Gemini TTS (same as in demo hook)
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${import.meta.env.GEMINI_API_KEY}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: farewellText }] }],
-                        generationConfig: {
-                            responseModalities: ['AUDIO'],
-                            speechConfig: {
-                                voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
-                            }
-                        }
-                    })
-                }
-            );
+            // Add farewell to transcript for user to see
+            setTranscript(prev => [...prev, {
+                id: `farewell-${Date.now()}`,
+                speaker: 'ai',
+                text: farewellText,
+                isFinal: true
+            }]);
             
-            if (!response.ok) {
-                throw new Error('Failed to generate farewell audio');
-            }
-            
-            const data = await response.json();
-            const audioBase64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-            
-            if (!audioBase64) {
-                throw new Error('No audio data in response');
-            }
-            
-            // Convert base64 to audio and play
-            const audioContext = outputAudioContextRef.current || new AudioContext({ sampleRate: 24000 });
-            const binaryString = atob(audioBase64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            
-            const audioBuffer = await audioContext.decodeAudioData(bytes.buffer);
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
-            
-            // Wait for audio to finish playing
-            await new Promise<void>((resolve) => {
-                source.onended = () => {
+            // Use Web Speech API for simple TTS (no external API needed)
+            return new Promise<void>((resolve) => {
+                const utterance = new SpeechSynthesisUtterance(farewellText);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.95; // Slightly slower for clarity
+                utterance.pitch = 1.0;
+                
+                utterance.onend = () => {
                     console.log('✅ Farewell message finished playing');
                     resolve();
                 };
-                source.start();
+                
+                utterance.onerror = (error) => {
+                    console.warn('⚠️ Speech synthesis error:', error);
+                    resolve(); // Continue anyway
+                };
+                
+                window.speechSynthesis.speak(utterance);
+                
+                // Safety timeout in case speech never ends
+                setTimeout(() => {
+                    window.speechSynthesis.cancel();
+                    resolve();
+                }, 15000); // 15 seconds max
             });
             
         } catch (error) {
