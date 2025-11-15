@@ -47,29 +47,8 @@ RULES:
 Now, please continue the conversation. You could say something like "Sorry about that, where were we?" or just continue the topic.
 `;
 
-const GOODBYE_SYSTEM_INSTRUCTION_TEMPLATE = `You are an AI English tutor. 
-
-⏰ **TIME IS UP!** The lesson has ended. You MUST say goodbye NOW.
-
---- CONVERSATION TRANSCRIPT ---
-{transcript}
---- END TRANSCRIPT ---
-
-**YOUR TASK**: Say a brief, warm goodbye to the learner RIGHT NOW. This is the LAST thing you will say.
-
-**FORMAT**:
-- 1-2 sentences maximum
-- Thank them for practicing
-- Give brief encouragement
-- NO questions, NO small talk, NO continuation
-
-**EXAMPLES**:
-- "Great job today! Keep practicing and I'll see you next time!"
-- "Well done! You did really well. Keep up the good work!"
-- "Excellent practice session! I'm proud of your progress. See you soon!"
-
-Now say goodbye and STOP SPEAKING immediately after.
-`;
+const FAREWELL_TEXT = "That's all for today! You did great. Keep practicing and I'll see you next time!";
+const FAREWELL_TEXT_RU = "На сегодня все! Вы отлично поработали. Продолжайте практиковаться, увидимся в следующий раз!";
 
 const FEEDBACK_PROMPT_TEMPLATE = `
 Based on the following conversation transcript with a Russian-speaking English learner, provide a detailed but concise feedback report.
@@ -130,10 +109,6 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
     const [finalFeedback, setFinalFeedback] = useState<FinalFeedback>(initialFeedback || { text: null, scores: null });
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(!!initialFeedback); // Auto-open if pre-loaded
     const [timeLeft, setTimeLeft] = useState(durationMinutes * 60);
-    const hasWarnedAboutTimeRef = useRef(false);
-    const shouldSayGoodbyeRef = useRef(false);
-    const hasTriggeredGoodbyeRef = useRef(false);
-    const isInGoodbyeModeRef = useRef(false);
 
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -320,6 +295,70 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
         }
     }, [cleanupConversationResources, status]);
     
+    const playFarewellMessage = useCallback(async () => {
+        console.log('👋 Playing farewell message...');
+        
+        try {
+            // Use English farewell for now (could be made dynamic based on user language)
+            const farewellText = FAREWELL_TEXT;
+            
+            // Generate audio using Gemini TTS (same as in demo hook)
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${import.meta.env.GEMINI_API_KEY}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: farewellText }] }],
+                        generationConfig: {
+                            responseModalities: ['AUDIO'],
+                            speechConfig: {
+                                voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+                            }
+                        }
+                    })
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error('Failed to generate farewell audio');
+            }
+            
+            const data = await response.json();
+            const audioBase64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            
+            if (!audioBase64) {
+                throw new Error('No audio data in response');
+            }
+            
+            // Convert base64 to audio and play
+            const audioContext = outputAudioContextRef.current || new AudioContext({ sampleRate: 24000 });
+            const binaryString = atob(audioBase64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            const audioBuffer = await audioContext.decodeAudioData(bytes.buffer);
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            
+            // Wait for audio to finish playing
+            await new Promise<void>((resolve) => {
+                source.onended = () => {
+                    console.log('✅ Farewell message finished playing');
+                    resolve();
+                };
+                source.start();
+            });
+            
+        } catch (error) {
+            console.error('❌ Failed to play farewell message:', error);
+            // Continue anyway - farewell is optional
+        }
+    }, []);
+    
     const startLiveSession = useCallback(async (systemInstruction: string) => {
         isStopping.current = false;
         setStatus(ConversationStatus.CONNECTING);
@@ -340,15 +379,10 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                 await outputAudioContextRef.current.resume();
             }
 
-            // In goodbye mode, don't start microphone (AI just says goodbye and stops)
-            let stream: MediaStream | null = null;
-            if (!isInGoodbyeModeRef.current) {
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaStreamRef.current = stream;
-                console.log('✅ Microphone stream acquired:', stream.getAudioTracks()[0].label);
-            } else {
-                console.log('🚫 Goodbye mode: microphone not started (AI will say goodbye only)');
-            }
+            // Get microphone stream
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStreamRef.current = stream;
+            console.log('✅ Microphone stream acquired:', stream.getAudioTracks()[0].label);
     
             sessionPromiseRef.current = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -364,15 +398,6 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                         if (isStopping.current) return;
                         
                         console.log('🔗 WebSocket opened');
-                        
-                        // In goodbye mode, don't setup audio processing (AI will just say goodbye)
-                        if (isInGoodbyeModeRef.current) {
-                            console.log('👋 Goodbye mode: skipping microphone setup, waiting for AI farewell...');
-                            setStatus(ConversationStatus.SPEAKING);
-                            return;
-                        }
-                        
-                        // Normal mode: setup audio processing
                         console.log('🔗 Setting up audio processing...');
                         setStatus(ConversationStatus.LISTENING);
                         const source = inputAudioContextRef.current!.createMediaStreamSource(mediaStreamRef.current!);
@@ -463,31 +488,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                         if (message.serverContent?.outputTranscription) processTranscriptUpdate('ai', message.serverContent.outputTranscription.text, false);
                         
                         if (message.serverContent?.turnComplete) {
-                            scheduleUpdate(prev => {
-                                const finalized = prev.map(e => ({ ...e, isFinal: true }));
-                                
-                                // If we're in goodbye mode, AI just said goodbye - stop after it finishes
-                                if (isInGoodbyeModeRef.current) {
-                                    console.log('👋 AI said goodbye, waiting for audio to finish before stopping...');
-                                    const checkAndStop = () => {
-                                        if (outputSources.size === 0) {
-                                            console.log('🛑 Goodbye complete, stopping lesson now');
-                                            if (!isStopping.current) {
-                                                setTimeout(() => handleStopRef.current(), 500);
-                                            }
-                                        } else {
-                                            console.log('⏳ Waiting for goodbye to finish playing...');
-                                            setTimeout(checkAndStop, 500);
-                                        }
-                                    };
-                                    setTimeout(checkAndStop, 500);
-                                    return finalized;
-                                }
-                                
-                                // Goodbye logic moved to timer (at 30 seconds mark)
-                                
-                                return finalized;
-                            });
+                            scheduleUpdate(prev => prev.map(e => ({ ...e, isFinal: true })));
                         }
                          if (message.serverContent?.interrupted) {
                             outputSources.forEach(source => source.stop());
@@ -568,7 +569,7 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
             setTimeLeft(prev => {
                 const next = prev - 1;
                 
-                // At 0, stop microphone and wait for AI to finish
+                // At 0, stop microphone and wait for AI to finish current sentence
                 if (next <= 0) {
                     if (timerRef.current) clearInterval(timerRef.current);
                     
@@ -585,13 +586,19 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                         }
                     }
                     
-                    // Wait for AI to finish speaking before stopping
-                    const waitForAudioToFinish = () => {
+                    // Wait for AI to finish speaking, then play farewell and end lesson
+                    const waitForAudioToFinish = async () => {
                         if (outputSources.size === 0 && status !== ConversationStatus.SPEAKING) {
-                            console.log('⏱️ Time expired, all audio finished, stopping gracefully');
+                            console.log('⏱️ Time expired, AI finished speaking');
+                            
+                            // Play farewell message
+                            await playFarewellMessage();
+                            
+                            // Then end lesson
+                            console.log('👋 Farewell complete, ending lesson gracefully');
                             if (!isStopping.current) handleStopRef.current();
                         } else {
-                            console.log('⏱️ Time expired, waiting for AI to finish speaking...', { 
+                            console.log('⏳ Waiting for AI to finish current sentence...', { 
                                 audioSources: outputSources.size, 
                                 status 
                             });
@@ -604,55 +611,6 @@ const ConversationScreen: React.FC<Props> = ({ scenario, startTime, initialTrans
                     waitForAudioToFinish();
                     
                     return 0;
-                }
-                
-                // Warning at 30 seconds
-                if (next === 30 && !hasWarnedAboutTimeRef.current) {
-                    console.log('⚠️ 30 seconds remaining');
-                    hasWarnedAboutTimeRef.current = true;
-                }
-                
-                // At 30 seconds - immediately trigger goodbye
-                if (next === 30 && !shouldSayGoodbyeRef.current) {
-                    console.log('⏰ 30 seconds! Triggering goodbye NOW...');
-                    shouldSayGoodbyeRef.current = true;
-                    hasTriggeredGoodbyeRef.current = true;
-                    
-                    // Wait for AI to finish current response
-                    const triggerGoodbye = () => {
-                        if (outputSources.size === 0 && status !== ConversationStatus.SPEAKING) {
-                            console.log('✅ AI finished, sending goodbye instruction...');
-                            
-                            // Stop microphone
-                            if (scriptProcessorRef.current) {
-                                try {
-                                    scriptProcessorRef.current.disconnect();
-                                    scriptProcessorRef.current = null;
-                                    console.log('🎤 Microphone stopped');
-                                } catch (e) {
-                                    console.warn('Failed to stop microphone:', e);
-                                }
-                            }
-                            
-                            // Reconnect with goodbye instruction
-                            isInGoodbyeModeRef.current = true;
-                            const transcriptText = transcriptRef.current
-                                .filter(e => e.isFinal && e.text.trim())
-                                .map(entry => `${entry.speaker === 'user' ? 'Learner' : 'Tutor'}: ${entry.text}`)
-                                .join('\n');
-                            const goodbyeInstruction = GOODBYE_SYSTEM_INSTRUCTION_TEMPLATE.replace('{transcript}', transcriptText);
-                            
-                            console.log('🔄 Reconnecting with goodbye instruction...');
-                            partialCleanupForReconnect().then(() => {
-                                startLiveSession(goodbyeInstruction);
-                            });
-                        } else {
-                            console.log('⏳ Waiting for AI to finish before goodbye...');
-                            setTimeout(triggerGoodbye, 500);
-                        }
-                    };
-                    
-                    setTimeout(triggerGoodbye, 500);
                 }
                 
                 return next;
