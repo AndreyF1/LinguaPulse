@@ -526,7 +526,11 @@ const Funnel: React.FC<FunnelProps> = ({ onComplete, sessionId }) => {
                     question: parseInt(questionId),
                     answer: Array.isArray(answer) ? answer.join(', ') : answer,
                 }));
-                await saveFunnelAnswers(sessionId, funnelAnswers, true);
+                try {
+                    await saveFunnelAnswers(sessionId, funnelAnswers, true);
+                } catch (error) {
+                    console.error('Failed to save funnel answers, continuing anyway:', error);
+                }
                 onComplete();
             }
             return;
@@ -538,7 +542,11 @@ const Funnel: React.FC<FunnelProps> = ({ onComplete, sessionId }) => {
                 question: parseInt(questionId),
                 answer: Array.isArray(answer) ? answer.join(', ') : answer,
             }));
-            await saveFunnelAnswers(sessionId, funnelAnswers, true);
+            try {
+                await saveFunnelAnswers(sessionId, funnelAnswers, true);
+            } catch (error) {
+                console.error('Failed to save funnel answers, continuing anyway:', error);
+            }
             onComplete();
             return;
         }
@@ -556,7 +564,11 @@ const Funnel: React.FC<FunnelProps> = ({ onComplete, sessionId }) => {
                     question: parseInt(questionId),
                     answer: Array.isArray(answer) ? answer.join(', ') : answer,
                 }));
-                await saveFunnelAnswers(sessionId, funnelAnswers, true);
+                try {
+                    await saveFunnelAnswers(sessionId, funnelAnswers, true);
+                } catch (error) {
+                    console.error('Failed to save funnel answers, continuing anyway:', error);
+                }
                 onComplete();
             }
         }
